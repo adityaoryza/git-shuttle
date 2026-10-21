@@ -15,7 +15,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_server import World, write  # noqa: E402  (also puts ui/ on sys.path)
-from shuttle_ui import cli, log  # noqa: E402
+from shuttle_ui import __version__, cli, log  # noqa: E402
 
 UI_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui")
 
@@ -314,7 +314,7 @@ class TestTerminalOutput(Terminal):
         out = self.stdout
         lines = err.splitlines()
         stamp = r"\d\d:\d\d:\d\d  "
-        self.assertTrue(re.search(stamp + r"info  git-shuttle 0\.1\.0 by Aditya Oryza Mahendra listening on http://127\.0\.0\.1:%d " % self.port, err), err)
+        self.assertTrue(re.search(stamp + r"info  git-shuttle %s by Aditya Oryza Mahendra listening on http://127\.0\.0\.1:%d " % (re.escape(__version__), self.port), err), err)
         self.assertRegex(err, r"info  settings and history in .+, 1 repositories registered")
         self.assertRegex(err, stamp + r"job   my work  start  started \(start\)")
         self.assertRegex(err, stamp + r"job   my work  start  done  \d+\.\ds")
