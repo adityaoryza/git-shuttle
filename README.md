@@ -1,5 +1,9 @@
 # git-shuttle
 
+[![CI](https://github.com/adityaoryza/git-shuttle/actions/workflows/ci.yml/badge.svg)](https://github.com/adityaoryza/git-shuttle/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/adityaoryza/git-shuttle)](https://github.com/adityaoryza/git-shuttle/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 **The same steps, in the same order, with the same checks, every time you take a branch from your work to the integration
 branch and to a release.** One command instead of a copied list of ten.
 
@@ -300,6 +304,13 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/architecture.md](docs/architect
 ## License
 
 MIT. See [LICENSE](LICENSE). Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Community
+
+- [Contributing guide](CONTRIBUTING.md)
+- [Code of Conduct](CODE_OF_CONDUCT.md)
+- [Security policy](SECURITY.md)
+- [Support](SUPPORT.md)
 
 ## Author
 

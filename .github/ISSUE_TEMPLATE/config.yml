@@ -1,5 +1,8 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
+  - name: Ask for support
+    url: https://github.com/adityaoryza/git-shuttle/blob/main/SUPPORT.md
+    about: Usage questions and troubleshooting steps.
   - name: Report a security problem privately
     url: https://github.com/adityaoryza/git-shuttle/security/advisories/new
     about: Please do not open a public issue for a vulnerability.
