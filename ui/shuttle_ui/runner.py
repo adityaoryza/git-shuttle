@@ -3,7 +3,7 @@ import os
 import subprocess
 
 from .errors import BadRequest
-from .paths import SHUTTLE
+from .paths import SHUTTLE_ARGV
 
 
 MAX_OUTPUT = 256 * 1024     # of what a job reports back to the page
@@ -31,7 +31,7 @@ def limited(raw):
 
 def run_shuttle(repo_path, args, dry_run=False, timeout=120, extra_env=None):
     """One git-shuttle command in a repository; returns (exit status, output)."""
-    argv = [SHUTTLE, "-n" if dry_run else "-y"] + list(args)
+    argv = SHUTTLE_ARGV + ["-n" if dry_run else "-y"] + list(args)
     try:
         done = subprocess.run(argv, cwd=repo_path, env=child_env(extra_env), capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -57,7 +57,7 @@ def parse_porcelain(raw):
 
 
 def shuttle_porcelain(repo_path, command, timeout=60):
-    done = subprocess.run([SHUTTLE, command, "--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    done = subprocess.run(SHUTTLE_ARGV + [command, "--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 500)
     return parse_porcelain(done.stdout)
@@ -75,7 +75,7 @@ def git_output(repo_path, *args, timeout=120):
 
 def shuttle_records(repo_path, args, timeout=60):
     """A read-only git-shuttle command whose porcelain output is NUL separated records of unit-separated fields."""
-    done = subprocess.run([SHUTTLE] + list(args) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    done = subprocess.run(SHUTTLE_ARGV + list(args) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 500)
     return [rec.decode("utf-8", "replace").split("\x1f") for rec in done.stdout.split(b"\0") if rec]
@@ -83,7 +83,7 @@ def shuttle_records(repo_path, args, timeout=60):
 
 def shuttle_text(repo_path, args, timeout=60):
     """A read-only git-shuttle command and its plain output (or the reason it refused)."""
-    done = subprocess.run([SHUTTLE] + list(args), cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    done = subprocess.run(SHUTTLE_ARGV + list(args), cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 400)
     return done.stdout.decode("utf-8", "replace")
