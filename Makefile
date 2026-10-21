@@ -1,6 +1,6 @@
 # git-shuttle: developer tasks.   `make help` lists them.
 SHELL := bash
-SOURCES := bin/git-shuttle $(wildcard lib/*/*.sh) $(wildcard tests/*.sh) $(wildcard tests/helpers/*.sh) $(wildcard tests/cli/*.sh)
+SOURCES := bin/git-shuttle install.sh $(wildcard lib/*/*.sh) $(wildcard tests/*.sh) $(wildcard tests/helpers/*.sh) $(wildcard tests/cli/*.sh)
 PYTHON := $(wildcard ui/shuttle_ui/*.py) $(wildcard tests/ui/*.py)
 JS := $(wildcard ui/shuttle_ui/static/js/*.js) $(wildcard ui/shuttle_ui/static/js/components/*.js) $(wildcard tests/ui/*.mjs) $(wildcard tests/e2e/*.mjs tests/e2e/lib/*.mjs tests/e2e/scenarios/*.mjs tests/e2e/screenshots/*.mjs)
 PREFIX ?= $(HOME)/.local

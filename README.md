@@ -109,6 +109,14 @@ message asking for a newer one (for example from Homebrew). Windows without WSL 
 
 ## Install
 
+One line, from the latest release (it installs into `~/.local`; `PREFIX=/usr/local` and `GIT_SHUTTLE_VERSION=v0.1.1` change that):
+
+```bash
+curl -fsSL https://github.com/adityaoryza/git-shuttle/raw/main/install.sh | bash
+```
+
+Or from a clone:
+
 ```bash
 git clone https://github.com/adityaoryza/git-shuttle.git
 cd git-shuttle
