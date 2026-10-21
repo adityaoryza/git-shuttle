@@ -82,6 +82,7 @@ export const scenarios = {
     await splitter.focus();
     for (let i = 0; i < 12; i++) await page.keyboard.press("ArrowLeft");
     const heads = async () => (await page.locator(".detail .thead [role=columnheader]").allInnerTexts()).map(h => h.replace(/[▲▼\s]/g, "").toLowerCase());
+    await page.waitForTimeout(300);   // the layout follows the splitter on the next frames
     const narrow = await heads();
     t.ok("a narrow list keeps the name and drops columns", narrow[0] === "name" && narrow.length < 5, narrow.join(","));
     t.ok("Status goes first", !narrow.includes("status"));

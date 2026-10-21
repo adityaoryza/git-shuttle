@@ -43,6 +43,7 @@ export const scenarios = {
     t.demo.pushToRemote("feature/billing_rounding", "billing/zero.py", "x = 0\n", "[FIX] billing: handle an invoice without lines");
     await page.getByRole("button", { name: "Fetch" }).click();
     await page.waitForSelector(".toast-success");
+    await page.locator(".progress.is-active").waitFor({ state: "detached" });   // the page reloads after a fetch: until then every action says "another action is running"
     await row("Merge branch 'feature/billing_rounding'").click({ button: "right" });
     t.ok("a merge commit cannot be picked", (await page.getByRole("menuitem", { name: /^Cherry-pick onto/ }).innerText()).includes("a merge commit"));
     await page.keyboard.press("Escape");

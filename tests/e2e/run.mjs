@@ -33,12 +33,13 @@ const results = [];
 function context(demo, server) {
   const pages = [];
   const t = {
-    demo, server,
+    demo, server, last: null,
     async page(options = {}) {
       const { fresh, ...contextOptions } = options;
       const ctx = await browser.newContext({ viewport: { width: 1366, height: 800 }, colorScheme: "dark", permissions: ["clipboard-read", "clipboard-write"], ...contextOptions });
       const page = await ctx.newPage();
       page.errors = collectErrors(page);
+      t.last = page;
       page.on("dialog", d => d.dismiss());
       pages.push(ctx);
       if (fresh !== false) { await page.goto(server.url); await page.waitForSelector(".graph .row"); }
@@ -66,7 +67,14 @@ for (const file of files) {
     const demo = createDemo();
     const server = await startServer(demo, scenario.serverArgs || []);
     const t = context(demo, server);
-    try { await run(t); } catch (e) { results.push({ name: name + " · crashed", ok: false, detail: String(e.stack || e).split("\n").slice(0, 6).join("\n") }); }
+    try { await run(t); } catch (e) {
+      let more = "";
+      try {   // what the page showed when it stopped: the first thing to look at in a CI log
+        more = "\n--- page text ---\n" + (await t.last.locator("body").innerText({ timeout: 3000 })).slice(0, 1500) +
+          "\n--- page errors ---\n" + t.last.errors.join("\n") + "\n--- server log ---\n" + server.log().slice(-1500);
+      } catch (e2) { /* there is no page */ }
+      results.push({ name: name + " · crashed", ok: false, detail: String(e.stack || e).split("\n").slice(0, 6).join("\n") + more });
+    }
     await t.close();
     await server.stop();
     demo.cleanup();
