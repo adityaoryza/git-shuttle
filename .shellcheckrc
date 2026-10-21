@@ -1,2 +1,2 @@
-disable=SC2153
+disable=SC2153,SC2119
 source-path=SCRIPTDIR

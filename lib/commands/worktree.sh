@@ -61,7 +61,7 @@ worktree_add() {
         esac
     done
     [[ -n "$path" && -n "$branch" ]] || die "worktree add needs a folder and a branch:  git shuttle worktree add /work/feature feature/x"
-    git check-ref-format --branch "$branch" >/dev/null 2>&1 && [[ "$branch" != -* ]] || die "'$branch' is not a valid branch name"
+    if [[ "$branch" == -* ]] || ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then die "'$branch' is not a valid branch name"; fi
     local problem; problem=$(worktree_path_problem "$path")
     [[ -z "$problem" ]] || die "$problem"
     if [[ -n "$from" ]]; then
