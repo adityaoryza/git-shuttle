@@ -32,7 +32,7 @@ run_front() {
     printf '\n%s\n' "ui/front (node)"
     if ! command -v node >/dev/null 2>&1; then echo "  node is missing: skipped"; return; fi
     local file
-    for file in test_logic.mjs test_graph.mjs; do
+    for file in test_logic.mjs test_graph.mjs test_diff.mjs test_theme.mjs test_version.mjs; do
         node "$here/ui/$file" 2>&1 | tail -25
         [[ ${PIPESTATUS[0]} -eq 0 ]] || failed=$((failed + 1))
     done

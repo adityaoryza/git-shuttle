@@ -11,10 +11,12 @@ lib/commands/            one file per command (cmd_<name>), loaded by bin/git-sh
 ui/shuttle_ui/           the web UI: a Python package, standard library only
     cli.py                 command line and server start         api.py       the routes
     http.py                requests, security checks, static files   validate.py  what the page may ask for
+    diffs.py               a commit, the working tree, one file's diff (read only, capped)
     runner.py              runs git-shuttle, reads --porcelain      jobs.py      one action at a time per repository
     store.py               registered repositories and history      graph.py     the commit graph from `git log`
     static/                the page: ES modules and one CSS file, no build step
-        js/                  main.js, runner.js, api.js, logic.js (pure), graph.js (pure), components/
+        js/                  main.js, runner.js, api.js, theme-init.js (before first paint), components/
+                             pure and tested with node: logic, graph, branches, diff, filetree, highlight, format, repos, theme
         vendor/              Preact and htm in one file, committed as is
 tests/
     cli/                   one bash suite per area, each in throw-away repositories

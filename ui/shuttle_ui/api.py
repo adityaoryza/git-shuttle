@@ -3,9 +3,11 @@ import os
 import subprocess
 
 from .errors import BadRequest
+from . import API_LEVEL, __version__
+from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
 from .runner import child_env, run_shuttle, shuttle_porcelain
-from .validate import NAME_RE, build_commands, text
+from .validate import NAME_RE, build_commands, display_name, text
 
 
 def repo_summary(repo):
@@ -17,7 +19,7 @@ def repo_summary(repo):
     return base
 
 
-def register(store, path):
+def register(store, path, name=None):
     if not isinstance(path, str) or not path or "\0" in path or not os.path.isabs(path):
         raise BadRequest("give the absolute path of a repository")
     real = os.path.realpath(path)
@@ -26,7 +28,7 @@ def register(store, path):
     done = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=real, env=child_env(), capture_output=True)
     if done.returncode != 0:
         raise BadRequest("that folder is not a git repository")
-    return store.add_repo(os.path.realpath(done.stdout.decode("utf-8", "replace").strip()))
+    return store.add_repo(os.path.realpath(done.stdout.decode("utf-8", "replace").strip()), display_name(name) if name else None)
 
 
 def fetch(repo):
@@ -70,10 +72,12 @@ def preview(repo, body):
 def handle(server, method, route, body):
     store, jobs = server.store, server.jobs
     parts = [p for p in route.split("/") if p]
+    if method == "GET" and parts == ["version"]:
+        return {"version": __version__, "api": API_LEVEL}
     if method == "GET" and parts == ["repos"]:
         return {"repos": [repo_summary(r) for r in store.repos()]}
     if method == "POST" and parts == ["repos"]:
-        return {"repo": register(store, body.get("path"))}
+        return {"repo": register(store, body.get("path"), body.get("name"))}
     if method == "GET" and parts == ["history"]:
         return {"history": store.history()}
     if method == "GET" and len(parts) == 2 and parts[0] == "jobs":
@@ -81,6 +85,8 @@ def handle(server, method, route, body):
     if len(parts) >= 2 and parts[0] == "repos":
         repo = store.find(parts[1])
         rest = parts[2:]
+        if method == "POST" and rest == ["rename"]:
+            return {"repo": store.rename_repo(repo["id"], display_name(body.get("name")))}
         if method == "POST" and rest == ["remove"]:
             store.remove_repo(repo["id"])
             return {"ok": True}
@@ -90,6 +96,14 @@ def handle(server, method, route, body):
             return commit_graph(repo["path"], body.get("refs") if method == "POST" else None)
         if method == "GET" and rest == ["branches"]:
             return branch_list(repo["path"])
+        if method == "GET" and len(rest) == 2 and rest[0] == "commits":
+            return commit_details(repo["path"], rest[1])
+        if method == "GET" and rest == ["worktree"]:
+            return worktree_files(repo["path"])
+        if method == "POST" and rest == ["diff"]:
+            source = text(body.get("source"), "source", 64, True, True)
+            old = body.get("old_path")
+            return file_diff(repo["path"], source, text(body.get("path"), "path", 500, True, True), old if isinstance(old, str) and old else None, body.get("context"))
         if method == "GET" and rest == ["candidates"]:
             return {"candidates": candidates(repo)}
         if method == "POST" and rest == ["fetch"]:

@@ -12,7 +12,7 @@ from .jobs import Jobs
 from .paths import STATIC_DIR
 
 MAX_BODY = 1024 * 1024
-CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
+CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "application/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon"}
 CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
 
 
@@ -90,7 +90,8 @@ class Handler(BaseHTTPRequestHandler):
                 body, kind = static_file("/static/index.html")
                 return self._send(200, body, kind)
             if method == "GET" and path == "/favicon.ico":
-                return self._send(204, b"", "image/x-icon")
+                body, kind = static_file("/static/favicon.ico")
+                return self._send(200, body, kind)
             if method == "GET" and path.startswith("/static/"):
                 body, kind = static_file(path)
                 return self._send(200, body, kind)

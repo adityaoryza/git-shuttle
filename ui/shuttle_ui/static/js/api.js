@@ -10,6 +10,8 @@ function readToken() {
 const TOKEN = readToken();
 try { history.replaceState(null, "", location.pathname); } catch (e) { /* not in a page */ }
 
+import { OLD_SERVER, isMissingRoute } from "./version.js";
+
 export async function api(method, path, body) {
   const headers = { "X-Shuttle-Token": TOKEN };
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -17,6 +19,7 @@ export async function api(method, path, body) {
   let data = null;
   try { data = await res.json(); } catch (e) { data = null; }
   if (res.status === 401) throw new Error("This page has no valid token: open the link that `git shuttle ui` printed.");
+  if (isMissingRoute(res.status, data)) { const e = new Error(OLD_SERVER); e.oldServer = true; throw e; }
   if (!res.ok) throw new Error((data && data.error) || "HTTP " + res.status);
   return data;
 }

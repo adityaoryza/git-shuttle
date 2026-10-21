@@ -1,7 +1,8 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { branchFromName, groupByModule, messageProblem, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { branchFromName, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { FileRow } from "./file-row.js";
 import { Alert, Badge, Button, Field, Input, Output, Segmented, cn } from "./ui.js";
 
 // ---- what the repository says, in the words of the settings
@@ -36,7 +37,7 @@ function ActionBar({ runner, action, params, label, disabled, children }) {
 }
 
 // what a step is called: a commit by its message, the rest by command
-const stepLabel = argv => (argv[0] === "commit" ? "commit " + JSON.stringify(argv[2]) : "git shuttle " + argv.slice(0, 2).join(" "));
+const stepLabel = argv => (argv[0] === "commit" ? "commit " + JSON.stringify(argv[2]) : argv[0] === "init" ? "save the settings (git shuttle init)" : "git shuttle " + argv.slice(0, 2).join(" "));
 
 export function ResultCard({ runner, onPullRequest }) {
   const j = runner.job;
@@ -99,7 +100,15 @@ export function useGroups(status) {
   return [groups, setGroups];
 }
 
-function GroupBox({ g, index, count, cfg, update, move }) {
+const SECTION_LABEL = { staged: "staged", unstaged: "", untracked: "new" };
+
+// The files of a module as the working tree has them (a file can be both staged and changed again): from /worktree.
+export function moduleFiles(worktree, module) {
+  if (!worktree) return [];
+  return ["staged", "unstaged", "untracked"].flatMap(group => (worktree[group] || []).filter(f => moduleOf(f.path) === module).map(f => ({ ...f, group })));
+}
+
+function GroupBox({ g, index, count, cfg, update, move, files, onOpenFile }) {
   const problem = g.include ? messageProblem(g.message, cfg) : "";
   const untouched = g.message === g.draft;   // do not scold a message that is still the suggested start
   return html`<div class=${cn("group", !g.include && "group-off")}>
@@ -109,12 +118,17 @@ function GroupBox({ g, index, count, cfg, update, move }) {
       <${Button} variant="ghost" size="icon" disabled=${index === 0} onClick=${() => move(index, -1)} aria-label="Move up">↑<//>
       <${Button} variant="ghost" size="icon" disabled=${index === count - 1} onClick=${() => move(index, 1)} aria-label="Move down">↓<//>
     </div>
+    ${files.length ? html`<details class="group-files" open=${files.length <= 4}>
+      <summary>Files · ${files.length}</summary>
+      <div class="group-file-list">${files.map(f => html`<${FileRow} file=${f} plain tag=${SECTION_LABEL[f.group]} onPick=${() => onOpenFile({ path: f.path, group: f.group })} />`)}</div>
+      <button type="button" class="link" onClick=${() => onOpenFile({ path: files[0].path, group: files[0].group })}>View all changes of this module</button>
+    </details>` : null}
     <${Input} class=${cn("mono", g.include && !untouched && (problem ? "invalid" : "valid"))} value=${g.message} disabled=${!g.include} onInput=${e => update(index, { message: e.target.value })} />
     ${g.include && problem && !untouched ? html`<span class="field-hint bad">${problem}</span>` : html`<span class="field-hint">${untouched && g.include ? "Finish the message: [TAG] module: what changed" : ""}</span>`}
   </div>`;
 }
 
-export function ShipTab({ status, runner, groups, setGroups, tested, setTested }) {
+export function ShipTab({ status, runner, groups, setGroups, tested, setTested, worktree, onOpenFile }) {
   const c = settings(status);
   const [how, setHow] = useState("merge");
   const [pr, setPr] = useState({ title: "", body: "", draft: false });
@@ -140,7 +154,7 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested }
   return html`<div class="tab">
     ${groups.length ? html`<div class="stack">
       <span class="section">Commits <span class="hint">one per module — order them by dependency</span></span>
-      ${groups.map((g, i) => html`<${GroupBox} g=${g} index=${i} count=${groups.length} cfg=${c} update=${update} move=${move} />`)}
+      ${groups.map((g, i) => html`<${GroupBox} g=${g} index=${i} count=${groups.length} cfg=${c} update=${update} move=${move} files=${moduleFiles(worktree, g.module)} onOpenFile=${onOpenFile} />`)}
     </div>` : html`<p class="lead">No uncommitted changes. Ship sends the commits this branch already has.</p>`}
 
     ${c.upgradeCommand ? html`<div class="stack">

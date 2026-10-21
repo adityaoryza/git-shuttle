@@ -2,6 +2,7 @@
 import http.client
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -150,6 +151,49 @@ class TestSecurity(Base):
             self.assertNotIn(b"test-token-123", data)
         for bad in ("../cli.py", "%2e%2e/cli.py", "..%2fcli.py", "js/../../cli.py", "js/../../__init__.py", "vendor/README.md", "js", "js/", "", "nothing.js", "%2e%2e%2f%2e%2e%2fbin/git-shuttle", "/etc/passwd", "//etc/passwd"):
             self.assertEqual(self.request("GET", "/static/" + bad, token=False)[0], 404, bad)
+
+    def test_icons_and_the_theme_script_are_served_with_the_right_types(self):
+        for name, ctype, start in (("favicon.svg", "image/svg+xml", b"<svg"), ("favicon-32.png", "image/png", b"\x89PNG"),
+                                   ("apple-touch-icon.png", "image/png", b"\x89PNG"), ("favicon.ico", "image/x-icon", b"\0\0\1\0"),
+                                   ("js/theme-init.js", "javascript", b"/*")):
+            status, _, data, headers = self.request("GET", "/static/" + name, token=False)
+            self.assertEqual(status, 200, name)
+            self.assertIn(ctype, headers["Content-Type"], name)
+            self.assertTrue(data.startswith(start), name)
+        status, _, data, headers = self.request("GET", "/favicon.ico", token=False)
+        self.assertEqual((status, headers["Content-Type"]), (200, "image/x-icon"), "the browser's own request for the icon is answered")
+        self.assertTrue(data.startswith(b"\0\0\1\0"))
+        svg = self.request("GET", "/static/favicon.svg", token=False)[2]
+        self.assertNotIn(b"<script", svg)
+        self.assertNotIn(b"onload", svg)
+
+    def test_the_page_links_the_icons_and_loads_the_theme_before_the_styles(self):
+        page = self.request("GET", "/", token=False)[2].decode()
+        for needle in ('rel="icon" href="/static/favicon.svg"', 'rel="apple-touch-icon"', 'src="/static/js/theme-init.js"'):
+            self.assertIn(needle, page)
+        self.assertLess(page.index("theme-init.js"), page.index("app.css"), "the theme is set before the styles are used")
+        self.assertNotIn("<script>", page)
+
+    def test_files_of_a_type_that_is_not_listed_are_not_served(self):
+        for bad in ("favicon.svg.bak", "../__init__.py", "js/theme.js.map", "favicon.txt"):
+            self.assertEqual(self.request("GET", "/static/" + bad, token=False)[0], 404, bad)
+
+    def test_version_handshake(self):
+        from shuttle_ui import API_LEVEL, __version__
+        status, data = self.api("GET", "version")
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data, {"version": __version__, "api": API_LEVEL})
+        self.assertIsInstance(data["api"], int)
+        self.assertGreaterEqual(data["api"], 2, "the page needs at least level 2")
+        self.assertEqual(self.api("GET", "version", token=False)[0], 401, "it needs the token like the rest")
+        self.assertEqual(self.api("POST", "version", {})[0], 404, "only GET")
+        page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui", "shuttle_ui", "static", "js", "version.js")).read()
+        self.assertEqual(int(re.search(r"REQUIRED_API = (\d+)", page).group(1)), API_LEVEL, "bump both together")
+
+    def test_a_missing_route_answers_exactly_not_found_so_that_the_page_can_tell_an_old_server(self):
+        status, data = self.api("GET", "no/such/route")
+        self.assertEqual((status, data), (404, {"error": "not found"}))
+        self.assertEqual(self.api("GET", "repos/nope/status")[1], {"error": "unknown repository"}, "a real 404 says something else")
 
     def test_the_graph_lists_commits_with_parents_and_refs(self):
         status, data = self.api("GET", "repos/%s/graph" % self.rid())
@@ -497,6 +541,305 @@ class TestActions(Base):
         finally:
             os.remove(hook)
             time.sleep(0.5)
+
+
+class TestRename(Base):
+    def names(self):
+        return {r["id"]: r["name"] for r in self.api("GET", "repos")[1]["repos"]}
+
+    def test_a_repository_can_be_renamed_and_the_name_is_kept(self):
+        status, data = self.api("POST", "repos/%s/rename" % self.rid(), {"name": "  Customer site  "})
+        self.assertEqual(status, 200, data)
+        self.assertEqual(data["repo"]["name"], "Customer site", "the name is trimmed")
+        self.assertEqual(self.names()[self.rid()], "Customer site")
+        saved = json.load(open(self.store.repos_file))
+        self.assertEqual([r["name"] for r in saved if r["id"] == self.rid()], ["Customer site"], "kept on disk")
+        self.assertEqual(oct(os.stat(self.store.repos_file).st_mode & 0o777), "0o600", "still private")
+        self.api("POST", "repos/%s/rename" % self.rid(), {"name": os.path.basename(self.world.work)})
+
+    def test_the_history_uses_the_display_name(self):
+        self.api("POST", "repos/%s/rename" % self.rid(), {"name": "Shown name"})
+        self.run_job("sync")   # on the protected main it is refused, and the history says for which repository
+        self.assertEqual(self.api("GET", "history")[1]["history"][0]["repo"], "Shown name")
+        self.api("POST", "repos/%s/rename" % self.rid(), {"name": os.path.basename(self.world.work)})
+
+    def test_invalid_names_are_refused(self):
+        for bad in ("", "   ", "x" * 81, "two\nlines", "tab\there", "nul\0", None, 5, ["a"], {"a": 1}):
+            status, _ = self.api("POST", "repos/%s/rename" % self.rid(), {"name": bad})
+            self.assertEqual(status, 400, repr(bad))
+        self.assertEqual(self.api("POST", "repos/%s/rename" % self.rid(), {})[0], 400, "no name")
+        self.assertEqual(self.api("POST", "repos/%s/rename" % self.rid(), {"name": "x" * 80})[0], 200, "80 characters are fine")
+        self.api("POST", "repos/%s/rename" % self.rid(), {"name": os.path.basename(self.world.work)})
+
+    def test_an_unknown_repository_is_a_404(self):
+        self.assertEqual(self.api("POST", "repos/nope/rename", {"name": "x"})[0], 404)
+
+    def test_two_repositories_may_share_a_name(self):
+        other = tempfile.mkdtemp(prefix="shuttle-ui-twin.")
+        try:
+            git(other, "init", "-q", "-b", "main")
+            second = self.api("POST", "repos", {"path": other, "name": "Twin"})[1]["repo"]
+            self.assertEqual(second["name"], "Twin", "a name may be given when adding")
+            self.assertEqual(self.api("POST", "repos/%s/rename" % second["id"], {"name": "Twin"})[0], 200)
+            self.api("POST", "repos/%s/rename" % self.rid(), {"name": "Twin"})
+            self.assertEqual(sorted(n for n in self.names().values() if n == "Twin"), ["Twin", "Twin"])
+            self.assertEqual(self.api("POST", "repos", {"path": other, "name": "x\ny"})[0], 400, "a bad name is refused when adding")
+        finally:
+            self.api("POST", "repos/%s/rename" % self.rid(), {"name": os.path.basename(self.world.work)})
+            for r in self.api("GET", "repos")[1]["repos"]:
+                if r["path"] == os.path.realpath(other):
+                    self.api("POST", "repos/%s/remove" % r["id"], {})
+            shutil.rmtree(other, ignore_errors=True)
+
+
+class TestBrowse(Base):
+    """Commit details, the diff of a file and the working tree: read only, against a repository made for the purpose."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.lab = tempfile.mkdtemp(prefix="shuttle-ui-lab.")
+        w = cls.lab
+        git(w, "init", "-q", "-b", "main")
+        write(os.path.join(w, "plain.txt"), "one\ntwo\nthree\n")
+        write(os.path.join(w, 'we ird "q" ünï.txt'), "a\nb\nc\n")
+        write(os.path.join(w, "dir", "sub.txt"), "sub\n")
+        with open(os.path.join(w, "bin.dat"), "wb") as f:
+            f.write(b"\0\1\2binary\0")
+        git(w, "add", "-A"); git(w, "commit", "-q", "-m", "root commit\n\nwith a body")
+        cls.root = git(w, "rev-parse", "HEAD")
+        write(os.path.join(w, "plain.txt"), "one\nTWO\nthree\nfour\n")
+        git(w, "mv", 'we ird "q" ünï.txt', "renamed é.txt")
+        with open(os.path.join(w, "renamed é.txt"), "a") as f:
+            f.write("d\n")
+        with open(os.path.join(w, "bin.dat"), "wb") as f:
+            f.write(b"\0\1\2other\0")
+        git(w, "add", "-A"); git(w, "commit", "-q", "-m", "change, rename, binary")
+        cls.change = git(w, "rev-parse", "HEAD")
+        git(w, "commit", "-q", "--allow-empty", "-m", "empty commit")
+        cls.empty = git(w, "rev-parse", "HEAD")
+        git(w, "checkout", "-q", "-b", "side", cls.change)
+        write(os.path.join(w, "side.txt"), "side\n"); git(w, "add", "-A"); git(w, "commit", "-q", "-m", "side work")
+        git(w, "checkout", "-q", "main")
+        write(os.path.join(w, "main.txt"), "main\n"); git(w, "add", "-A"); git(w, "commit", "-q", "-m", "main work")
+        git(w, "merge", "-q", "--no-ff", "-m", "merge side", "side")
+        cls.merge = git(w, "rev-parse", "HEAD")
+        write(os.path.join(w, "long.txt"), "".join("line %d\n" % i for i in range(6000)))
+        write(os.path.join(w, "wide.txt"), "".join("x" * 60 + "\n" for _ in range(8000)))
+        git(w, "add", "-A"); git(w, "commit", "-q", "-m", "big files")
+        cls.big = git(w, "rev-parse", "HEAD")
+        # the working tree: staged, unstaged, untracked
+        write(os.path.join(w, "staged.txt"), "staged\n"); git(w, "add", "staged.txt")
+        write(os.path.join(w, "plain.txt"), "one\nTWO\nthree\nfour\nfive\n")
+        write(os.path.join(w, "new file ü.txt"), "new\nlines\n")
+        with open(os.path.join(w, "new.bin"), "wb") as f:
+            f.write(b"\0\0\0")
+        os.symlink("plain.txt", os.path.join(w, "link"))
+        write(os.path.join(w, "huge.txt"), "y" * (1300 * 1024))
+        cls.lab_repo = cls.store.add_repo(os.path.realpath(w), "lab")
+        cls.empty_repo_dir = tempfile.mkdtemp(prefix="shuttle-ui-nocommit.")
+        git(cls.empty_repo_dir, "init", "-q", "-b", "main")
+        cls.empty_repo = cls.store.add_repo(os.path.realpath(cls.empty_repo_dir), "nocommit")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.lab, ignore_errors=True)
+        shutil.rmtree(cls.empty_repo_dir, ignore_errors=True)
+        super().tearDownClass()
+
+    def commit(self, sha, repo=None):
+        return self.api("GET", "repos/%s/commits/%s" % ((repo or self.lab_repo)["id"], sha))
+
+    def diff(self, source, path, repo=None, **extra):
+        return self.api("POST", "repos/%s/diff" % (repo or self.lab_repo)["id"], {"source": source, "path": path, **extra})
+
+    def files(self, data):
+        return {f["path"]: f for f in data["files"]}
+
+    # -- a commit
+    def test_a_root_commit_shows_everything_as_added(self):
+        status, d = self.commit(self.root)
+        self.assertEqual(status, 200, d)
+        self.assertEqual((d["sha"], d["parents"], d["merge"]), (self.root, [], False))
+        self.assertEqual(d["message"], "root commit\n\nwith a body")
+        self.assertEqual({f["status"] for f in d["files"]}, {"A"})
+        self.assertEqual(sorted(self.files(d)), sorted(["plain.txt", 'we ird "q" ünï.txt', "dir/sub.txt", "bin.dat"]))
+        self.assertEqual(set(d), {"sha", "parents", "author", "email", "time", "committer", "committer_email", "committer_time", "refs", "message", "merge", "files", "files_truncated"})
+        self.assertEqual((d["author"], d["email"]), ("Tester", "tester@example.com"))
+
+    def test_a_short_id_is_accepted(self):
+        self.assertEqual(self.commit(self.root[:8])[1]["sha"], self.root)
+
+    def test_a_rename_a_change_and_a_binary_file(self):
+        d = self.commit(self.change)[1]
+        f = self.files(d)
+        self.assertEqual(f["renamed é.txt"]["status"], "R")
+        self.assertEqual(f["renamed é.txt"]["old_path"], 'we ird "q" ünï.txt')
+        self.assertEqual((f["renamed é.txt"]["additions"], f["renamed é.txt"]["deletions"]), (1, 0))
+        self.assertEqual(f["plain.txt"]["status"], "M")
+        self.assertEqual((f["plain.txt"]["additions"], f["plain.txt"]["deletions"]), (2, 1))
+        self.assertTrue(f["bin.dat"]["binary"])
+        self.assertIsNone(f["bin.dat"]["additions"])
+        self.assertFalse(f["plain.txt"]["binary"])
+
+    def test_an_empty_commit_has_no_files(self):
+        d = self.commit(self.empty)[1]
+        self.assertEqual(d["files"], [])
+        self.assertEqual(d["message"], "empty commit")
+
+    def test_a_merge_is_shown_against_its_first_parent(self):
+        d = self.commit(self.merge)[1]
+        self.assertTrue(d["merge"])
+        self.assertEqual(len(d["parents"]), 2)
+        self.assertEqual(sorted(self.files(d)), ["side.txt"], "what the merge brought onto the first parent")
+        self.assertEqual(self.diff(self.merge, "side.txt")[1]["text"].count("+side"), 1)
+
+    def test_refs_of_a_commit(self):
+        self.assertTrue(any(r.startswith("HEAD -> ") for r in self.commit(self.big)[1]["refs"]))
+
+    def test_bad_commit_ids(self):
+        for bad in ("zzzzzzz", "abc", "-x", "--all", "HEAD", "main", "a" * 41, "../x", "%2e%2e", "deadbeef" * 5):
+            self.assertIn(self.commit(bad)[0], (400, 404), bad)
+        self.assertEqual(self.commit("deadbeef")[0], 404, "a well-formed id that is not here")
+        self.assertEqual(self.commit("zzzzzzz")[0], 400)
+        self.assertEqual(self.commit("--all")[0], 400)
+
+    def test_a_commit_of_another_repository_is_not_found(self):
+        self.assertEqual(self.commit(self.root, self.empty_repo)[0], 404)
+
+    def test_unknown_repository(self):
+        self.assertEqual(self.api("GET", "repos/nope/commits/" + self.root)[0], 404)
+        self.assertEqual(self.api("GET", "repos/nope/worktree")[0], 404)
+        self.assertEqual(self.api("POST", "repos/nope/diff", {"source": "worktree", "path": "a"})[0], 404)
+
+    def test_a_repository_without_commits(self):
+        self.assertEqual(self.commit("deadbeef", self.empty_repo)[0], 404)
+        status, d = self.api("GET", "repos/%s/worktree" % self.empty_repo["id"])
+        self.assertEqual((status, d["staged"], d["unstaged"], d["untracked"]), (200, [], [], []))
+
+    # -- a file's diff
+    def test_the_diff_of_a_file_in_a_commit(self):
+        status, d = self.diff(self.change, "plain.txt")
+        self.assertEqual(status, 200, d)
+        self.assertIn("@@ -1,3 +1,4 @@", d["text"])
+        self.assertIn("-two\n+TWO", d["text"])
+        self.assertEqual((d["truncated"], d["binary"]), (False, False))
+        self.assertNotIn(self.change, d["text"].splitlines()[0], "no commit id line in front of the diff")
+
+    def test_a_root_commit_diff_and_odd_file_names(self):
+        d = self.diff(self.root, 'we ird "q" ünï.txt')[1]
+        self.assertIn("+a\n+b\n+c", d["text"])
+        self.assertTrue(d["text"].startswith("diff --git"))
+
+    def test_a_rename_keeps_its_history_when_the_old_name_is_given(self):
+        d = self.diff(self.change, "renamed é.txt", old_path='we ird "q" ünï.txt')[1]
+        self.assertIn("rename from", d["text"])
+        self.assertIn("+d", d["text"])
+        alone = self.diff(self.change, "renamed é.txt")[1]
+        self.assertIn("new file", alone["text"], "without the old name it is only an addition")
+
+    def test_a_binary_file_has_no_text(self):
+        d = self.diff(self.change, "bin.dat")[1]
+        self.assertEqual((d["binary"], d["text"]), (True, ""))
+
+    def test_a_long_diff_is_cut_by_lines_and_says_so(self):
+        d = self.diff(self.big, "long.txt")[1]
+        self.assertTrue(d["truncated"])
+        self.assertLessEqual(d["text"].count("\n"), 5000)
+        self.assertTrue(d["text"].endswith("\n"))
+
+    def test_a_heavy_diff_is_cut_by_size_and_never_in_the_middle_of_a_line(self):
+        d = self.diff(self.big, "wide.txt")[1]
+        self.assertTrue(d["truncated"])
+        self.assertLessEqual(len(d["text"].encode()), 300 * 1024)
+        self.assertTrue(d["text"].endswith("\n"))
+        self.assertTrue(all(line.startswith(("+", "diff", "new", "index", "---", "@@")) for line in d["text"].splitlines()))
+
+    def test_context_lines(self):
+        wide = self.diff(self.change, "plain.txt", context=10)[1]["text"]
+        none = self.diff(self.change, "plain.txt", context=0)[1]["text"]
+        self.assertIn("\n one\n", wide)
+        self.assertNotIn("\n one\n", none)
+        for bad in (-1, 1001, "3", True, 2.5, [3]):
+            self.assertEqual(self.diff(self.change, "plain.txt", context=bad)[0], 400, repr(bad))
+
+    def test_the_diff_refuses_what_is_not_a_commit_or_a_path_of_the_repository(self):
+        for source in ("HEAD", "--all", "main", "../x", "", None, 5, "zzzzzzz"):
+            self.assertIn(self.diff(source, "plain.txt")[0], (400, 404), repr(source))
+        for path in ("../etc/passwd", "/etc/passwd", "-p", "--output=/tmp/x", "a/../../b", "", None, 5, "a\0b"):
+            self.assertEqual(self.diff("worktree", path)[0], 400, repr(path))
+            self.assertEqual(self.diff("untracked", path)[0], 400, repr(path))
+            self.assertEqual(self.diff(self.change, path)[0], 400, repr(path))
+        self.assertEqual(self.diff("worktree", "plain.txt", old_path="../x")[0], 400)
+
+    def test_the_diff_needs_the_token_and_json(self):
+        self.assertEqual(self.request("GET", "/api/repos/%s/commits/%s" % (self.lab_repo["id"], self.root), token=False)[0], 401)
+        self.assertEqual(self.request("GET", "/api/repos/%s/worktree" % self.lab_repo["id"], token=False)[0], 401)
+        self.assertEqual(self.request("POST", "/api/repos/%s/diff" % self.lab_repo["id"], raw=b"source=worktree&path=a")[0], 415)
+
+    # -- the working tree
+    def test_the_working_tree_is_grouped(self):
+        status, d = self.api("GET", "repos/%s/worktree" % self.lab_repo["id"])
+        self.assertEqual(status, 200, d)
+        self.assertEqual([f["path"] for f in d["staged"]], ["staged.txt"])
+        self.assertEqual(d["staged"][0]["status"], "A")
+        self.assertEqual([f["path"] for f in d["unstaged"]], ["plain.txt"])
+        self.assertEqual(d["unstaged"][0]["status"], "M")
+        self.assertEqual((d["unstaged"][0]["additions"], d["unstaged"][0]["deletions"]), (1, 0))
+        self.assertEqual(sorted(f["path"] for f in d["untracked"]), ["huge.txt", "link", "new file ü.txt", "new.bin"])
+        self.assertTrue(all(f["status"] == "?" for f in d["untracked"]))
+
+    def test_the_diff_of_the_working_tree(self):
+        self.assertIn("+five", self.diff("worktree", "plain.txt")[1]["text"])
+        self.assertIn("+staged", self.diff("staged", "staged.txt")[1]["text"])
+        self.assertEqual(self.diff("worktree", "staged.txt")[1]["text"], "", "a staged file has nothing unstaged")
+
+    def test_the_diff_of_an_untracked_file(self):
+        d = self.diff("untracked", "new file ü.txt")[1]
+        self.assertIn("+new\n+lines", d["text"])
+        self.assertIn("new file", d["text"])
+        self.assertEqual(self.diff("untracked", "new.bin")[1]["binary"], True)
+
+    def test_an_untracked_symlink_a_huge_file_and_a_missing_file(self):
+        link = self.diff("untracked", "link")[1]
+        self.assertEqual((link["text"], link["binary"]), ("", False))
+        self.assertIn("symbolic link", link["note"])
+        huge = self.diff("untracked", "huge.txt")[1]
+        self.assertTrue(huge["truncated"])
+        self.assertEqual(huge["text"], "")
+        self.assertIn("too large", huge["note"])
+        self.assertEqual(self.diff("untracked", "missing.txt")[0], 404)
+        self.assertEqual(self.diff("untracked", "dir")[0], 404, "a folder is not a file")
+
+    def test_an_untracked_link_to_outside_is_not_followed(self):
+        outside = tempfile.NamedTemporaryFile("w", delete=False, suffix=".txt")
+        outside.write("secret\n"); outside.close()
+        link = os.path.join(self.lab, "escape")
+        os.symlink(outside.name, link)
+        try:
+            d = self.diff("untracked", "escape")[1]
+            self.assertNotIn("secret", d["text"])
+            self.assertIn("symbolic link", d["note"])
+        finally:
+            os.remove(link); os.remove(outside.name)
+
+    def test_nothing_is_changed_by_looking(self):
+        before = git(self.lab, "status", "--porcelain=v1", "-uall") + git(self.lab, "rev-parse", "HEAD") + git(self.lab, "stash", "list")
+        for source in (self.root, self.merge, "worktree", "staged", "untracked"):
+            self.diff(source, "plain.txt")
+        self.commit(self.merge); self.api("GET", "repos/%s/worktree" % self.lab_repo["id"])
+        after = git(self.lab, "status", "--porcelain=v1", "-uall") + git(self.lab, "rev-parse", "HEAD") + git(self.lab, "stash", "list")
+        self.assertEqual(before, after)
+
+    def test_a_diff_never_runs_an_external_program(self):
+        marker = os.path.join(self.lab, ".git", "ran")
+        git(self.lab, "config", "diff.external", "sh -c 'touch %s'" % marker)
+        git(self.lab, "config", "diff.textconv", "sh -c 'touch %s; cat'" % marker)
+        try:
+            self.diff("worktree", "plain.txt"); self.diff(self.change, "plain.txt"); self.api("GET", "repos/%s/worktree" % self.lab_repo["id"])
+            self.assertFalse(os.path.exists(marker))
+        finally:
+            git(self.lab, "config", "--unset", "diff.external"); git(self.lab, "config", "--unset", "diff.textconv")
 
 
 if __name__ == "__main__":

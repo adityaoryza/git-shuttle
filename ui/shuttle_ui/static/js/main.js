@@ -8,6 +8,10 @@ import { OperationBanner, ReleaseTab, ResultCard, ShipTab, StartTab, settings, u
 import { BranchPicker } from "./components/branch-picker.js";
 import { ActionConfirm, BranchHereDialog, ContextMenu } from "./components/context-menu.js";
 import { AddRepoDialog, HistoryDialog, SettingsDialog } from "./components/dialogs.js";
+import { CommitPanel } from "./components/commit-panel.js";
+import { ThemeToggle } from "./components/theme-toggle.js";
+import { repoLabels } from "./repos.js";
+import { OLD_SERVER, checkVersion } from "./version.js";
 
 const changeCount = st => (st ? +st.staged + +st.unstaged + +st.untracked : 0);
 
@@ -33,6 +37,9 @@ function App() {
   const [menu, setMenu] = useState(null);
   const [pending, setPending] = useState(null);
   const [hidden, setHiddenState] = useState(new Set());
+  const [worktree, setWorktree] = useState(null);   // the changed files, for the Ship tab
+  const [oldServer, setOldServer] = useState(false);   // the server is older than this page
+  const [selected, setSelected] = useState(null);   // the commit (or the working tree) whose details are open
 
   const say = (text, tone) => { setToast({ text, tone }); clearTimeout(say.t); say.t = setTimeout(() => setToast(null), 5000); };
   const fail = e => say(e && e.message ? e.message : String(e), "bad");
@@ -70,20 +77,31 @@ function App() {
     onDone: async job => { await reload(); say(job.state === "done" ? "Done" : job.state === "stopped" ? "Stopped: something needs your attention" : "Failed", job.state === "done" ? "ok" : "bad"); },
   });
 
+  useEffect(() => {
+    api("GET", "version").then(info => { if (!checkVersion(info).ok) setOldServer(true); }).catch(e => { if (e.oldServer) setOldServer(true); });
+  }, []);
   useEffect(() => { loadRepos().then(list => { if (list.length) selectRepo(list.find(r => r.id === localStorage.getItem("shuttle.repo")) || list[0]); }).catch(fail); }, []);
 
   async function selectRepo(r) {
-    setRepoId(r.id); localStorage.setItem("shuttle.repo", r.id); setStatus(null); setGraph(null); setBranches(null); runner.reset();
+    setRepoId(r.id); localStorage.setItem("shuttle.repo", r.id); setSelected(null); setStatus(null); setGraph(null); setBranches(null); runner.reset();
     const hide = readHidden(r.id);
     setHiddenState(hide);
     try { const s = await loadSnapshot(r.id, hide); setStatus(s.st); setBranches(s.br); setGraph(s.gr); setTab(suggestTab(s.st)); } catch (e) { fail(e); }
   }
 
   const [groups, setGroups] = useGroups(status);
+  // the files of the working tree are listed under each module of the Ship tab
+  useEffect(() => {
+    if (!repoId || !status) { setWorktree(null); return; }
+    let alive = true;
+    api("GET", "repos/" + repoId + "/worktree").then(w => alive && setWorktree(w)).catch(() => alive && setWorktree(null));
+    return () => { alive = false; };
+  }, [repoId, status]);
+  const openFile = ({ path, group }) => setSelected({ type: "worktree", focus: { path, group } });
   const key = repoId + ":" + (status ? status.branch : "");
 
-  async function addRepo(path) {
-    try { const r = (await api("POST", "repos", { path })).repo; setDialog(null); await loadRepos(); await selectRepo(r); } catch (e) { fail(e); }
+  async function addRepo(path, name) {
+    try { const r = (await api("POST", "repos", name ? { path, name } : { path })).repo; setDialog(null); await loadRepos(); await selectRepo(r); } catch (e) { fail(e); }
   }
   async function removeRepo() {
     if (!window.confirm("Remove this repository from the list? The repository itself is not deleted.")) return;
@@ -93,7 +111,13 @@ function App() {
     try { const r = await api("POST", "repos/" + repoId + "/fetch", {}); say(r.ok ? "Fetched" : "Fetch failed: " + r.output, r.ok ? "ok" : "bad"); await reload(); } catch (e) { fail(e); }
   }
   async function openHistory() { try { setHistory((await api("GET", "history")).history); setDialog("history"); } catch (e) { fail(e); } }
-  function saveSettings(form) { setDialog(null); runner.run("init", form, "Settings"); }
+  // The display name is saved on its own; `git shuttle init` runs only when a setting changed.
+  async function saveSettings({ name, nameChanged, settings: form, settingsChanged }) {
+    setDialog(null);
+    if (nameChanged) { try { await api("POST", "repos/" + repoId + "/rename", { name }); await loadRepos(); say("Renamed", "ok"); } catch (e) { fail(e); } }
+    if (settingsChanged) runner.run("init", form, "Settings");
+  }
+  const selectCommit = sha => setSelected({ type: "commit", sha });
   function releasePullRequest() {
     const c = settings(status);
     if (window.confirm("Open a pull request from " + status.branch + " to " + c.release + "?")) runner.run("pr", { base: c.release, title: status.branch, body: "Release: " + status.branch }, "Pull request");
@@ -130,9 +154,10 @@ function App() {
   const ahead = status ? +status["integration.ahead"] : 0, behind = status ? +status["integration.behind"] : 0;
 
   return html`<div class="app">
+    ${oldServer ? html`<div class="banner" role="alert"><strong>${OLD_SERVER}</strong></div>` : null}
     <header class="topbar">
       <span class="brand">git-<b>shuttle</b></span>
-      ${repos.length ? html`<select class="input repo-select" value=${repoId || ""} onChange=${e => selectRepo(repos.find(r => r.id === e.target.value))} aria-label="Repository">${repos.map(r => html`<option value=${r.id}>${r.name}</option>`)}</select>` : null}
+      ${repos.length ? html`<select class="input repo-select" value=${repoId || ""} onChange=${e => selectRepo(repos.find(r => r.id === e.target.value))} aria-label="Repository">${repoLabels(repos).map(l => html`<option value=${l.id} title=${l.title}>${l.label}</option>`)}</select>` : null}
       <${Button} variant="ghost" size="sm" onClick=${() => setDialog("add")}>+ Add<//>
       ${status ? html`<${BranchPicker} status=${status} branches=${branches} hidden=${hidden} setHidden=${setHidden} onSwitch=${name => runner.run("switch", { name }, "Switch to " + name)} disabled=${runner.busy} />
         ${status.protected === "1" ? html`<${Badge} tone="warn">protected<//>` : null}
@@ -140,11 +165,15 @@ function App() {
       <span class="grow" />
       ${repoId ? html`<${Button} variant="ghost" size="sm" onClick=${fetchRemote}>Fetch<//><${Button} variant="ghost" size="sm" onClick=${() => setDialog("settings")}>Settings<//>` : null}
       <${Button} variant="ghost" size="sm" onClick=${openHistory}>History<//>
+      <${ThemeToggle} />
     </header>
 
     ${!repos.length ? html`<main class="onboarding"><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
       <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split">
-      <section class="graph-pane" aria-label="Commit graph"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} /></section>
+      <section class="graph-pane" aria-label="Commit graph">
+        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} /></div>
+        ${selected && repoId ? html`<${CommitPanel} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} />` : null}
+      </section>
       <aside class="panel" aria-label="Next step">
         ${repo && repo.error ? html`<${Alert} tone="bad" title="Cannot read this repository">${repo.error}<//>` : null}
         ${status ? html`
@@ -153,7 +182,7 @@ function App() {
           ${status["config.set"] === "0" ? html`<${Alert} tone="info" title="Using the default settings"><span>Integration <code>${c.integration || "?"}</code>, release <code>${c.release || "?"}</code>.</span> <a href="#" onClick=${e => { e.preventDefault(); setDialog("settings"); }}>Change</a><//>` : null}
           <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }]} />
           ${tab === "start" ? html`<${StartTab} status=${status} runner=${runner} />` : null}
-          ${tab === "ship" ? html`<${ShipTab} status=${status} runner=${runner} groups=${groups} setGroups=${setGroups} tested=${!!tested[key]} setTested=${v => setTested({ ...tested, [key]: v })} />` : null}
+          ${tab === "ship" ? html`<${ShipTab} status=${status} runner=${runner} groups=${groups} setGroups=${setGroups} tested=${!!tested[key]} setTested=${v => setTested({ ...tested, [key]: v })} worktree=${worktree} onOpenFile=${openFile} />` : null}
           ${tab === "release" ? html`<${ReleaseTab} repoId=${repoId} status=${status} runner=${runner} onError=${fail} onLoaded=${() => reload()} />` : null}
 ` : html`<p class="hint">Loading…</p>`}
       </aside></main>`}

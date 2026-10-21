@@ -36,16 +36,28 @@ class Store:
         os.chmod(tmp, 0o600)
         os.replace(tmp, self.repos_file)
 
-    def add_repo(self, path):
+    def add_repo(self, path, name=None):
+        """Register a repository; `name` is the display name (default: the folder name). The same path is added once."""
         with self.lock:
             repos = self.repos()
             for r in repos:
                 if r["path"] == path:
                     return r
-            repo = {"id": uuid.uuid4().hex[:10], "path": path, "name": os.path.basename(path)}
+            repo = {"id": uuid.uuid4().hex[:10], "path": path, "name": name or os.path.basename(path)}
             repos.append(repo)
             self.save_repos(repos)
             return repo
+
+    def rename_repo(self, repo_id, name):
+        """Change the display name (two repositories may share one: the path tells them apart)."""
+        with self.lock:
+            repos = self.repos()
+            for r in repos:
+                if r["id"] == repo_id:
+                    r["name"] = name
+                    self.save_repos(repos)
+                    return r
+        raise BadRequest("unknown repository", 404)
 
     def remove_repo(self, repo_id):
         with self.lock:

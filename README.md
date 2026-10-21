@@ -40,6 +40,12 @@ commands, with a preview before every run.
 | ![A rebase conflict: the files are listed, with Continue and Abort](docs/images/8-conflict.png) | ![The branch picker: folders by prefix, an eye on every branch, folder and group](docs/images/9-branches.png) |
 | **Right-click a commit** | **Cherry-pick, previewed first** |
 | ![The context menu of a commit: cherry-pick, create a branch here, switch, copy](docs/images/11-context-menu.png) | ![The exact commands of a cherry-pick before it runs](docs/images/12-cherry-pick.png) |
+| **Click a commit: files and diff** | **Side by side, with syntax colours** |
+| ![The details of a commit: author, date, parents, message, changed files and the diff of one file](docs/images/15-commit-details.png) | ![A diff side by side with line numbers on both sides](docs/images/16-diff-split.png) |
+| **The working tree, before you commit** | **Light, dark, or your system's** |
+| ![Staged, not staged and untracked files with their diffs](docs/images/17-working-tree.png) | ![The same screen in the light theme](docs/images/18-theme-light.png) |
+| **See what you are about to ship** | **An old server is told** |
+| ![The Ship tab lists the files of each module; a click opens the diff](docs/images/20-ship-files.png) | ![The banner shown when the server is older than the page](docs/images/21-old-server.png) |
 
 ## Why
 
@@ -162,6 +168,8 @@ It opens on the tab that fits where you are.
 
 - **The current branch** is always in the top bar. Click it to **switch branch**, to filter, and to **show or hide** local and
   remote branches in the graph (remembered per repository).
+- **Click a commit to read it** (see [Browse commits and diffs](#browse-commits-and-diffs)), and **rename a repository** in
+  Settings when two folders have the same name.
 - **Right-click a commit** (or press the menu key on it): cherry-pick it onto the current branch, create a branch there, switch to
   or check out a branch that points at it, copy its SHA or message. Each change is previewed before it runs, and what cannot be
   done is greyed out with the reason (a protected branch, a merge commit, uncommitted changes).
@@ -175,6 +183,41 @@ Every button first **previews** the exact git commands (`--dry-run`); Run only u
 the screen. A conflict shows its files with Continue and Abort. See [docs/ui.md](docs/ui.md) for the design and the security model.
 
 Python 3 (standard library only) is needed for it; the commands do not need it.
+
+### Browse commits and diffs
+
+Click a commit in the graph (or move with the arrow keys and press Enter): a panel opens under the graph, read only.
+
+- **Header**: the short id (click to copy the full one), author, when (relative and exact), the branches and tags on it, and its
+  parents as links that jump to them. A merge commit says that its files are what it changed against its first parent.
+- **Message**: the whole message, not only the first line.
+- **Files**: as a list or as a tree (folders with one folder inside are joined), with a status letter (A added, M modified,
+  D deleted, R renamed, C copied, T type changed), `+` and `−` counts, `bin` for binary files, and a filter box.
+- **Diff**: line numbers for the old and the new file, hunk headers with the function name, added and removed lines coloured,
+  colours for comments, strings, numbers and keywords (Python, JavaScript, JSON, XML/HTML, CSS, shell, Markdown), **Wrap** and
+  **Side by side** switches. Binary files, symbolic links, files too large and diffs that were cut at 5000 lines or 300 KB say
+  so in words.
+- **Keys**: `j` / `↓` next file, `k` / `↑` previous file, `Esc` closes the panel. Drag the handle above the panel (or use the arrow
+  keys on it) to give the graph or the diff more room; the size is remembered.
+- **From the Ship tab**: every module lists its files (status letter, `+`/`−`, *staged* or *new* tag; collapsible, open when it has
+  four or fewer). A click opens the panel on that file's diff; *View all changes of this module* opens its first file. The Ship tab
+  works with the panel closed; the commit messages and Preview / Run are the same.
+- **The working tree**: click the dashed row for the changes that are not committed yet, in three sections: staged, not staged and
+  untracked, each with its diff.
+
+Looking changes nothing: every request behind these views is a read-only git command with fixed arguments, and no diff or
+text-conversion program from your git configuration is run.
+
+### Repository names, themes and icon
+
+- **Rename**: Settings starts with a *Display name* (saved on its own, without running `git shuttle init`); a name may also be given
+  when adding. Two repositories may share a name: the list then reads `name — parent/folder`, and the full path is its tooltip.
+- **Theme**: the sun / moon / monitor button in the top bar cycles *system* (the default), *light* and *dark*; the choice is
+  remembered and applied before the page is drawn, so there is no flash.
+- **Icon**: the tab shows a small branch mark (SVG, with PNG and ICO versions).
+- **Old server**: the page asks `GET /api/version` when it loads. If the server is older than the page (a `git shuttle ui` left
+  running before an update), a red banner says *stop it (Ctrl-C) and run git shuttle ui again*, and any "not found" from the API
+  says the same instead of a bare "not found".
 
 ## What it does not do
 

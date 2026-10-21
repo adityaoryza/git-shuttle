@@ -32,6 +32,18 @@ def name(value, field, required=True):
     return value
 
 
+def display_name(value, field="name"):
+    """A name to show: one line of text, 1 to 80 characters, no control characters."""
+    if not isinstance(value, str):
+        raise BadRequest("%s must be text" % field)
+    value = value.strip()
+    if not value or len(value) > 80:
+        raise BadRequest("%s must be 1 to 80 characters" % field)
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+        raise BadRequest("%s must be on one line, without control characters" % field)
+    return value
+
+
 def relative_path(value):
     if not isinstance(value, str) or not value or "\0" in value or len(value) > 500:
         raise BadRequest("a path is not valid")

@@ -78,4 +78,55 @@ t("slug is the same as the CLI's branch_slug", () => {
     assert.strictEqual(L.slug(s), cli, JSON.stringify(s));
   }
 });
+t("branchOptions: local and remote merged, remote prefix removed, sorted", () => {
+  const o = L.branchOptions({ local: [{ name: "main" }, { name: "19.0" }], remote: [{ name: "origin/main" }, { name: "origin/staging" }] });
+  assert.deepStrictEqual(o, [{ name: "19.0", where: "local" }, { name: "main", where: "local + remote" }, { name: "staging", where: "remote" }]);
+  assert.deepStrictEqual(L.branchOptions(null), []);
+});
+t("prefixOptions: the folders in use, with the slash", () => {
+  const p = L.prefixOptions({ local: [{ name: "19.0-feature/a" }, { name: "19.0-feature/b" }, { name: "main" }, { name: "17.0-bugfix/x" }], remote: [] });
+  assert.deepStrictEqual(p.map(x => x.name), ["17.0-bugfix/", "19.0-feature/"]);
+});
+t("matchOptions: starts-with first, then contains, empty query lists all", () => {
+  const o = ["19.0-staging", "staging", "old-staging-x", "main"].map(name => ({ name }));
+  assert.deepStrictEqual(L.matchOptions(o, "stag").map(x => x.name), ["staging", "19.0-staging", "old-staging-x"]);
+  assert.strictEqual(L.matchOptions(o, "").length, 4);
+  assert.deepStrictEqual(L.matchOptions(o, "zzz"), []);
+  assert.strictEqual(L.matchOptions(o, "STAG").length, 3, "case does not matter");
+});
+t("normalizePrefix: a slash is added, empty stays empty", () => {
+  assert.strictEqual(L.normalizePrefix("19.0-feature"), "19.0-feature/");
+  assert.strictEqual(L.normalizePrefix("19.0-feature/"), "19.0-feature/");
+  assert.strictEqual(L.normalizePrefix("  "), "");
+});
+t("inferReleasePattern: the newest existing release branch gives the pattern", () => {
+  assert.strictEqual(L.inferReleasePattern(["19.0-release/261020-v1.1", "19.0-release/261021-v1.0", "main"]), "19.0-release/{yymmdd}-v1.{n}");
+  assert.strictEqual(L.inferReleasePattern(["release/20260410-v1.2"]), "release/{date}-v1.{n}");
+  assert.strictEqual(L.inferReleasePattern(["feature/20260410-v1.2", "main"]), "", "only branches that say release");
+  assert.strictEqual(L.inferReleasePattern([]), "");
+});
+t("releasePreview: first free number, nesting, no {n}", () => {
+  const now = new Date(2026, 9, 21);
+  assert.deepStrictEqual(L.releasePreview("19.0-release/{yymmdd}-v1.{n}", [], now), { name: "19.0-release/261021-v1.0" });
+  assert.deepStrictEqual(L.releasePreview("19.0-release/{yymmdd}-v1.{n}", ["19.0-release/261021-v1.0", "19.0-release/261021-v1.1"], now), { name: "19.0-release/261021-v1.2" });
+  assert.deepStrictEqual(L.releasePreview("", [], now), { name: "release/20261021-v1.0" });
+  assert.match(L.releasePreview("release/{date}", ["release/20261021"], now).error, /already exists/);
+  assert.match(L.releasePreview("release/{date}-v1.{n}", ["release"], now).error, /do not nest/);
+});
+t("releasePreview gives what the CLI gives (same date, same free number, same refusals)", () => {
+  const tmp = execFileSync("mktemp", ["-d"]).toString().trim();
+  const run = (script) => execFileSync("bash", ["-c", script], { cwd: tmp, env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@x.io", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@x.io" } }).toString();
+  const d = new Date(), pad = n => String(n).padStart(2, "0"), today = d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate());
+  run(`git init -q -b main . && git commit -q --allow-empty -m x && git branch '19.0-release/${today.slice(2)}-v1.0' && git branch '19.0-release/${today.slice(2)}-v1.1'`);
+  for (const pattern of ["19.0-release/{yymmdd}-v1.{n}", "release/{date}-v1.{n}", "r/{yymmdd}-{n}"]) {
+    const cli = run(`git config shuttle.releasePattern '${pattern}'; source "${ROOT}/lib/core/output.sh"; source "${ROOT}/lib/core/config.sh"; source "${ROOT}/lib/core/git.sh"; source "${ROOT}/lib/commands/release.sh"; release_branch_name`);
+    const names = run("git for-each-ref --format='%(refname:short)' refs/heads").split("\n").filter(Boolean);
+    assert.strictEqual(L.releasePreview(pattern, names).name, cli, pattern);
+  }
+  execFileSync("rm", ["-rf", tmp]);
+});
+t("moduleOf: the first folder, or (root)", () => {
+  assert.deepStrictEqual(["a/b/c.py", "README.md", "dir/x", "we ird/ü.txt", ""].map(L.moduleOf), ["a", "(root)", "dir", "we ird", "(root)"]);
+  assert.deepStrictEqual(L.groupByModule([" M a/x.py", "?? README.md"]).map(g => g.module), ["(root)", "a"], "the groups use the same rule");
+});
 console.log("  " + n + " passed, 0 failed");
