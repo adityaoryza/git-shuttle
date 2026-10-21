@@ -7,6 +7,7 @@ import { ConfirmDialog } from "./components/confirm.js";
 import { ToastHost, useToasts } from "./components/toast-host.js";
 import { describeJob, fetchToast, toToast } from "./feedback.js";
 import { GH_MISSING, ghMissing } from "./logic.js";
+import { isPreviewSkipped } from "./skip-preview.js";
 import { GraphView } from "./components/graph-view.js";
 import { OperationBanner, ReleaseTab, ResultCard, ShipTab, StartTab, settings, useGroups } from "./components/panel.js";
 import { BranchPicker } from "./components/branch-picker.js";
@@ -194,7 +195,11 @@ function App() {
     navigator.clipboard.writeText(text).then(() => notify({ variant: "success", title: "Copied" }),
       () => notify({ variant: "warning", title: "Could not copy", detail: "The browser blocked the clipboard: select the text and copy it by hand." }));
   };
-  const preview = (action, params, label, verb, tone) => { setPending({ action, params, label, verb, tone }); runner.preview(action, params); };
+  const preview = (action, params, label, verb, tone) => {
+    // a safe action whose preview was turned off runs at once (the server checks it again, and a refusal is shown as an error)
+    if (isPreviewSkipped(action, params, tone)) { runner.run(action, params, label); return; }
+    setPending({ action, params, label, verb, tone }); runner.preview(action, params);
+  };
   // double click on a row: check out what it stands for (a branch label, else the commit itself), after a preview
   function openCommit(commit, refs) {
     if (runner.busy || (status && status.operation)) return;
