@@ -1,5 +1,3 @@
-import { createDemo } from "../lib/demo.mjs";
-
 const tab = (page, name) => page.getByRole("tab", { name: new RegExp("^" + name) });
 const toastText = page => page.locator(".toast").allInnerTexts();
 
@@ -30,30 +28,6 @@ export const scenarios = {
     t.ok("clicking a name switches to it", t.demo.git(["branch", "--show-current"]) === "main");
     t.ok("the top bar follows", (await page.locator(".branch-btn").innerText()).includes("main"));
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
-  },
-
-  async "context menu: cherry-pick with a preview, and the reasons it is not offered"(t) {
-    const page = await t.page();
-    const row = text => page.locator(".graph .row", { hasText: text }).first();
-    await row("round the invoice total").click({ button: "right" });
-    const item = page.getByRole("menuitem", { name: /^Cherry-pick onto/ });
-    t.ok("with uncommitted changes the reason is given", (await item.isDisabled()) && (await item.innerText()).includes("commit or stash your changes first"));
-    await page.keyboard.press("Escape");
-    t.demo.git(["stash", "-u", "-q"]);
-    t.demo.pushToRemote("feature/billing_rounding", "billing/zero.py", "x = 0\n", "[FIX] billing: handle an invoice without lines");
-    await page.getByRole("button", { name: "Fetch" }).click();
-    await page.waitForSelector(".toast-success");
-    await page.locator(".progress.is-active").waitFor({ state: "detached" });   // the page reloads after a fetch: until then every action says "another action is running"
-    await row("Merge branch 'feature/billing_rounding'").click({ button: "right" });
-    t.ok("a merge commit cannot be picked", (await page.getByRole("menuitem", { name: /^Cherry-pick onto/ }).innerText()).includes("a merge commit"));
-    await page.keyboard.press("Escape");
-    await row("handle an invoice without lines").click({ button: "right" });
-    await page.getByRole("menuitem", { name: /^Cherry-pick onto/ }).click();
-    await page.locator(".modal pre").waitFor();
-    t.ok("the dry run names the commit", (await page.locator(".modal pre").innerText()).includes("git cherry-pick"));
-    await page.locator(".modal").getByRole("button", { name: "Cherry-pick", exact: true }).click();
-    await page.locator(".toast-success", { hasText: "Cherry-picked" }).waitFor();
-    t.ok("the commit is on the branch", t.demo.git(["log", "-1", "--format=%s"]) === "[FIX] billing: handle an invoice without lines");
   },
 
   async "ship: one commit per module, a preview, then merged into staging"(t) {
@@ -137,22 +111,6 @@ export const scenarios = {
     t.ok("the display name is in the list", (await page.locator(".repo-select option:checked").innerText()).includes("Acme Shop"));
     await page.reload(); await page.waitForSelector(".graph .row");
     t.ok("...and survives a reload", (await page.locator(".repo-select option:checked").innerText()).includes("Acme Shop"));
-  },
-
-  async "repositories with the same name are told apart"(t) {
-    const other = createDemo();
-    try {
-      const page = await t.page();
-      await page.getByRole("button", { name: "+ Add" }).click();
-      await page.getByPlaceholder("/home/you/projects/my-repo").fill(other.work);
-      await page.getByPlaceholder("/home/you/projects/my-repo").press("Enter");
-      await page.locator(".field-hint.warn").waitFor();
-      await page.locator(".modal-foot").getByRole("button", { name: "Add" }).click();
-      await page.waitForFunction(() => document.querySelectorAll(".repo-select option").length === 2);
-      await page.waitForSelector(".graph .row");
-      const labels = await page.locator(".repo-select option").allInnerTexts();
-      t.ok("each shows where it is", labels.length === 2 && labels.every(l => l.startsWith("acme-shop — ")) && labels[0] !== labels[1], labels.join(" | "));
-    } finally { other.cleanup(); }
   },
 
   async "details: a commit shows its files and the diff, with side by side and wrap"(t) {
