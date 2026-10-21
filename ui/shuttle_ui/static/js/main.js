@@ -6,6 +6,7 @@ import { Alert, Badge, Button, ProgressBar, Segmented } from "./components/ui.js
 import { ConfirmDialog } from "./components/confirm.js";
 import { ToastHost, useToasts } from "./components/toast-host.js";
 import { describeJob, fetchToast, toToast } from "./feedback.js";
+import { GH_MISSING, ghMissing } from "./logic.js";
 import { GraphView } from "./components/graph-view.js";
 import { OperationBanner, ReleaseTab, ResultCard, ShipTab, StartTab, settings, useGroups } from "./components/panel.js";
 import { BranchPicker } from "./components/branch-picker.js";
@@ -182,6 +183,7 @@ function App() {
   const selectCommit = sha => setSelected({ type: "commit", sha });
   async function releasePullRequest() {
     const c = settings(status);
+    if (ghMissing(status)) { notify({ variant: "error", title: GH_MISSING.title, detail: GH_MISSING.text }); return; }
     if (await confirm({ title: "Open a pull request?", body: "From " + status.branch + " to " + c.release + ".", confirmLabel: "Open pull request" })) {
       runner.run("pr", { base: c.release, title: status.branch, body: "Release: " + status.branch }, "Pull request");
     }

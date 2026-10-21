@@ -101,6 +101,13 @@ export function tagOf(message) {
 
 export function shortHash(h) { return String(h).slice(0, 7); }
 
+// A pull request is opened with the GitHub CLI: without it the page says so, and what to do, before anything is tried.
+export const GH_MISSING = {
+  title: "The GitHub CLI (gh) is not installed",
+  text: "A pull request is opened with gh. Install it (brew install gh, winget install GitHub.cli, or your package manager) and run gh auth login. Or merge instead, or push the branch and open the pull request on the hosting site.",
+};
+export const ghMissing = status => !!status && status.gh === "0";
+
 // ---- branch names for the settings: pick what exists, and see the release name before saving ------------------------
 
 // Names of the branches that exist, local and remote, without the remote prefix, sorted; each with where it is.

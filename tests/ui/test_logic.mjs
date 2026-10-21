@@ -129,4 +129,9 @@ t("moduleOf: the first folder, or (root)", () => {
   assert.deepStrictEqual(["a/b/c.py", "README.md", "dir/x", "we ird/ü.txt", ""].map(L.moduleOf), ["a", "(root)", "dir", "we ird", "(root)"]);
   assert.deepStrictEqual(L.groupByModule([" M a/x.py", "?? README.md"]).map(g => g.module), ["(root)", "a"], "the groups use the same rule");
 });
+t("ghMissing: only when the status says so, and the message says what to do", () => {
+  assert.strictEqual(L.ghMissing({ gh: "0" }), true);
+  for (const status of [{ gh: "1" }, {}, null, undefined]) assert.strictEqual(L.ghMissing(status), false, JSON.stringify(status));
+  assert.ok(L.GH_MISSING.text.includes("gh auth login") && L.GH_MISSING.text.includes("hosting site"));
+});
 console.log("  " + n + " passed, 0 failed");
