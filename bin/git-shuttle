@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# git-shuttle — ship a feature branch to the integration branch, and pick commits into a release branch, with the
+# same checks every time. Run it as  git shuttle <command>.
+set -uo pipefail
+
+if (( BASH_VERSINFO[0] < 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] < 4) )); then
+    echo "git-shuttle needs bash 4.4 or newer (this is ${BASH_VERSION})" >&2
+    exit 1
+fi
+
+# The listings it prints (staged files, commits) must never wait in a pager.
+export GIT_PAGER=cat
+
+ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd -P)
+for file in core git cmd_config cmd_status cmd_commit cmd_sync cmd_push cmd_merge cmd_pick cmd_hook cmd_init cmd_ship cmd_release cmd_continue cmd_candidates cmd_start cmd_pr cmd_stage; do
+    # shellcheck source=/dev/null
+    source "$ROOT/lib/$file.sh"
+done
+
+usage() {
+    cat <<USAGE
+git-shuttle $SHUTTLE_VERSION: from a feature branch to staging and to a release, with the same checks every time.
+
+Usage: git shuttle [-y] [-n] <command> [options]
+
+Commands:
+  init [--integration B] ...    set up this repository in one go (proposes what it detects)
+  ship [-m MSG] [-- PATH...]    commit, then merge: the whole way to the integration branch, after one question
+  release --onto NEW BRANCH...  a release branch from the remote release branch; a branch name stands for its commits
+        [--from BASE] [--strategy-option ours|theirs] [--push]
+  start NAME [--from BRANCH]    a branch for new work, cut from the remote integration branch (snake_case, with the prefix)
+  pr [--base B] [--title T]     push the branch and open a pull request with gh        [--body-file F | --body T] [--draft]
+  ui [--port N] [--no-open]     the web UI: your repositories and every action above, with a preview before each run (127.0.0.1 only)
+  stage -- PATH...              git add for the files you name (new files need it before a commit)
+  status [--porcelain]          where you are, and what is left to ship (changes nothing)
+  continue | abort              finish, or give up, the rebase/merge/cherry-pick that stopped on a conflict
+  candidates [--porcelain]      the branches merged into the integration branch that the release does not have yet
+  commit -m MSG [-- PATH...]    commit after checking the message and the branch; PATH... commits only those files
+  sync [--onto BRANCH]          fetch, then rebase the branch on the remote integration branch
+  push [--force-with-lease]     push the branch (sets the upstream the first time)
+  merge [--into BRANCH]         sync, push, merge into the integration branch, push it, and come back
+        [--no-sync] [--force-with-lease]
+  pick --onto NEW COMMIT...     a release branch: starts from the remote release branch, takes the commits in order
+        [--from BASE] [--strategy-option ours|theirs] [--push]
+  hook install|uninstall|status a commit-msg hook that applies the message rules to every commit
+  config                        the effective settings
+
+Options:
+  -y, --yes       do not ask before each command (needed without a terminal)
+  -n, --dry-run   show the git commands without running them
+  -h, --help      this text          --version   the version
+
+Settings (git config shuttle.<name>, per repository or --global):
+  remote            the remote, default origin
+  base              the branch work starts from, default: the default branch of the remote
+  integration       the branch features are merged into (a staging branch), default: base
+  release           the branch a release starts from, default: base
+  protected         branches no command here commits or pushes to, default: base, integration, release, main, master
+  messagePattern    a regular expression the first line of a commit message must match, default: none
+  forbidTrailers    trailers a message may not have (for example "Co-Authored-By"), default: none
+  mergeStrategy     noff (a merge commit, the default) or ff-only
+  branchPrefix      the start of the branch names "start" makes, default feature/ (for example 19.0-feature/)
+  releasePattern    the name "release --onto auto" gives: {date} is YYYYMMDD, {n} the first free number, default release/{date}-v1.{n}
+  upgradeCommand    shown before a push as the command to test with; {modules} is replaced by the modules changed (never run)
+
+It never forces a push by itself, never rebases or commits on a protected branch, and stops at the first failure
+saying how to go on. Exit status: 0 done, 1 refused before changing anything, 2 stopped half way, 3 declined.
+USAGE
+}
+
+# shellcheck disable=SC2034  # YES and DRY_RUN are read by lib/core.sh
+main() {
+    local args=() rest_of_line=0 arg
+    for arg in "$@"; do
+        if (( rest_of_line )); then args+=("$arg"); continue; fi
+        case "$arg" in
+            -y|--yes) YES=1 ;;
+            -n|--dry-run) DRY_RUN=1 ;;
+            --) rest_of_line=1; args+=("$arg") ;;
+            *) args+=("$arg") ;;
+        esac
+    done
+    set -- "${args[@]+"${args[@]}"}"
+
+    local command=${1:-help}
+    shift || true
+    case "$command" in
+        status)        cmd_status "$@" ;;
+        commit)        cmd_commit "$@" ;;
+        sync)          cmd_sync "$@" ;;
+        push)          cmd_push "$@" ;;
+        merge)         cmd_merge "$@" ;;
+        pick)          cmd_pick "$@" ;;
+        ship)          cmd_ship "$@" ;;
+        release)       cmd_release "$@" ;;
+        init)          cmd_init "$@" ;;
+        continue)      cmd_continue "$@" ;;
+        abort)         cmd_abort "$@" ;;
+        candidates)    cmd_candidates "$@" ;;
+        start)         cmd_start "$@" ;;
+        stage)         cmd_stage "$@" ;;
+        ui)            command -v python3 >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
+                       exec python3 "$ROOT/ui/server.py" "$@" ;;
+        pr)            cmd_pr "$@" ;;
+        hook)          cmd_hook "$@" ;;
+        config)        cmd_config "$@" ;;
+        check-message) cmd_check_message "$@" ;;
+        -h|--help|help) usage ;;
+        --version|version) echo "git-shuttle $SHUTTLE_VERSION" ;;
+        *) printf 'git-shuttle: unknown command "%s"\n\n' "$command" >&2; usage >&2; exit 1 ;;
+    esac
+}
+
+main "$@"
