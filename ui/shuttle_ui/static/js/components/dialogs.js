@@ -2,6 +2,7 @@
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { DEFAULT_RELEASE_PATTERN, branchOptions, inferReleasePattern, normalizePrefix, prefixOptions, releasePreview } from "../logic.js";
+import { resetSkippedPreviews, skippedPreviews } from "../skip-preview.js";
 import { Combobox } from "./combobox.js";
 import { Badge, Button, Field, Input, Modal, cn } from "./ui.js";
 
@@ -53,6 +54,7 @@ export function SettingsDialog({ status, branches, repoName, onSave, onRemove, o
   const initial = () => Object.fromEntries(KEYS.map(k => [k, status["config." + k] || ""]));
   const [form, setForm] = useState(initial);
   const [name, setName] = useState(repoName);
+  const [skipped, setSkipped] = useState(skippedPreviews);
   const set = (key, value) => setForm({ ...form, [key]: value });
   const options = branchOptions(branches);
   const names = options.map(o => o.name);
@@ -96,5 +98,10 @@ export function SettingsDialog({ status, branches, repoName, onSave, onRemove, o
     <//>
 
     ${RULE_FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Input} class="mono" value=${form[key]} onInput=${e => set(key, e.target.value)} /><//>`)}
+
+    ${skipped.length ? html`<${Field} label="Previews you turned off" hint="These actions run at once, without showing what will run. Undo takes them back. The risky ones (reset, discard, drop, force push, delete) always ask.">
+      <div class="chips">${skipped.map(a => html`<span class="chip">${a}</span>`)}</div>
+      <${Button} variant="outline" size="sm" onClick=${() => { resetSkippedPreviews(); setSkipped([]); }}>Show the previews again<//>
+    <//>` : null}
   <//>`;
 }
