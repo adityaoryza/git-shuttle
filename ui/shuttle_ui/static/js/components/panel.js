@@ -133,7 +133,8 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested }
   const params = shipParams(groups, how === "pr" ? { pr: true, title, body: pr.body, draft: pr.draft } : null);
   const stage = pathsToStage(groups);
   if (stage.length) params.stage = stage;
-  const cmd = upgradeCommand(c.upgradeCommand, groups.filter(g => g.module !== "(root)"));
+  const modules = groups.filter(g => g.module !== "(root)");
+  const cmd = modules.length ? upgradeCommand(c.upgradeCommand, modules) : c.upgradeCommand;   // no module yet: show the template
   const into = c.integration || "the integration branch";
 
   return html`<div class="tab">

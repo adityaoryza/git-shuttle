@@ -27,7 +27,7 @@ function Ref({ r }) {
   return html`<span class=${"ref ref-" + r.kind + (r.current ? " ref-current" : "")} title=${r.name}>${r.name}</span>`;
 }
 
-export function GraphView({ graph, changes, branch, loading }) {
+export function GraphView({ graph, changes, loading, onMenu, hidden }) {
   const data = useMemo(() => {
     const commits = (graph && graph.commits) || [];
     const { rows, width } = layout(commits);
@@ -44,9 +44,11 @@ export function GraphView({ graph, changes, branch, loading }) {
     </div>` : null}
     ${data.commits.map((c, i) => {
       const row = { ...data.rows[i], parents: c.parents.length };
-      const refs = parseRefs(c.refs, remotes);
+      // a commit carries every label that points at it, also those of a branch hidden from the graph: leave those out
+      const refs = parseRefs(c.refs, remotes).filter(r => r.current || !hidden || !hidden.has((r.kind === "remote" ? "refs/remotes/" : "refs/heads/") + r.name));
       const head = refs.some(r => r.current);
-      return html`<div class=${"row" + (head ? " row-head" : "")} role="listitem" key=${c.sha}>
+      return html`<div class=${"row" + (head ? " row-head" : "")} role="listitem" key=${c.sha} tabIndex="0" onContextMenu=${e => { e.preventDefault(); onMenu(e.clientX, e.clientY, c, refs); }}
+        onKeyDown=${e => { if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); onMenu(r.left + 60, r.bottom, c, refs); } }}>
         <${Lanes} row=${row} width=${data.width} head=${head} />
         <span class="subject">${refs.map(r => html`<${Ref} r=${r} />`)}<span class="msg" title=${c.subject}>${c.subject}</span></span>
         <span class="meta">${c.author} · ${relativeTime(c.time)} · <code>${shortHash(c.sha)}</code></span>

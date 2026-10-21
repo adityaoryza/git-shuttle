@@ -34,6 +34,9 @@ Commands:
   release --onto NEW BRANCH...  a release branch from the remote release branch; a branch name stands for its commits
         [--from BASE] [--strategy-option ours|theirs] [--push]
   start NAME [--from BRANCH]    a branch for new work, cut from the remote integration branch (snake_case, with the prefix)
+  switch BRANCH                 check a branch out (a remote-only branch gets a tracking local copy)
+  branch NAME [COMMIT]          a new local branch at a commit (default: here), and switch to it
+  cherry-pick COMMIT...         take commits onto the branch you are on, in order (not for protected branches)
   pr [--base B] [--title T]     push the branch and open a pull request with gh        [--body-file F | --body T] [--draft]
   ui [--port N] [--no-open]     the web UI: your repositories and every action above, with a preview before each run (127.0.0.1 only)
   stage -- PATH...              git add for the files you name (new files need it before a commit)
@@ -103,6 +106,9 @@ main() {
         abort)         cmd_abort "$@" ;;
         candidates)    cmd_candidates "$@" ;;
         start)         cmd_start "$@" ;;
+        switch)        cmd_switch "$@" ;;
+        branch)        cmd_branch "$@" ;;
+        cherry-pick)   cmd_cherry_pick "$@" ;;
         stage)         cmd_stage "$@" ;;
         ui)            command -v python3 >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
                        PYTHONPATH="$ROOT/ui" exec python3 -m shuttle_ui "$@" ;;

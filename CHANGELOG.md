@@ -12,7 +12,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 - `init`: sets a repository up in one go, proposing what it detects. `ship`: commit and merge after one question
   (or open a pull request with `--pr`). `release`: `pick` where a branch name stands for the commits it brought, with
   `--onto auto` for a name from `shuttle.releasePattern`.
-- `start`, `stage`, `pr`, `continue`, `abort`, `candidates`, and `status --porcelain` (for programs).
+- `start`, `switch`, `branch`, `cherry-pick`, `stage`, `pr`, `continue`, `abort`, `candidates`, and `status --porcelain` (for programs).
 - `git shuttle ui`: a local web UI (127.0.0.1 only, token, Host and Origin checks, no shell): the commit graph, and tabs to start a
   task, ship it (commit per module in order, merge or pull request) and release it, with a preview before every run, conflict
   help and a history.

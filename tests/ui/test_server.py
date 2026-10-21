@@ -257,6 +257,17 @@ class TestSecurity(Base):
             ("pr", {"base": "bad name"}),
             ("init", {"integration": "x;y"}),
             ("init", {"forbidTrailers": "bad!name"}),
+            ("switch", {"name": "-x"}),
+            ("switch", {"name": "a b"}),
+            ("switch", {}),
+            ("branch", {"name": "ok", "commit": "--all"}),
+            ("branch", {"name": "ok", "commit": 5}),
+            ("branch", {"name": "x;y"}),
+            ("cherry-pick", {"commits": []}),
+            ("cherry-pick", {"commits": ["--abort"]}),
+            ("cherry-pick", {"commits": "abcdef1"}),
+            ("cherry-pick", {"commits": ["abcdef1"], "strategy": "wild"}),
+            ("cherry-pick", {"commits": ["abcdef1"] * 101}),
             ("rm -rf", {}),
             ("", {}),
         ]
@@ -303,6 +314,55 @@ class TestActions(Base):
         self.assertEqual(job["state"], "done", job)
         self.assertEqual(git(self.world.work, "branch", "--show-current"), "feature/my_task")
         git(self.world.work, "checkout", "-q", "main")
+
+    def test_branches_switch_branch_here_and_cherry_pick(self):
+        work = self.world.work
+        git(work, "checkout", "-q", "main")
+        _, data = self.api("GET", "repos/%s/branches" % self.rid())
+        self.assertEqual([b["name"] for b in data["local"] if b["current"]], ["main"])
+        self.assertTrue(any(b["name"] == "origin/develop" for b in data["remote"]))
+        self.assertNotIn("origin/HEAD", [b["name"] for b in data["remote"]])
+        # switch: a local branch, then a branch that only the remote has
+        git(work, "branch", "local-one", "develop")
+        self.assertEqual(self.run_job("switch", {"name": "local-one"})["state"], "done")
+        self.assertEqual(git(work, "branch", "--show-current"), "local-one")
+        git(self.world.remote, "branch", "only-remote", "develop")
+        git(work, "fetch", "-q", "origin")
+        self.assertEqual(self.run_job("switch", {"name": "origin/only-remote"})["state"], "done")
+        self.assertEqual(git(work, "branch", "--show-current"), "only-remote")
+        self.assertEqual(self.run_job("switch", {"name": "nowhere"})["state"], "failed")
+        # a branch at a commit
+        tip = git(work, "rev-parse", "main")
+        self.assertEqual(self.run_job("branch", {"name": "from/main", "commit": tip})["state"], "done")
+        self.assertEqual(git(work, "rev-parse", "HEAD"), tip)
+        # a cherry-pick of a commit from another branch onto a feature branch
+        self.world.feature("feat/cp-src", {"cp/src.txt": "src\n"})
+        git(work, "add", "-A"); git(work, "commit", "-q", "-m", "to pick")
+        picked = git(work, "rev-parse", "HEAD")
+        git(work, "checkout", "-q", "-b", "feat/cp-dst", "develop")
+        status, data = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "cherry-pick", "params": {"commits": [picked]}})
+        self.assertTrue(data["ok"], data)
+        self.assertEqual(git(work, "log", "-1", "--format=%s"), "develop start", "a preview picks nothing")
+        self.assertEqual(self.run_job("cherry-pick", {"commits": [picked]})["state"], "done")
+        self.assertEqual(git(work, "log", "-1", "--format=%s"), "to pick")
+        # not onto a protected branch
+        git(work, "checkout", "-q", "develop")
+        self.assertEqual(self.run_job("cherry-pick", {"commits": [picked]})["state"], "failed")
+        git(work, "checkout", "-q", "main")
+
+    def test_the_graph_can_hide_branches(self):
+        work = self.world.work
+        git(work, "checkout", "-q", "main")
+        git(work, "branch", "hidden-one", "develop")
+        everything = self.api("POST", "repos/%s/graph" % self.rid(), {})[1]
+        names = lambda d: {r for c in d["commits"] for r in c["refs"]}
+        self.assertTrue(any("hidden-one" in r for r in names(everything)))
+        shown = self.api("POST", "repos/%s/graph" % self.rid(), {"refs": ["refs/heads/main"]})[1]
+        self.assertFalse(any("hidden-one" in r for r in names(shown)), "a hidden branch is not drawn")
+        self.assertTrue(any(r.startswith("HEAD -> ") for r in names(shown)), "where you are is always shown")
+        for bad in (["--all"], ["refs/heads/../x"], ["main"], "refs/heads/main", [5], ["refs/heads/a b"]):
+            self.assertEqual(self.api("POST", "repos/%s/graph" % self.rid(), {"refs": bad})[0], 400, bad)
+        git(work, "branch", "-D", "hidden-one")
 
     def test_preview_changes_nothing_and_shows_the_commands(self):
         self.world.feature("feat/preview", {"pv_a/a.py": "a\n", "pv_b/b.py": "b\n"})

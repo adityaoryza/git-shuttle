@@ -3,7 +3,7 @@ import os
 import subprocess
 
 from .errors import BadRequest
-from .graph import commit_graph
+from .graph import branch_list, commit_graph
 from .runner import child_env, run_shuttle, shuttle_porcelain
 from .validate import NAME_RE, build_commands, text
 
@@ -86,8 +86,10 @@ def handle(server, method, route, body):
             return {"ok": True}
         if method == "GET" and rest == ["status"]:
             return {"status": shuttle_porcelain(repo["path"], "status")}
-        if method == "GET" and rest == ["graph"]:
-            return commit_graph(repo["path"])
+        if rest == ["graph"] and method in ("GET", "POST"):
+            return commit_graph(repo["path"], body.get("refs") if method == "POST" else None)
+        if method == "GET" and rest == ["branches"]:
+            return branch_list(repo["path"])
         if method == "GET" and rest == ["candidates"]:
             return {"candidates": candidates(repo)}
         if method == "POST" and rest == ["fetch"]:

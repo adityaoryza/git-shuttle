@@ -125,3 +125,50 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .toast-bad { background: var(--bad); color: #fff; } .toast-ok { background: var(--ok); color: #052e16; }
 .btn-default:focus-visible { outline-color: var(--info); }
 ::placeholder { color: var(--muted-foreground); opacity: 1; }
+
+/* branch picker */
+.picker { position: relative; }
+.branch-btn { max-width: 320px; }
+.branch-name { overflow: hidden; text-overflow: ellipsis; }
+.branch-icon { color: var(--info); font-size: 15px; }
+.icon { flex: none; vertical-align: -3px; }
+.popover { position: absolute; top: calc(100% + 6px); left: 0; z-index: 15; width: 420px; max-width: calc(100vw - 24px); display: grid; gap: 8px; padding: 10px; background: var(--background); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.35); }
+.pick-scroll { max-height: min(460px, 62vh); overflow-y: auto; overflow-x: hidden; display: grid; gap: 6px; align-content: start; }
+.pick-section { display: grid; gap: 2px; }
+.pick-head, .pick-folder-head { display: flex; align-items: center; gap: 2px; }
+.pick-head { padding: 2px 0; border-bottom: 1px solid var(--border); }
+.pick-toggle { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 6px; border: 0; border-radius: 6px; background: transparent; color: var(--foreground); font: inherit; cursor: pointer; text-align: left; }
+.pick-head .pick-toggle { font-weight: 600; font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted-foreground); order: -1; }
+.pick-toggle:hover { background: var(--accent); }
+.pick-toggle .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.count { margin-left: auto; color: var(--muted-foreground); font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.pick-body { display: grid; gap: 1px; }
+.pick-folder { display: grid; gap: 1px; }
+.pick-row { display: flex; align-items: center; gap: 2px; border-radius: 6px; min-width: 0; }
+.pick-row.indent { padding-left: 22px; }
+.pick-row:hover, .pick-folder-head:hover { background: var(--accent); }
+.pick-current { background: var(--muted); }
+.eye { width: 32px; height: 32px; flex: none; display: grid; place-items: center; border: 0; background: transparent; color: var(--info); cursor: pointer; border-radius: 6px; }
+.eye:hover { background: var(--accent); }
+.eye-none { color: var(--muted-foreground); }
+.eye-some { color: var(--info); opacity: .6; }
+.pick-name { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 32px; padding: 0 8px 0 2px; border: 0; background: transparent; color: var(--foreground); text-align: left; cursor: pointer; border-radius: 6px; }
+.pick-name .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-name.dim { color: var(--muted-foreground); }
+.pick-name.dim .mono { text-decoration: line-through; }
+.pick-foot { display: flex; justify-content: space-between; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pick-foot .hint { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.pad { padding: 4px 8px; margin: 0; }
+.link { border: 0; background: none; padding: 0; color: var(--info); cursor: pointer; font: inherit; font-size: 12.5px; }
+.link:hover { text-decoration: underline; }
+.eye:focus-visible, .pick-name:focus-visible, .pick-toggle:focus-visible, .link:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+
+/* context menu */
+.ctx { position: fixed; z-index: 30; min-width: 240px; max-width: min(360px, calc(100vw - 16px)); padding: 4px; background: var(--background); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.ctx-title { padding: 6px 10px; color: var(--muted-foreground); font-size: 12px; border-bottom: 1px solid var(--border); margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctx hr { border: 0; border-top: 1px solid var(--border); margin: 4px 0; }
+.ctx button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; padding: 7px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--foreground); font: inherit; text-align: left; cursor: pointer; }
+.ctx button:hover:not(:disabled), .ctx button:focus-visible { background: var(--accent); outline: none; }
+.ctx button:disabled { color: var(--muted-foreground); cursor: not-allowed; }
+.ctx .hint { font-size: 12px; }
+.row:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }

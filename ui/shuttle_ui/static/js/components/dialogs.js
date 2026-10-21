@@ -12,6 +12,7 @@ export function AddRepoDialog({ onAdd, onClose }) {
 }
 
 const FIELDS = [
+  ["base", "Base branch", "the main line of the project, e.g. main or 19.0; used when the other two are not set"],
   ["integration", "Integration branch", "where task branches are merged, e.g. staging"],
   ["release", "Release branch", "releases start from here, e.g. main"],
   ["branchPrefix", "Task branch prefix", "e.g. feature/"],
@@ -21,10 +22,12 @@ const FIELDS = [
   ["upgradeCommand", "Test command", "shown to be copied, never run; {modules} = changed modules"],
 ];
 
-export function SettingsDialog({ status, repoName, onSave, onRemove, onClose }) {
+export function SettingsDialog({ status, branches, repoName, onSave, onRemove, onClose }) {
+  const names = [...new Set(((branches && [...branches.local, ...branches.remote]) || []).map(b => b.name.replace(/^[^/]+\//, (m, i) => (b.ref.startsWith("refs/remotes/") ? "" : m))))];
   const [form, setForm] = useState(() => Object.fromEntries(FIELDS.map(([k]) => [k, status["config." + k] || ""])));
   return html`<${Modal} title=${"Settings · " + repoName} onClose=${onClose} footer=${html`<${Button} variant="destructive" class="push-left" onClick=${onRemove}>Remove from list<//><${Button} variant="ghost" onClick=${onClose}>Cancel<//><${Button} onClick=${() => onSave(form)}>Save<//>`}>
-    ${FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Input} class="mono" value=${form[key]} onInput=${e => setForm({ ...form, [key]: e.target.value })} /><//>`)}
+    <datalist id="branch-names">${names.map(n => html`<option value=${n} />`)}</datalist>
+    ${FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Input} class="mono" list=${["base", "integration", "release"].includes(key) ? "branch-names" : undefined} value=${form[key]} onInput=${e => setForm({ ...form, [key]: e.target.value })} /><//>`)}
   <//>`;
 }
 

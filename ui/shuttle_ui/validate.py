@@ -49,6 +49,28 @@ def build_commands(action, params):
     p = params if isinstance(params, dict) else {}
     if action == "start":
         return [["start", text(p.get("name"), "name", 200, True, True)]]
+    if action == "cherry-pick":
+        commits = p.get("commits") or []
+        if not isinstance(commits, list) or not commits or len(commits) > 100:
+            raise BadRequest("choose at least one commit")
+        for h in commits:
+            if not isinstance(h, str) or not HASH_RE.match(h):
+                raise BadRequest("a commit is not valid")
+        args = ["cherry-pick"]
+        if p.get("strategy"):
+            if p.get("strategy") not in ("ours", "theirs"):
+                raise BadRequest("strategy must be ours or theirs")
+            args += ["--strategy-option", p["strategy"]]
+        return [args + list(commits)]
+    if action == "branch":
+        args = ["branch", name(p.get("name"), "name")]
+        if p.get("commit"):
+            if not isinstance(p["commit"], str) or not HASH_RE.match(p["commit"]):
+                raise BadRequest("a commit is not valid")
+            args.append(p["commit"])
+        return [args]
+    if action == "switch":
+        return [["switch", name(p.get("name"), "name")]]
     if action == "stage":
         paths = [relative_path(x) for x in (p.get("paths") or [])]
         if not paths:

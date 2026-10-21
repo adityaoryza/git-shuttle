@@ -36,8 +36,10 @@ commands, with a preview before every run.
 | ![Preview of every git command that will run](docs/images/4-ship-preview.png) | ![The merge in the graph, with the result of each step](docs/images/5-shipped.png) |
 | **5. Release: pick commits in order** | **6. Settings per repository** |
 | ![Release: commits picked and ordered, release branch name from a pattern](docs/images/6-release.png) | ![Settings: branches, message rules, test command](docs/images/7-settings.png) |
-| **A conflict stops it, safely** | |
-| ![A rebase conflict: the files are listed, with Continue and Abort](docs/images/8-conflict.png) | |
+| **A conflict stops it, safely** | **Pick the branch, hide what you do not need** |
+| ![A rebase conflict: the files are listed, with Continue and Abort](docs/images/8-conflict.png) | ![The branch picker: folders by prefix, an eye on every branch, folder and group](docs/images/9-branches.png) |
+| **Right-click a commit** | **Cherry-pick, previewed first** |
+| ![The context menu of a commit: cherry-pick, create a branch here, switch, copy](docs/images/11-context-menu.png) | ![The exact commands of a cherry-pick before it runs](docs/images/12-cherry-pick.png) |
 
 ## Why
 
@@ -105,6 +107,9 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle ui` | the web UI: your repositories and every command below, with a preview before each run (see [The web UI](#the-web-ui)) |
 | `git shuttle init [--integration B] [--release B] ...` | sets the repository up in one go: proposes what it detects, saves it |
 | `git shuttle start NAME [--from B]` | a branch for new work, cut from the remote integration branch: `"Keep order date"` becomes `feature/keep_order_date` |
+| `git shuttle switch BRANCH` | check a branch out; a branch that only exists on the remote gets a local copy that tracks it |
+| `git shuttle branch NAME [COMMIT]` | a new local branch at a commit (default: where you are), and switch to it |
+| `git shuttle cherry-pick COMMIT...` | take commits onto the current branch in the order given; refuses protected branches and merge commits, skips what is already there |
 | `git shuttle stage -- PATH...` | `git add` for the files you name (new files need it before a commit) |
 | `git shuttle pr [--base B] [--title T] [--body-file F] [--draft]` | pushes the branch and opens a pull request with the GitHub CLI (`gh`) |
 | `git shuttle continue` / `abort` | finish, or give up, the rebase, merge or cherry-pick that stopped on a conflict |
@@ -154,6 +159,12 @@ git shuttle ui
 
 A page on your own machine: the **commit graph** of the repository on the left, and on the right the one thing to do next.
 It opens on the tab that fits where you are.
+
+- **The current branch** is always in the top bar. Click it to **switch branch**, to filter, and to **show or hide** local and
+  remote branches in the graph (remembered per repository).
+- **Right-click a commit** (or press the menu key on it): cherry-pick it onto the current branch, create a branch there, switch to
+  or check out a branch that points at it, copy its SHA or message. Each change is previewed before it runs, and what cannot be
+  done is greyed out with the reason (a protected branch, a merge commit, uncommitted changes).
 
 - **Start**: name a task, get a branch cut from the integration branch.
 - **Ship**: your changed files grouped by module, one commit each, in the order you set; the test command to copy; then merge
