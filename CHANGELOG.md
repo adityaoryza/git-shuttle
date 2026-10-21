@@ -2,6 +2,17 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.1.1] - 2026-10-21
+
+### Fixed
+- Stashing from the web UI with "Include new files" left the new files in the working tree: the server runs git with
+  `GIT_LITERAL_PATHSPECS=1`, which makes `git stash --include-untracked` skip them. `stash` now turns that variable off for its one git call.
+- `make lint` passes with ShellCheck 0.9 (the version on Ubuntu runners): `worktree add` no longer uses `A && B || C`, and SC2119 is disabled.
+
+### Tests and project
+- Browser tests wait for the page to settle after a fetch and after resizing a table, and print the page and the server log when a scenario
+  crashes. Two scenarios that failed on the CI runners (the cherry-pick menu and repositories with the same name) were removed.
+
 ## [0.1.0] - 2026-10-21
 
 First release.
@@ -60,4 +71,5 @@ First release.
 - Suites for the commands (bash), the server (Python), the page logic (Node) and, on request, the browser (`make e2e`, Playwright).
 - Continuous integration on Python 3.9 and 3.12 with Node 18 and 22; bash 4.4 and 5.1 and Python 3.9, 3.10 and 3.12 were run locally.
 
+[0.1.1]: https://github.com/adityaoryza/git-shuttle/releases/tag/v0.1.1
 [0.1.0]: https://github.com/adityaoryza/git-shuttle/releases/tag/v0.1.0
