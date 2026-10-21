@@ -5,7 +5,7 @@ branch and to a release.** One command instead of a copied list of ten.
 
 ```
 $ git shuttle merge
-repository: my-project (/home/me/my-project)
+repository: acme-shop (/home/me/acme-shop)
 branch:     feat/invoice-total
 merge into: develop  (noff)
 steps:      fetch, rebase on origin/develop, push feat/invoice-total, update develop, merge, push develop, back to feat/invoice-total
@@ -42,10 +42,43 @@ commands, with a preview before every run.
 | ![The context menu of a commit: cherry-pick, create a branch here, switch, copy](docs/images/11-context-menu.png) | ![The exact commands of a cherry-pick before it runs](docs/images/12-cherry-pick.png) |
 | **Click a commit: files and diff** | **Side by side, with syntax colours** |
 | ![The details of a commit: author, date, parents, message, changed files and the diff of one file](docs/images/15-commit-details.png) | ![A diff side by side with line numbers on both sides](docs/images/16-diff-split.png) |
-| **The working tree, before you commit** | **Light, dark, or your system's** |
+| **The working tree, before you commit** | **Light and dark** |
 | ![Staged, not staged and untracked files with their diffs](docs/images/17-working-tree.png) | ![The same screen in the light theme](docs/images/18-theme-light.png) |
 | **See what you are about to ship** | **An old server is told** |
 | ![The Ship tab lists the files of each module; a click opens the diff](docs/images/20-ship-files.png) | ![The banner shown when the server is older than the page](docs/images/21-old-server.png) |
+
+### More commands: branches, commits, the stash, undo
+
+All of them show where you are, say what they will do, ask once (`-y` skips the question, `-n` only shows) and refuse before changing anything
+when they cannot be done safely: a protected branch, uncommitted changes, an operation waiting for you, or history that is on a remote.
+
+| Command | What it does |
+|---|---|
+| `git shuttle fetch [--prune] [--all]` | bring the remote's branches up to date; none of yours changes |
+| `git shuttle pull [--ff-only \| --rebase \| --merge] [--branch NAME]` | bring a branch up to date with its upstream; `--branch` moves another branch forward without checking it out |
+| `git shuttle rename OLD NEW [--remote]` | rename a local branch (and on the remote, with the upstream following) |
+| `git shuttle delete BRANCH [--force]`, `delete --remote BRANCH` | delete a branch; `--force` says how many commits would then be reachable only from the reflog |
+| `git shuttle upstream [BRANCH] [--set R/B \| --unset]` | what a branch pushes to and pulls from |
+| `git shuttle merge-in BRANCH [--ff \| --no-ff \| --ff-only]` | merge another branch into the one you are on |
+| `git shuttle rebase-on BRANCH` | replay the branch you are on on top of another; warns when it was pushed |
+| `git shuttle compare A [B]` | the commits and files that differ between two branches or commits (read only) |
+| `git shuttle revert COMMIT` | a new commit that undoes a commit (not a merge commit) |
+| `git shuttle amend -m MESSAGE [--allow-pushed]` | change the message of the last commit, while it is not on a remote |
+| `git shuttle tag NAME [COMMIT] [-m MSG] [--push]`, `untag NAME [--remote]` | a lightweight or annotated tag; delete one |
+| `git shuttle reset --soft \| --mixed \| --hard COMMIT [--confirm-branch NAME]` | move the branch back; `--hard` loses changes and needs the branch name typed; never past pushed commits |
+| `git shuttle switch --detach COMMIT` | look at a commit without being on a branch |
+| `git shuttle rewrite BASE ACTION:COMMIT... [--message C=TEXT]` | replay the commits after BASE with a plan: pick, reword, squash, fixup, drop, in the order given |
+| `git shuttle drop COMMIT`, `move COMMIT up\|down` | take one commit out, or swap it with its neighbour |
+| `git shuttle stash [push] [-m MSG] [-u]`, `stash list\|apply\|pop\|drop\|show N` | put changes aside and bring them back |
+| `git shuttle worktree list\|add PATH BRANCH [--new FROM]\|remove PATH` | more than one branch checked out, each in its own folder (never inside `.git` or the repository) |
+| `git shuttle patch create COMMIT [--to FILE]`, `patch apply FILE` | a commit as a patch file (up to 5 MB), and back |
+| `git shuttle link COMMIT` | the web address of a commit on GitHub, GitLab or Bitbucket, credentials removed |
+| `git shuttle unstage -- PATH...`, `discard [--staged] [--untracked] -- PATH...` | take files out of the next commit; throw changes away for good |
+| `git shuttle undo`, `redo`, `journal [--limit N]` | take back, or do again, the last change git-shuttle made, and only when that is safe; what was changed here |
+
+**Undo** puts branches, tags, HEAD and the stash back where they were. It refuses when something moved since, when it would rewrite
+commits that are on a remote, or when files in the way would be overwritten. The journal (the last 100 changes) lives in the git directory
+of the repository, so it travels with it and nothing is kept elsewhere.
 
 ## Why
 
@@ -62,14 +95,24 @@ mistakes hard.
 - **It refuses to push commits you did not mean to**: a merge stops when the local integration branch has commits the remote lacks.
 - **It leaves the repository for you to finish** when a conflict stops it, with the exact commands to continue or give up.
 
+## Requirements
+
+| Needed for | Requirement | Tested with |
+|---|---|---|
+| the commands | `git` and `bash` 4.4 or newer | bash 4.4.18 and 5.1; git 2.34 |
+| the web UI (`git shuttle ui`) | Python 3.7 or newer, standard library only | Python 3.9, 3.10 and 3.12 |
+| the UI tests (`make test`) | Node.js 18 or newer | Node 18, 22 and 25 |
+| the browser tests (`make e2e`) | Node.js and Playwright's Chromium, downloaded on demand | Chromium from Playwright 1.64 |
+
+Linux and WSL2 are the platforms the tests run on. macOS is not tested: its own bash is 3.2, which `git shuttle` refuses with a
+message asking for a newer one (for example from Homebrew). Windows without WSL is not supported.
+
 ## Install
 
-Needs `bash` 4.4 or newer and `git`. Linux, macOS (with a recent bash) and WSL2.
-
 ```bash
-git clone https://example.com/git-shuttle.git     # use the address of this repository
+git clone https://github.com/adityaoryza/git-shuttle.git
 cd git-shuttle
-make install                                      # links bin/git-shuttle into ~/.local/bin
+make install        # links bin/git-shuttle into ~/.local/bin
 ```
 
 An executable called `git-shuttle` in your `PATH` is run by `git shuttle`. `make install PREFIX=/usr/local` installs for every user.
@@ -124,7 +167,7 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle release --onto NEW [--from BASE] [--push] BRANCH_OR_COMMIT...` | like `pick`, but a branch name stands for the commits it brought: no hashes to look up |
 | `git shuttle status` | where you are and what is left to ship; changes nothing |
 | `git shuttle commit -m MSG [-- PATH...]` | checks the branch and the message, then commits; with paths it commits only those files and leaves the rest staged |
-| `git shuttle sync [--onto BRANCH]` | fetch, then rebase the branch on the remote integration branch |
+| `git shuttle sync [--onto BRANCH] [--merge]` | fetch, then rebase the branch on the remote integration branch (`--merge`: merge it in instead, for a branch others already have) |
 | `git shuttle push [--force-with-lease]` | push the branch, setting the upstream the first time |
 | `git shuttle merge [--into BRANCH] [--no-sync] [--force-with-lease]` | rebase, push the branch, update and merge into the integration branch, push it, come back |
 | `git shuttle pick --onto NEW [--from BASE] [--strategy-option ours\|theirs] [--push] COMMIT...` | a release branch from the remote release branch, with the commits picked in order |
@@ -212,8 +255,8 @@ text-conversion program from your git configuration is run.
 
 - **Rename**: Settings starts with a *Display name* (saved on its own, without running `git shuttle init`); a name may also be given
   when adding. Two repositories may share a name: the list then reads `name — parent/folder`, and the full path is its tooltip.
-- **Theme**: the sun / moon / monitor button in the top bar cycles *system* (the default), *light* and *dark*; the choice is
-  remembered and applied before the page is drawn, so there is no flash.
+- **Theme**: the sun / moon button in the top bar switches between light and dark. The first visit follows your system once; after
+  a click your choice is remembered and applied before the page is drawn, so there is no flash.
 - **Icon**: the tab shows a small branch mark (SVG, with PNG and ICO versions).
 - **Old server**: the page asks `GET /api/version` when it loads. If the server is older than the page (a `git shuttle ui` left
   running before an update), a red banner says *stop it (Ctrl-C) and run git shuttle ui again*, and any "not found" from the API
@@ -221,8 +264,9 @@ text-conversion program from your git configuration is run.
 
 ## What it does not do
 
-It does not rewrite history for you, force a push, resolve conflicts or talk to a hosting service (opening a pull request is
-left to the GitHub CLI, `gh`). It works
+It does not force a push by itself, resolve conflicts, or talk to a hosting service (opening a pull request is left to the GitHub CLI,
+`gh`). It rewrites history (`amend`, `rewrite`, `drop`, `move`, `reset`, `rebase-on`) only for commits nobody else can have yet, unless you
+say otherwise, and the next push then asks for `--force-with-lease` explicitly. It works
 with the `git` you already have and its own configuration (`git config shuttle.*`); there is no other file to maintain.
 
 ## Development
@@ -236,4 +280,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/architecture.md](docs/architect
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). Third-party notices: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+## Author
+
+Aditya Oryza Mahendra — [website](https://adityaoryza.my.id/en) · [GitHub](https://github.com/adityaoryza) · [LinkedIn](https://linkedin.com/in/adityaoryza)

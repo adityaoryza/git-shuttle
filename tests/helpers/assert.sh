@@ -9,6 +9,9 @@ _bad() { FAILED=$((FAILED + 1)); printf '  \033[31m✘\033[0m %s\n' "$1"; shift;
 assert_eq() { # expected actual message
     if [[ "$1" == "$2" ]]; then _ok "$3"; else _bad "$3" "expected: [$1]" "     got: [$2]"; fi
 }
+assert_ne() { # unexpected actual message
+    if [[ "$1" != "$2" ]]; then _ok "$3"; else _bad "$3" "did not expect: [$1]"; fi
+}
 assert_contains() { # text needle message
     if [[ "$1" == *"$2"* ]]; then _ok "$3"; else _bad "$3" "expected to find: [$2]" "in: [${1:0:400}]"; fi
 }

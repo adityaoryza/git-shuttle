@@ -4,7 +4,8 @@ It adds no git logic of its own: every action is a git-shuttle command, previewe
 Standard library only. See docs/ui.md for the design and the security model.
 """
 
-__all__ = ["__version__", "API_LEVEL"]
+__all__ = ["__version__", "__author__", "API_LEVEL"]
 __version__ = "0.1.0"
+__author__ = "Aditya Oryza Mahendra"
 # Raised whenever the page needs a route a server may not have yet (the page checks it at start: GET /api/version).
-API_LEVEL = 2
+API_LEVEL = 4

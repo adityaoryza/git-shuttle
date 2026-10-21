@@ -1,0 +1,13 @@
+{
+  "name": "git-shuttle-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Browser tests for the git-shuttle web UI. Not needed to use git-shuttle or to run the other tests.",
+  "scripts": {
+    "test": "node run.mjs",
+    "screenshots": "node run.mjs --screenshots"
+  },
+  "devDependencies": {
+    "playwright": "1.64.1"
+  }
+}

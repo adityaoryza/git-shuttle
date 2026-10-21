@@ -1,0 +1,141 @@
+const confirmWith = async (page, verb) => { const d = page.locator(".modal"); const b = d.getByRole("button", { name: verb, exact: true }); await b.waitFor(); await page.waitForFunction(el => !el.disabled, await b.elementHandle()); await b.click(); };
+const rowOf = (page, text) => page.locator(".graph .row", { hasText: text }).first();
+const menuOf = async (page, text) => { await idle(page); await rowOf(page, text).click({ button: "right" }); await page.locator(".ctx").waitFor(); };
+const item = (page, name) => page.getByRole("menuitem", { name });
+const settle = async page => { await page.waitForTimeout(400); await idle(page); };
+const palette = async (page, text, expect = text) => { await page.keyboard.press("Control+k"); await page.keyboard.type(text); await page.locator(".palette [role=option]", { hasText: expect }).first().waitFor(); await page.waitForFunction(e => document.querySelector(".palette [role=option]").innerText.includes(e), expect); await page.keyboard.press("Enter"); };
+const idle = page => page.waitForFunction(() => document.querySelector(".progress").getAttribute("aria-busy") === "false");
+
+export const scenarios = {
+  async "commit menu: the whole list, with reasons"(t) {
+    const page = await t.page();
+    await menuOf(page, "billing: round the invoice total");
+    const names = await page.getByRole("menuitem").allInnerTexts();
+    for (const x of ["Cherry-pick onto", "Revert", "Create a branch here", "Create tag", "Reset", "Check out the commit", "Edit the message", "Drop", "Move up", "Move down", "Interactive rebase", "Compare", "Create a patch", "Copy the link", "Copy commit SHA", "Copy message"]) t.ok(`the menu has: ${x}`, names.some(n => n.includes(x)), names.join("|"));
+    t.ok("a commit on the remote cannot be dropped, and it says so", /on a remote|not on the branch|commit or stash/.test(await item(page, /^Drop/).innerText()));
+    t.ok("only the last commit can be amended", /only the last commit|commit or stash/.test(await item(page, /^Edit the message/).innerText()));
+    t.ok("revert is unavailable while there are changes", (await item(page, /^Revert/).innerText()).includes("commit or stash"));
+    await page.keyboard.press("Escape");
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "commit menu: tag, untag, amend, reset, revert"(t) {
+    t.demo.git(["stash", "-u"]);
+    const page = await t.page();
+    await menuOf(page, "billing: round the invoice total");
+    await item(page, /^Create tag/).click();
+    const form = page.getByRole("dialog", { name: /tag/i });
+    await form.getByLabel(/^Tag/).fill("v1.0.0");
+    await form.getByLabel(/Message/).fill("first tag");
+    await form.getByRole("button", { name: "Continue" }).click();
+    await confirmWith(page, "Create tag");
+    await page.waitForSelector(".toast-success");
+    t.ok("the tag exists and is annotated", t.demo.git(["cat-file", "-t", "v1.0.0"]) === "tag");
+    await page.getByRole("button", { name: "Fetch" }).first().click();
+    await page.waitForSelector(".graph .ref-tag");
+    t.ok("its label is in the graph", (await page.locator(".graph .ref-tag", { hasText: "v1.0.0" }).count()) === 1);
+    await menuOf(page, "billing: round the invoice total");
+    await item(page, /^Delete tag v1.0.0/).click();
+    await page.getByRole("dialog", { name: /tag/i }).getByRole("button", { name: "Continue" }).click();
+    await confirmWith(page, "Delete tag");
+    await settle(page);
+    t.ok("the tag is deleted", t.demo.git(["tag", "-l", "v1.0.0"]) === "");
+    await menuOf(page, "monthly invoice report");
+    await item(page, /^Edit the message/).click();
+    const edit = page.getByRole("dialog", { name: /Edit the message/ });
+    const box = edit.getByLabel("Message");
+    await page.waitForFunction(el => el.value.includes("monthly invoice report"), await box.elementHandle());
+    t.ok("the form starts with the full message", true);
+    await box.fill("[IMP] billing: monthly invoice report, reworded");
+    await edit.getByRole("button", { name: "Continue" }).click();
+    await confirmWith(page, "Change the message");
+    await settle(page);
+    t.ok("the message changed", t.demo.git(["log", "-1", "--format=%s"]) === "[IMP] billing: monthly invoice report, reworded");
+    const tip = t.demo.git(["rev-parse", "HEAD"]);
+    await menuOf(page, "invoice total with tax");
+    await item(page, /^Reset/).click();
+    const reset = page.getByRole("dialog", { name: /Reset/ });
+    await reset.getByRole("combobox").selectOption("hard");
+    t.ok("a hard reset asks for the branch name", (await reset.getByLabel(/Type feature\/invoice_totals to confirm/).count()) === 1 && (await reset.getByRole("button", { name: "Continue" }).isDisabled()));
+    await reset.getByLabel(/Type feature/).fill("feature/invoice_total");
+    t.ok("a wrong name keeps it disabled", await reset.getByRole("button", { name: "Continue" }).isDisabled());
+    await reset.getByLabel(/Type feature/).fill("feature/invoice_totals");
+    await reset.getByRole("button", { name: "Continue" }).click();
+    t.ok("the button that does it is red", (await page.locator(".modal .btn-destructive").count()) === 1);
+    await page.keyboard.press("Escape");
+    t.ok("cancelling changed nothing", t.demo.git(["rev-parse", "HEAD"]) === tip);
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "commit menu: interactive rebase, compare, patch, and the undo of it"(t) {
+    t.demo.git(["stash", "-u"]);
+    const page = await t.page();
+    await menuOf(page, "monthly invoice report");
+    await item(page, /^Interactive rebase/).click();
+    const dialog = page.getByRole("dialog", { name: "Interactive rebase" });
+    t.ok("the dialog lists the commits to replay", (await dialog.locator(".plan-row").count()) === 1);
+    await dialog.getByRole("combobox").selectOption("reword");
+    await dialog.getByLabel(/New message/).fill("[IMP] billing: report of the month");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    await confirmWith(page, "Rewrite");
+    await page.waitForSelector(".toast-success");
+    t.ok("the commit was reworded", t.demo.git(["log", "-1", "--format=%s"]) === "[IMP] billing: report of the month");
+    t.ok("Undo is now available", await page.locator('.toolbar [data-tool="undo"]').isEnabled());
+    await page.locator('.toolbar [data-tool="undo"]').click();
+    await confirmWith(page, "Undo");
+    await settle(page);
+    t.ok("undo put the old commit back", t.demo.git(["log", "-1", "--format=%s"]) === "[ADD] billing: monthly invoice report");
+    await menuOf(page, "monthly invoice report");
+    await item(page, /^Create a patch/).click();
+    const patch = page.getByRole("dialog", { name: /Patch of/ });
+    await patch.locator(".output").waitFor();
+    t.ok("the patch is shown", (await patch.locator(".output").innerText()).includes("Subject: [PATCH] [ADD] billing: monthly invoice report"));
+    await patch.getByRole("button", { name: "Copy" }).click();
+    t.ok("...and can be copied", (await page.evaluate(() => navigator.clipboard.readText())).includes("monthly invoice report"));
+    await page.keyboard.press("Escape");
+    await menuOf(page, "monthly invoice report");
+    await item(page, /^Compare/).click();
+    const cmp = page.getByRole("dialog", { name: "Compare" });
+    await cmp.getByText(/ahead of/).waitFor();
+    t.ok("compare shows the two sides", (await cmp.innerText()).includes("billing/report.py") || (await cmp.innerText()).includes("ahead"));
+    await page.keyboard.press("Escape");
+    await menuOf(page, "monthly invoice report");
+    await item(page, /^Copy the link/).click();
+    await page.locator(".toast-error, .toast-warning").first().waitFor();
+    t.ok("a remote without a hosting address says why there is no link", /web address|link/i.test(await page.locator(".toast-error, .toast-warning").first().innerText()));
+    t.ok("(the only page error is that refusal, a 400)", page.errors.every(e => /400/.test(e)), page.errors.join("\n"));
+  },
+
+  async "stash dialog, worktrees and what was changed"(t) {
+    const page = await t.page();
+    await palette(page, "Stashes");
+    t.ok("the palette lists the stash dialog", true);
+    const dialog = page.getByRole("dialog", { name: "Stashes" });
+    await dialog.getByText(/stash is empty/).waitFor();
+    t.ok("an empty stash says so", true);
+    await page.waitForTimeout(200);
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+    await palette(page, "Worktrees");
+    const wt = page.getByRole("dialog", { name: "Worktrees" });
+    await wt.getByText("main folder").waitFor();
+    t.ok("the main folder is listed and cannot be removed", (await wt.getByRole("button", { name: "Remove" }).count()) === 0);
+    const folder = t.demo.root + "/second-folder";
+    await wt.getByLabel("Folder").fill(folder);
+    await wt.getByLabel("Branch").fill("feature/catalog_search");
+    await wt.getByRole("button", { name: "Add worktree" }).click();
+    await confirmWith(page, "Add");
+    await page.waitForSelector(".toast-success");
+    t.ok("the worktree exists", t.demo.git(["worktree", "list"]).includes("second-folder"));
+    await palette(page, "Worktrees");
+    await page.getByRole("dialog", { name: "Worktrees" }).getByRole("button", { name: "Remove" }).click();
+    await confirmWith(page, "Remove");
+    await settle(page);
+    t.ok("and it can be removed again", !t.demo.git(["worktree", "list"]).includes("second-folder"));
+    await palette(page, "What was changed");
+    const journal = page.getByRole("dialog", { name: "What was changed here" });
+    await journal.getByText("Loading…").waitFor({ state: "detached" });
+    t.ok("the journal is readable (a worktree moves no branch, so it adds no entry)", !(await journal.innerText()).includes("worktree"));
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+};

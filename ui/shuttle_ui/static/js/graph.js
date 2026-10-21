@@ -61,3 +61,33 @@ export function relativeTime(seconds, now) {
   for (const [label, size] of units) if (diff >= size) return Math.floor(diff / size) + label + " ago";
   return "just now";
 }
+
+// "2026-10-21 14:05" in the local time zone; and the exact ISO time for a tooltip.
+const two = n => String(n).padStart(2, "0");
+export function absoluteTime(seconds) {
+  const d = new Date(seconds * 1000);
+  return d.getFullYear() + "-" + two(d.getMonth() + 1) + "-" + two(d.getDate()) + " " + two(d.getHours()) + ":" + two(d.getMinutes());
+}
+export const isoTime = seconds => (seconds ? new Date(seconds * 1000).toISOString() : "");
+
+// Two letters for the badge of an author: "Agung Prayogi" → "AP", "agungprygi" → "AG", "" → "?".
+export function initials(name) {
+  const words = String(name || "").trim().split(/[\s._-]+/).filter(Boolean);
+  if (!words.length) return "?";
+  const letters = words.length === 1 ? Array.from(words[0]).slice(0, 2) : [Array.from(words[0])[0], Array.from(words[words.length - 1])[0]];
+  return letters.join("").toUpperCase();
+}
+// A stable colour per person (a dark one, so that the white letters keep their contrast on both themes).
+export function hueOf(name) {
+  let h = 0;
+  for (const ch of String(name || "")) h = (h * 31 + ch.codePointAt(0)) % 360;
+  return h;
+}
+
+// The rows of the graph table: every commit with its lanes and labels, and the working tree row on top when there are changes.
+export function graphRows(commits, remotes, changes) {
+  const { rows: lanes, width } = layout(commits);
+  const rows = commits.map((commit, i) => ({ key: commit.sha, commit, lane: { ...lanes[i], parents: commit.parents.length }, refs: parseRefs(commit.refs, remotes) }));
+  if (changes > 0) rows.unshift({ key: "worktree", wip: true, changes });
+  return { rows, width };
+}

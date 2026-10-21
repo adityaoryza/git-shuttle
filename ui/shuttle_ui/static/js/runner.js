@@ -37,7 +37,7 @@ export function useRunner(repoId, { onDone, onError }) {
       try { job = (await api("GET", "jobs/" + id)).job; } catch (e) { onError(e); break; }
       if (mine !== alive.current) return;
       setJob({ ...job, label, action });
-      if (job.state !== "running") { setBusy(false); await onDone(job); return; }
+      if (job.state !== "running") { setBusy(false); await onDone({ ...job, label, action }); return; }
       await new Promise(r => setTimeout(r, 600));
     }
     setBusy(false);

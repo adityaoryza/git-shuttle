@@ -27,9 +27,9 @@ t("parseFileEntry: statuses", () => {
   assert.strictEqual(L.parseFileEntry("R  new.py").staged, true);
 });
 t("groupByModule: first folder, root files together, sorted", () => {
-  const g = L.groupByModule(["M  sale_documents/models/a.py", "A  sale_documents/tests/t.py", "?? custom_x/v.xml", " M README.md", "M  Z/zz.py"]);
-  assert.deepStrictEqual(g.map(x => x.module), ["(root)", "custom_x", "sale_documents", "Z"]);
-  assert.strictEqual(g.find(x => x.module === "sale_documents").files.length, 2);
+  const g = L.groupByModule(["M  billing/models/a.py", "A  billing/tests/t.py", "?? catalog/v.xml", " M README.md", "M  Z/zz.py"]);
+  assert.deepStrictEqual(g.map(x => x.module), ["(root)", "billing", "catalog", "Z"]);
+  assert.strictEqual(g.find(x => x.module === "billing").files.length, 2);
   assert.deepStrictEqual(L.groupByModule([]), []);
 });
 t("messageProblem: empty, pattern, trailers, free messages", () => {
@@ -48,7 +48,7 @@ t("messageProblem: empty, pattern, trailers, free messages", () => {
 });
 t("upgradeCommand: {modules} filled, root ignored", () => {
   const groups = L.groupByModule(["M  a_mod/x.py", "M  b_mod/y.py", " M README.md"]);
-  assert.strictEqual(L.upgradeCommand("odoo-bin -u {modules}", groups), "odoo-bin -u a_mod,b_mod");
+  assert.strictEqual(L.upgradeCommand("make test MODULES={modules}", groups), "make test MODULES=a_mod,b_mod");
   assert.strictEqual(L.upgradeCommand("", groups), "");
   assert.strictEqual(L.upgradeCommand("x {modules} {modules}", groups), "x a_mod,b_mod a_mod,b_mod");
 });

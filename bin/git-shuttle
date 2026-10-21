@@ -13,7 +13,7 @@ export GIT_PAGER=cat
 
 ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd -P)
 # The shared parts first (order matters: each one uses the ones before it), then one file per command.
-for file in output config git policy; do
+for file in output config git refs policy journal; do
     # shellcheck source=/dev/null
     source "$ROOT/lib/core/$file.sh"
 done
@@ -33,13 +33,49 @@ Commands:
   ship [-m MSG] [-- PATH...]    commit, then merge: the whole way to the integration branch, after one question
   release --onto NEW BRANCH...  a release branch from the remote release branch; a branch name stands for its commits
         [--from BASE] [--strategy-option ours|theirs] [--push]
-  start NAME [--from BRANCH]    a branch for new work, cut from the remote integration branch (snake_case, with the prefix)
+  start NAME [--from BRANCH] [--stash|--carry]
+                                a branch for new work, cut from the remote integration branch (snake_case, with the prefix);
+                                --stash puts uncommitted changes in the stash first, --carry takes them along
   switch BRANCH                 check a branch out (a remote-only branch gets a tracking local copy)
   branch NAME [COMMIT]          a new local branch at a commit (default: here), and switch to it
   cherry-pick COMMIT...         take commits onto the branch you are on, in order (not for protected branches)
   pr [--base B] [--title T]     push the branch and open a pull request with gh        [--body-file F | --body T] [--draft]
   ui [--port N] [--no-open]     the web UI: your repositories and every action above, with a preview before each run (127.0.0.1 only)
+  fetch [--prune] [--all]       bring the remote's branches up to date (none of your branches changes)
+  pull [--ff-only | --rebase]   bring the current branch up to date with its upstream
+  rename OLD NEW [--remote]     rename a local branch (and on the remote)
+  delete BRANCH [--force]       delete a local branch; "delete --remote BRANCH" one on the remote
+  upstream [BRANCH] --set R/B | --unset
+                                what a branch pushes to and pulls from
+  merge-in BRANCH [--ff|--no-ff|--ff-only]
+                                merge another branch into the one you are on
+  rebase-on BRANCH              replay the branch you are on on top of another
+  compare A [B]                 the commits and files that differ between two branches or commits (read only)
+  revert COMMIT                 a new commit that undoes a commit
+  amend -m MESSAGE [--allow-pushed]
+                                change the message of the last commit (only while it is not on a remote)
+  tag NAME [COMMIT] [-m MSG] [--push] | untag NAME [--remote]
+                                a tag (annotated with -m) on a commit; delete one
+  reset --soft|--mixed|--hard COMMIT [--confirm-branch NAME]
+                                move the branch back; --hard loses changes and needs the branch name typed
+  stash [push] [-m MSG] [-u] | list | apply|pop|drop N | show N
+                                put changes aside and bring them back
+  worktree list | add PATH BRANCH [--new FROM] | remove PATH
+                                more than one branch checked out, each in its own folder
+  patch create COMMIT [--to FILE] | apply FILE
+                                a commit as a patch file, and back
+  switch --detach COMMIT        look at a commit without a branch
+  rewrite BASE ACTION:COMMIT... [--message COMMIT=TEXT]
+                                replay the commits after BASE with a plan: pick, reword, squash, fixup, drop
+  drop COMMIT | move COMMIT up|down
+                                take one commit out, or swap it with its neighbour
+  link COMMIT                   the web address of a commit (credentials removed; read only)
+  undo | redo                   take back, or do again, the last change git-shuttle made (only when that is safe)
+  journal [--limit N]           what git-shuttle changed in this repository
   stage -- PATH...              git add for the files you name (new files need it before a commit)
+  unstage -- PATH...            take files out of the next commit; their changes stay in the working tree
+  discard [--staged] [--untracked] -- PATH...
+                                throw changes away for good (--staged: also the staged ones; --untracked: delete new files too)
   status [--porcelain]          where you are, and what is left to ship (changes nothing)
   continue | abort              finish, or give up, the rebase/merge/cherry-pick that stopped on a conflict
   candidates [--porcelain]      the branches merged into the integration branch that the release does not have yet
@@ -94,22 +130,47 @@ main() {
     shift || true
     case "$command" in
         status)        cmd_status "$@" ;;
-        commit)        cmd_commit "$@" ;;
-        sync)          cmd_sync "$@" ;;
+        commit)        journaled cmd_commit "$@" ;;
+        sync)          journaled cmd_sync "$@" ;;
         push)          cmd_push "$@" ;;
-        merge)         cmd_merge "$@" ;;
-        pick)          cmd_pick "$@" ;;
-        ship)          cmd_ship "$@" ;;
-        release)       cmd_release "$@" ;;
+        merge)         journaled cmd_merge "$@" ;;
+        pick)          journaled cmd_pick "$@" ;;
+        ship)          journaled cmd_ship "$@" ;;
+        release)       journaled cmd_release "$@" ;;
         init)          cmd_init "$@" ;;
         continue)      cmd_continue "$@" ;;
         abort)         cmd_abort "$@" ;;
         candidates)    cmd_candidates "$@" ;;
-        start)         cmd_start "$@" ;;
-        switch)        cmd_switch "$@" ;;
-        branch)        cmd_branch "$@" ;;
-        cherry-pick)   cmd_cherry_pick "$@" ;;
+        start)         journaled cmd_start "$@" ;;
+        switch)        journaled cmd_switch "$@" ;;
+        branch)        journaled cmd_branch "$@" ;;
+        cherry-pick)   journaled cmd_cherry_pick "$@" ;;
+        undo)          cmd_undo "$@" ;;
+        redo)          cmd_redo "$@" ;;
+        journal)       cmd_journal "$@" ;;
+        fetch)         cmd_fetch "$@" ;;
+        rename)        journaled cmd_rename "$@" ;;
+        delete)        journaled cmd_delete "$@" ;;
+        upstream)      cmd_upstream "$@" ;;
+        merge-in)      journaled cmd_merge_in "$@" ;;
+        rebase-on)     journaled cmd_rebase_on "$@" ;;
+        compare)       cmd_compare "$@" ;;
+        revert)        journaled cmd_revert "$@" ;;
+        amend)         journaled cmd_amend "$@" ;;
+        tag)           journaled cmd_tag "$@" ;;
+        untag)         journaled cmd_untag "$@" ;;
+        reset)         journaled cmd_reset "$@" ;;
+        link)          cmd_link "$@" ;;
+        rewrite)       journaled cmd_rewrite "$@" ;;
+        drop)          journaled cmd_drop "$@" ;;
+        move)          journaled cmd_move "$@" ;;
+        stash)         journaled cmd_stash "$@" ;;
+        worktree)      cmd_worktree "$@" ;;
+        patch)         journaled cmd_patch "$@" ;;
+        pull)          journaled cmd_pull "$@" ;;
         stage)         cmd_stage "$@" ;;
+        unstage)       cmd_unstage "$@" ;;
+        discard)       cmd_discard "$@" ;;
         ui)            command -v python3 >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
                        PYTHONPATH="$ROOT/ui" exec python3 -m shuttle_ui "$@" ;;
         pr)            cmd_pr "$@" ;;

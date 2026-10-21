@@ -14,6 +14,7 @@ from .validate import HASH_RE, relative_path
 MAX_DIFF_BYTES = 300 * 1024
 MAX_DIFF_LINES = 5000
 MAX_FILES = 3000
+MAX_MESSAGE = 100_000
 EMPTY_TREE = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 SOURCES = ("worktree", "staged", "untracked")
 META_FORMAT = "%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%cn%x1f%ce%x1f%ct%x1f%D%x1f%B"
@@ -106,7 +107,7 @@ def commit_details(repo_path, sha):
         "author": author, "email": email, "time": int(at) if at.isdigit() else 0,
         "committer": committer, "committer_email": committer_email, "committer_time": int(ct) if ct.isdigit() else 0,
         "refs": [r.strip() for r in refs.split(",") if r.strip()],
-        "message": message.rstrip("\n"),
+        "message": message.rstrip("\n")[:MAX_MESSAGE],
         "merge": len(parent_list) > 1,
         "files": files["files"], "files_truncated": files["truncated"],
     }
@@ -171,7 +172,7 @@ def worktree_files(repo_path):
 
 def _capped(argv, cwd, cap=MAX_DIFF_BYTES):
     """Run git and keep at most `cap` bytes of its output (and say if there was more); the process is stopped after that."""
-    proc = subprocess.Popen(argv, cwd=cwd, env=child_env(), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    proc = subprocess.Popen(argv, cwd=cwd, env=child_env({"GIT_OPTIONAL_LOCKS": "0"}), stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
     try:
         data = proc.stdout.read(cap + 1)
     finally:
@@ -195,7 +196,7 @@ def file_diff(repo_path, source, path, old_path=None, context=3):
     old_path = relative_path(old_path) if old_path else None
     context = clamp_context(context)
     paths = [old_path, path] if old_path and old_path != path else [path]
-    base = ["git", "-c", "core.quotepath=off", "-c", "diff.renames=true"]
+    base = ["git", "-c", "core.quotepath=off", "-c", "core.fsmonitor=false", "-c", "diff.renames=true"]
     flags = ["--no-ext-diff", "--no-textconv", "--no-color", "-M", "-U%d" % context]
     if source == "worktree":
         argv = base + ["diff"] + flags + ["--"] + paths

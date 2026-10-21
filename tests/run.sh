@@ -21,19 +21,23 @@ run_cli() {
 run_server() {
     printf '\n%s\n' "ui/server (python3)"
     if ! command -v python3 >/dev/null 2>&1; then echo "  python3 is missing: skipped"; return; fi
-    local out rc
-    out=$(python3 -W ignore "$here/ui/test_server.py" 2>&1); rc=$?
-    printf '%s\n' "$out" | grep -E ' \.\.\. (ok|FAIL|ERROR)$' | sed -E 's/^(test_[a-z_0-9]+) \(.*\) \.\.\. ok$/  \x1b[32m✔\x1b[0m \1/; s/^(.*) \.\.\. (FAIL|ERROR)$/  \x1b[31m✘\x1b[0m \1/'
-    (( rc == 0 )) || { printf '%s\n' "$out" | tail -40; failed=$((failed + 1)); }
-    printf '  %d passed, %d failed\n' "$(grep -c ' \.\.\. ok$' <<<"$out")" "$(grep -cE ' \.\.\. (FAIL|ERROR)$' <<<"$out")"
+    local out rc file passed=0 failed_tests=0
+    for file in test_server.py test_ops.py test_log.py test_brand.py test_cli.py; do
+        out=$(python3 -W ignore "$here/ui/$file" 2>&1); rc=$?
+        printf '%s\n' "$out" | grep -E ' \.\.\. (ok|FAIL|ERROR)$' | sed -E 's/^(test_[a-z_0-9]+) \(.*\) \.\.\. ok$/  \x1b[32m✔\x1b[0m \1/; s/^(.*) \.\.\. (FAIL|ERROR)$/  \x1b[31m✘\x1b[0m \1/'
+        (( rc == 0 )) || { printf '%s\n' "$out" | tail -40; failed=$((failed + 1)); }
+        passed=$((passed + $(grep -c ' \.\.\. ok$' <<<"$out")))
+        failed_tests=$((failed_tests + $(grep -cE ' \.\.\. (FAIL|ERROR)$' <<<"$out")))
+    done
+    printf '  %d passed, %d failed\n' "$passed" "$failed_tests"
 }
 
 run_front() {
     printf '\n%s\n' "ui/front (node)"
     if ! command -v node >/dev/null 2>&1; then echo "  node is missing: skipped"; return; fi
     local file
-    for file in test_logic.mjs test_graph.mjs test_diff.mjs test_theme.mjs test_version.mjs; do
-        node "$here/ui/$file" 2>&1 | tail -25
+    for file in "$here"/ui/test_*.mjs; do
+        node "$file" 2>&1 | tail -25
         [[ ${PIPESTATUS[0]} -eq 0 ]] || failed=$((failed + 1))
     done
 }

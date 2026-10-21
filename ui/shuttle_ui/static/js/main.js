@@ -1,26 +1,31 @@
 /* git-shuttle UI: one screen. The graph on the left, what to do next on the right. */
-import { html, render, useState, useEffect, useCallback } from "../vendor/preact-htm.js";
+import { html, render, useState, useEffect, useCallback, useRef, useMemo } from "../vendor/preact-htm.js";
 import { api } from "./api.js";
 import { useRunner } from "./runner.js";
-import { Alert, Badge, Button, Input, Segmented, Toast } from "./components/ui.js";
+import { Alert, Badge, Button, ProgressBar, Segmented } from "./components/ui.js";
+import { ConfirmDialog } from "./components/confirm.js";
+import { ToastHost, useToasts } from "./components/toast-host.js";
+import { describeJob, fetchToast, toToast } from "./feedback.js";
 import { GraphView } from "./components/graph-view.js";
 import { OperationBanner, ReleaseTab, ResultCard, ShipTab, StartTab, settings, useGroups } from "./components/panel.js";
 import { BranchPicker } from "./components/branch-picker.js";
-import { ActionConfirm, BranchHereDialog, ContextMenu } from "./components/context-menu.js";
-import { AddRepoDialog, HistoryDialog, SettingsDialog } from "./components/dialogs.js";
+import { ActionConfirm, BranchHereDialog, ContextMenu, DivergedDialog } from "./components/context-menu.js";
+import { pushState, pushTitle } from "./pushstate.js";
+import { AddRepoDialog, SettingsDialog } from "./components/dialogs.js";
+import { FormDialog } from "./components/form-dialog.js";
+import { CompareDialog, JournalDialog, PatchDialog, RewriteDialog, ShortcutsDialog, StashDialog, WorktreesDialog } from "./components/ops-dialogs.js";
+import { Toolbar } from "./components/toolbar.js";
+import { Palette } from "./components/palette.js";
+import { LogPanel } from "./components/log-panel.js";
+import { NEEDS_TARGET, OPS, branchMenuIds, commitMenuIds, labelOf, lineFrom, menuItems, pushedShas, reasonOf, shortcutFor } from "./ops.js";
 import { CommitPanel } from "./components/commit-panel.js";
+import { Splitter, useSize, useSplit } from "./components/splitter.js";
 import { ThemeToggle } from "./components/theme-toggle.js";
 import { repoLabels } from "./repos.js";
+import { suggestTab } from "./tabs.js";
 import { OLD_SERVER, checkVersion } from "./version.js";
 
 const changeCount = st => (st ? +st.staged + +st.unstaged + +st.untracked : 0);
-
-// Where the user most likely is: on the integration branch → start a task; with work to send → ship it.
-export function suggestTab(st) {
-  if (!st || st.protected === "1") return "start";
-  if (changeCount(st) > 0 || (+st["integration.ahead"] > 0 && st.merged !== "1")) return "ship";
-  return "start";
-}
 
 function App() {
   const [repos, setRepos] = useState(null);
@@ -29,8 +34,15 @@ function App() {
   const [graph, setGraph] = useState(null);
   const [tab, setTab] = useState("start");
   const [dialog, setDialog] = useState(null);
-  const [history, setHistory] = useState([]);
-  const [toast, setToast] = useState(null);
+  const [modal, setModal] = useState(null);           // the dialogs of the actions: { name, ... }
+  const [catalog, setCatalog] = useState([]);           // every action, from the server (for the palette)
+  const [search, setSearch] = useState("");
+  const [logVersion, setLogVersion] = useState(0);      // changes when an action finishes: an open log reloads
+  const searchRef = useRef(null);
+  const [toasts, queue] = useToasts();
+  const [confirmRequest, setConfirmRequest] = useState(null);
+  const [fetching, setFetching] = useState(false);
+  const [freshShas, setFreshShas] = useState(null);   // commits the last fetch brought, shown with a short glow
   const [tested, setTested] = useState({});
   const [loading, setLoading] = useState(false);
   const [branches, setBranches] = useState(null);
@@ -40,9 +52,17 @@ function App() {
   const [worktree, setWorktree] = useState(null);   // the changed files, for the Ship tab
   const [oldServer, setOldServer] = useState(false);   // the server is older than this page
   const [selected, setSelected] = useState(null);   // the commit (or the working tree) whose details are open
+  const mainRef = useRef(null), paneRef = useRef(null);
+  const mainSize = useSize(mainRef), paneSize = useSize(paneRef);
+  const panelSplit = useSplit("panel", { initial: 400, min: 320, otherMin: 420, total: mainSize.width });       // the side panel
+  const detailSplit = useSplit("detail", { initial: 360, min: 160, otherMin: 120, total: paneSize.height });     // the details under the graph
 
-  const say = (text, tone) => { setToast({ text, tone }); clearTimeout(say.t); say.t = setTimeout(() => setToast(null), 5000); };
-  const fail = e => say(e && e.message ? e.message : String(e), "bad");
+  const notify = spec => queue.push(spec);
+  const fail = (e, what = "Something went wrong") => notify({ variant: "error", title: what, detail: e && e.message ? e.message : String(e) });
+  // A dialog instead of the browser's confirm(): resolves to true or false.
+  const confirm = request => new Promise(resolve => setConfirmRequest({ ...request, resolve }));
+  const answer = yes => { confirmRequest.resolve(yes); setConfirmRequest(null); };
+  const showLog = () => { const card = document.querySelector(".result"); if (card) { card.scrollIntoView({ block: "nearest" }); card.focus && card.focus(); } };
 
   const loadRepos = async () => { const r = (await api("GET", "repos")).repos; setRepos(r); return r; };
 
@@ -74,7 +94,13 @@ function App() {
 
   const runner = useRunner(repoId, {
     onError: fail,
-    onDone: async job => { await reload(); say(job.state === "done" ? "Done" : job.state === "stopped" ? "Stopped: something needs your attention" : "Failed", job.state === "done" ? "ok" : "bad"); },
+    onDone: async job => {
+      await reload();
+      setLogVersion(v => v + 1);
+      if (["stage", "unstage", "discard"].includes(job.action)) setSelected(s => (s && s.type === "worktree" ? { ...s, version: (s.version || 0) + 1 } : s));
+      notify(toToast(describeJob(job, { branch: status && status.branch }), { showLog }));
+      if (job.action === "start" && job.state === "done") setTab("ship");     // the next step
+    },
   });
 
   useEffect(() => {
@@ -86,7 +112,9 @@ function App() {
     setRepoId(r.id); localStorage.setItem("shuttle.repo", r.id); setSelected(null); setStatus(null); setGraph(null); setBranches(null); runner.reset();
     const hide = readHidden(r.id);
     setHiddenState(hide);
-    try { const s = await loadSnapshot(r.id, hide); setStatus(s.st); setBranches(s.br); setGraph(s.gr); setTab(suggestTab(s.st)); } catch (e) { fail(e); }
+    setLoading(true);
+    try { const s = await loadSnapshot(r.id, hide); setStatus(s.st); setBranches(s.br); setGraph(s.gr); setTab(suggestTab(s.st)); } catch (e) { fail(e, "Cannot read this repository"); }
+    setLoading(false);
   }
 
   const [groups, setGroups] = useGroups(status);
@@ -104,54 +132,185 @@ function App() {
     try { const r = (await api("POST", "repos", name ? { path, name } : { path })).repo; setDialog(null); await loadRepos(); await selectRepo(r); } catch (e) { fail(e); }
   }
   async function removeRepo() {
-    if (!window.confirm("Remove this repository from the list? The repository itself is not deleted.")) return;
+    if (!await confirm({ title: "Remove this repository?", body: "It leaves the list. The repository itself is not deleted.", confirmLabel: "Remove", tone: "destructive" })) return;
     try { await api("POST", "repos/" + repoId + "/remove", {}); setDialog(null); const list = await loadRepos(); setStatus(null); setGraph(null); setRepoId(null); if (list.length) await selectRepo(list[0]); } catch (e) { fail(e); }
   }
   async function fetchRemote() {
-    try { const r = await api("POST", "repos/" + repoId + "/fetch", {}); say(r.ok ? "Fetched" : "Fetch failed: " + r.output, r.ok ? "ok" : "bad"); await reload(); } catch (e) { fail(e); }
+    setFetching(true);
+    try {
+      const result = await api("POST", "repos/" + repoId + "/fetch", {});
+      notify(toToast(fetchToast(result)));
+      await reload();
+      if (result.summary && result.summary.new_shas.length) {
+        setFreshShas(new Set(result.summary.new_shas));
+        setTimeout(() => setFreshShas(null), 4500);
+      }
+    } catch (e) { fail(e, "Fetch failed"); }
+    setFetching(false);
   }
-  async function openHistory() { try { setHistory((await api("GET", "history")).history); setDialog("history"); } catch (e) { fail(e); } }
   // The display name is saved on its own; `git shuttle init` runs only when a setting changed.
   async function saveSettings({ name, nameChanged, settings: form, settingsChanged }) {
     setDialog(null);
-    if (nameChanged) { try { await api("POST", "repos/" + repoId + "/rename", { name }); await loadRepos(); say("Renamed", "ok"); } catch (e) { fail(e); } }
+    if (nameChanged) { try { await api("POST", "repos/" + repoId + "/rename", { name }); await loadRepos(); notify({ variant: "success", title: "Renamed", detail: name }); } catch (e) { fail(e, "Rename failed"); } }
     if (settingsChanged) runner.run("init", form, "Settings");
   }
+  // Publish and Push show their dry run first; a diverged branch asks for the force explicitly, in its own dialog.
+  function startPush() {
+    if (push.kind === "diverged") { setPending({ diverged: true }); runner.preview("push", { force: true }); return; }
+    preview("push", {}, (push.kind === "publish" ? "Publish " : "Push ") + push.branch, push.kind === "publish" ? "Publish" : "Push");
+  }
+  // The files of the working tree: stage, unstage, discard (with a confirmation that lists what is lost).
+  const names = rows => (rows.length === 1 ? rows[0].path : rows.length + " files");
+  const fileActions = {
+    stage: rows => runner.run("stage", { paths: rows.map(f => f.path) }, "Stage " + names(rows)),
+    unstage: rows => runner.run("unstage", { paths: rows.map(f => f.path) }, "Unstage " + names(rows)),
+    toggle: rows => {
+      const toStage = rows.filter(f => f.group !== "staged"), toUnstage = rows.filter(f => f.group === "staged");
+      (toStage.length >= toUnstage.length ? fileActions.stage(toStage) : fileActions.unstage(toUnstage));
+    },
+    discard: async rows => {
+      const untracked = rows.filter(f => f.group === "untracked"), staged = rows.some(f => f.group === "staged");
+      const list = rows.slice(0, 8).map(f => "• " + f.path).join("\n") + (rows.length > 8 ? "\n… and " + (rows.length - 8) + " more" : "");
+      const yes = await confirm({
+        title: "Discard changes to " + names(rows) + "?", confirmLabel: "Discard", tone: "destructive",
+        body: list + "\n\nThis cannot be undone." + (untracked.length ? "\n" + untracked.length + " untracked " + (untracked.length === 1 ? "file is" : "files are") + " deleted." : ""),
+      });
+      if (yes) runner.run("discard", { paths: rows.map(f => f.path), staged, untracked: untracked.length > 0 }, "Discard " + names(rows));
+    },
+  };
+  const switchTo = name => preview("switch", { name }, "Switch to " + name, "Switch");
   const selectCommit = sha => setSelected({ type: "commit", sha });
-  function releasePullRequest() {
+  async function releasePullRequest() {
     const c = settings(status);
-    if (window.confirm("Open a pull request from " + status.branch + " to " + c.release + "?")) runner.run("pr", { base: c.release, title: status.branch, body: "Release: " + status.branch }, "Pull request");
+    if (await confirm({ title: "Open a pull request?", body: "From " + status.branch + " to " + c.release + ".", confirmLabel: "Open pull request" })) {
+      runner.run("pr", { base: c.release, title: status.branch, body: "Release: " + status.branch }, "Pull request");
+    }
   }
 
   // ---- the right-click menu of a commit
-  const copy = text => { try { navigator.clipboard.writeText(text); say("Copied", "ok"); } catch (e) { say("Copy it by hand: the browser blocked the clipboard", "bad"); } };
-  const preview = (action, params, label, verb) => { setPending({ action, params, label, verb }); runner.preview(action, params); };
-  function openMenu(x, y, commit, refs) {
-    const here = status && status.branch;
-    const busyReason = runner.busy ? "another action is running" : status && status.operation ? "finish the " + status.operation + " first" : "";
-    let pickReason = busyReason;
-    if (!pickReason && !here) pickReason = "you are not on a branch";
-    if (!pickReason && status.protected === "1") pickReason = here + " is protected";
-    if (!pickReason && commit.parents.length > 1) pickReason = "a merge commit: pick the commits it brought";
-    if (!pickReason && refs.some(r => r.current)) pickReason = "this is where you are";
-    if (!pickReason && +status.staged + +status.unstaged > 0) pickReason = "commit or stash your changes first";
-    const items = [
-      { label: "Cherry-pick onto " + (here || "…"), disabled: pickReason, run: () => preview("cherry-pick", { commits: [commit.sha] }, "Cherry-pick " + commit.sha.slice(0, 7), "Cherry-pick") },
-      { label: "Create a branch here…", disabled: busyReason, run: () => setPending({ ask: true, commit }) },
-    ];
+  const copy = text => {
+    navigator.clipboard.writeText(text).then(() => notify({ variant: "success", title: "Copied" }),
+      () => notify({ variant: "warning", title: "Could not copy", detail: "The browser blocked the clipboard: select the text and copy it by hand." }));
+  };
+  const preview = (action, params, label, verb, tone) => { setPending({ action, params, label, verb, tone }); runner.preview(action, params); };
+  // double click on a row: check out what it stands for (a branch label, else the commit itself), after a preview
+  function openCommit(commit, refs) {
+    if (runner.busy || (status && status.operation)) return;
     const localNames = new Set(((branches && branches.local) || []).map(b => b.name));
+    const local = refs.find(r => r.kind === "local" && !r.current);
+    const remote = refs.find(r => r.kind === "remote" && !localNames.has(r.name.replace(/^[^/]+\//, "")));
+    if (refs.some(r => r.current) && !local && !remote) return;
+    if (local) preview("switch", { name: local.name }, "Switch to " + local.name, "Switch");
+    else if (remote) preview("switch", { name: remote.name }, "Check out " + remote.name, "Check out");
+    else preview("switch-detach", { commit: commit.sha }, "Check out " + commit.sha.slice(0, 7), "Check out");
+  }
+  function openMenu(x, y, commit, refs) {
+    const items = menuItems(ctx, commitMenuIds(commit, refs), { commit }).map(it => (it === "-" ? it : { label: it.label, disabled: it.reason, run: () => perform(it.id, it.args) }));
+    const busyReason = reasonOf("switch", ctx, { name: "" });
+    const localNames = new Set(((branches && branches.local) || []).map(b => b.name));
+    const where = [];
     for (const r of refs) {
-      if (r.kind === "local" && !r.current) items.push({ label: "Switch to " + r.name, disabled: busyReason, run: () => preview("switch", { name: r.name }, "Switch to " + r.name, "Switch") });
-      if (r.kind === "remote" && !localNames.has(r.name.replace(/^[^/]+\//, ""))) items.push({ label: "Check out " + r.name + " (local copy)", disabled: busyReason, run: () => preview("switch", { name: r.name }, "Check out " + r.name, "Check out") });
+      if (r.kind === "local" && !r.current) where.push({ label: "Switch to " + r.name, disabled: busyReason, run: () => perform("switch", { name: r.name }) });
+      if (r.kind === "remote" && !localNames.has(r.name.replace(/^[^/]+\//, ""))) where.push({ label: "Check out " + r.name + " (local copy)", disabled: busyReason, run: () => perform("switch", { name: r.name }) });
     }
-    items.push("-", { label: "Copy commit SHA", run: () => copy(commit.sha) }, { label: "Copy message", run: () => copy(commit.subject) });
-    setMenu({ x, y, title: commit.sha.slice(0, 7) + " · " + commit.subject, items });
+    setMenu({ x, y, title: commit.sha.slice(0, 7) + " · " + commit.subject, items: [...items, ...(where.length ? ["-", ...where] : []), "-", { label: "Copy commit SHA", run: () => copy(commit.sha) }, { label: "Copy message", run: () => copy(commit.subject) }] });
+  }
+  function openBranchMenu(x, y, branch) {
+    const items = menuItems(ctx, branchMenuIds(branch, ctx), { branch }).map(it => (it === "-" ? it : { label: it.label, disabled: it.reason, run: () => perform(it.id, it.args) }));
+    setMenu({ x, y, title: branch.name, items: [...items, "-", { label: "Copy branch name", run: () => copy(branch.name) }] });
+  }
+
+  // ---- every action goes through here: the palette, the toolbar, the menus and the shortcuts
+  const commitMap = useMemo(() => new Map(((graph && graph.commits) || []).map(c => [c.sha, c])), [graph]);
+  const headSha = useMemo(() => { const c = ((graph && graph.commits) || []).find(x => x.refs.some(r => r === "HEAD" || r.startsWith("HEAD -> "))); return c ? c.sha : ""; }, [graph]);
+  const pushed = useMemo(() => pushedShas((graph && graph.commits) || [], (graph && graph.remotes) || []), [graph]);
+  const ctx = { status, branches, busy: runner.busy || loading, commits: commitMap, headSha, pushed, protectedNames: status ? (status["config.protected"] || "").split(/[\s,]+/).filter(Boolean) : [] };
+  function submitRequest(req) { if (req.direct) runner.run(req.action, req.params, req.label); else preview(req.action, req.params, req.label, req.verb, req.tone); }
+  const opening = useRef(false), typedEarly = useRef({ text: "", enter: false });       // keys typed between Ctrl+K and the palette appearing
+  function perform(id, args = {}) {
+    if (id === "palette") { opening.current = true; typedEarly.current = { text: "", enter: false }; setModal({ name: "palette" }); return; }
+    if (id === "search") { searchRef.current && searchRef.current.focus(); return; }
+    const op = OPS[id];
+    if (!op || !status) return;
+    const reason = reasonOf(id, ctx, args);
+    if (reason) { notify({ variant: "warning", title: labelOf(id, ctx, args, id) + " is not available", detail: reason }); return; }
+    switch (op.special) {
+      case "fetch": fetchRemote(); return;
+      case "push": if (push.kind === "none") { notify({ variant: "info", title: "Nothing to push" }); return; } startPush(); return;
+      case "start": setTab("start"); return;
+      case "tab": setTab(id === "release" ? "release" : "ship"); return;
+      case "compare": setModal({ name: "compare", a: args.a || (args.commit && args.commit.sha), b: args.b }); return;
+      case "rewrite": { const line = lineFrom(ctx, args.commit.sha); if (line) setModal({ name: "rewrite", line }); return; }
+      case "patch": setModal({ name: "patch", commit: args.commit }); return;
+      case "link": api("GET", "repos/" + repoId + "/commits/" + args.commit.sha + "/link").then(d => copy(d.url), e => fail(e, "Cannot make the link")); return;
+      case "stashes": setModal({ name: "stash" }); return;
+      case "worktrees": setModal({ name: "worktrees" }); return;
+      case "journal": setModal({ name: "journal" }); return;
+      case "log": setModal({ name: "log" }); return;
+      case "settings": setDialog("settings"); return;
+      case "add": setDialog("add"); return;
+      case "shortcuts": setModal({ name: "shortcuts" }); return;
+      case "files": return;
+      default:
+    }
+    if (op.form) { setModal({ name: "form", id, args, fields: op.form(ctx, args), commit: args.commit }); return; }
+    submitRequest(op.request(ctx, args, {}));
+  }
+  const paletteEntries = () => catalog.filter(a => OPS[a.id] && !["files", "palette"].includes(OPS[a.id].special))
+    .map(a => ({ ...a, label: labelOf(a.id, ctx, {}, a.label), reason: NEEDS_TARGET.has(a.id) ? "choose a " + (/branch|rename|upstream|merge-in|rebase-on|update-branch|delete|switch$/.test(a.id) ? "branch" : "commit") + " in the list, then use its menu" : reasonOf(a.id, ctx, {}) }));
+  useEffect(() => { api("GET", "actions").then(d => setCatalog(d.actions)).catch(() => {}); }, []);
+  const latest = useRef(null);
+  latest.current = { modal, dialog, confirmRequest, menu, perform };
+  useEffect(() => {          // one listener for the life of the page; it reads the newest state
+    const onKey = e => {
+      const now = latest.current;
+      if (opening.current && document.activeElement && document.activeElement.classList.contains("palette-input")) opening.current = false;     // it is up and has the focus: keys go to it
+      if (opening.current && e.key === "Escape") { opening.current = false; e.preventDefault(); setModal(null); return; }
+      if (opening.current && !e.ctrlKey && !e.metaKey && !e.altKey && (e.key.length === 1 || e.key === "Enter" || e.key === "Backspace")) {
+        if (e.key === "Enter") typedEarly.current.enter = true; else if (e.key === "Backspace") typedEarly.current.text = typedEarly.current.text.slice(0, -1); else typedEarly.current.text += e.key;
+        e.preventDefault(); return;
+      }
+      if (now.modal || now.dialog || now.confirmRequest || now.menu) { if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== "k") return; }
+      const id = shortcutFor(e);
+      if (!id) return;
+      e.preventDefault();
+      now.perform(id);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // the dialogs of the actions
+  const closeModal = () => setModal(null);
+  const rerun = e => { setModal(null); preview(e.action, e.params, e.label || e.action, "Run again"); };
+  const stashAction = (sub, index) => { setModal(null); preview("stash", { sub, index }, (sub === "drop" ? "Drop" : sub === "pop" ? "Pop" : "Apply") + " stash@{" + index + "}", sub === "drop" ? "Drop" : sub === "pop" ? "Pop" : "Apply", sub === "drop" ? "destructive" : undefined); };
+  const copyText = text => copy(text);
+  function modalView() {
+    if (!modal) return null;
+    switch (modal.name) {
+      case "form": {
+        const op = OPS[modal.id];
+        return html`<${FormDialog} title=${labelOf(modal.id, ctx, modal.args, modal.id)} fields=${modal.fields} repoId=${repoId} commit=${modal.commit} onClose=${closeModal}
+          onSubmit=${values => { setModal(null); submitRequest(op.request(ctx, modal.args, values)); }} />`;
+      }
+      case "palette": return html`<${Palette} entries=${paletteEntries()} early=${typedEarly} onReady=${() => { opening.current = false; }} onClose=${() => { opening.current = false; closeModal(); }} onPick=${e => perform(e.id)} />`;
+      case "shortcuts": return html`<${ShortcutsDialog} onClose=${closeModal} />`;
+      case "log": return html`<${LogPanel} repos=${repos} version=${logVersion} onClose=${closeModal} onRerun=${rerun} onCopy=${copyText} notify=${notify} confirm=${confirm} />`;
+      case "stash": return html`<${StashDialog} repoId=${repoId} onAction=${stashAction} onClose=${closeModal} notify=${notify} />`;
+      case "worktrees": return html`<${WorktreesDialog} repoId=${repoId} branches=${branches} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "worktree-remove" ? "Remove" : "Add", action === "worktree-remove" ? "destructive" : undefined); }} />`;
+      case "journal": return html`<${JournalDialog} repoId=${repoId} status=${status} notify=${notify} onClose=${closeModal} onAction=${id => { setModal(null); perform(id); }} />`;
+      case "compare": return html`<${CompareDialog} repoId=${repoId} branches=${branches} a=${modal.a} b=${modal.b} notify=${notify} onClose=${closeModal} />`;
+      case "patch": return html`<${PatchDialog} repoId=${repoId} commit=${modal.commit} notify=${notify} onCopy=${copyText} onClose=${closeModal} />`;
+      case "rewrite": return html`<${RewriteDialog} line=${modal.line} onClose=${closeModal} onSubmit=${({ base, plan }) => { setModal(null); preview("rewrite", { base, plan }, "Interactive rebase of " + status.branch, "Rewrite", "destructive"); }} />`;
+      default: return null;
+    }
   }
 
   if (repos === null) return html`<div class="empty">Loading…</div>`;
   const repo = repos.find(r => r.id === repoId);
   const c = settings(status);
   const ahead = status ? +status["integration.ahead"] : 0, behind = status ? +status["integration.behind"] : 0;
+  const push = pushState(status);
 
   return html`<div class="app">
     ${oldServer ? html`<div class="banner" role="alert"><strong>${OLD_SERVER}</strong></div>` : null}
@@ -159,29 +318,32 @@ function App() {
       <span class="brand">git-<b>shuttle</b></span>
       ${repos.length ? html`<select class="input repo-select" value=${repoId || ""} onChange=${e => selectRepo(repos.find(r => r.id === e.target.value))} aria-label="Repository">${repoLabels(repos).map(l => html`<option value=${l.id} title=${l.title}>${l.label}</option>`)}</select>` : null}
       <${Button} variant="ghost" size="sm" onClick=${() => setDialog("add")}>+ Add<//>
-      ${status ? html`<${BranchPicker} status=${status} branches=${branches} hidden=${hidden} setHidden=${setHidden} onSwitch=${name => runner.run("switch", { name }, "Switch to " + name)} disabled=${runner.busy} />
+      ${status ? html`<${BranchPicker} status=${status} branches=${branches} hidden=${hidden} setHidden=${setHidden} onSwitch=${name => runner.run("switch", { name }, "Switch to " + name)} disabled=${runner.busy} onMenu=${openBranchMenu} onCompare=${b => setModal({ name: "compare", a: b.upstream, b: b.name })} />
         ${status.protected === "1" ? html`<${Badge} tone="warn">protected<//>` : null}
-        ${status["integration.ref"] ? html`<span class="hint">↑${ahead} ↓${behind} vs ${status["integration.ref"]}</span>` : null}` : null}
+        ${status["integration.ref"] ? html`<span class="hint">↑${ahead} ↓${behind} vs ${status["integration.ref"]}</span>${behind > 0 && !reasonOf("sync", ctx) ? html`<${Button} variant="outline" size="sm" class="behind-btn" title=${"Rebase this branch on " + status["integration.ref"]} onClick=${() => perform("sync")}>↓${behind} behind ${status["integration.ref"]}: update<//>` : null}` : null}` : null}
       <span class="grow" />
-      ${repoId ? html`<${Button} variant="ghost" size="sm" onClick=${fetchRemote}>Fetch<//><${Button} variant="ghost" size="sm" onClick=${() => setDialog("settings")}>Settings<//>` : null}
-      <${Button} variant="ghost" size="sm" onClick=${openHistory}>History<//>
-      <${ThemeToggle} />
+      ${repoId ? html`<${Button} variant="ghost" size="sm" onClick=${fetchRemote} busy=${fetching}>${fetching ? "Fetching…" : "Fetch"}<//><${Button} variant="ghost" size="sm" onClick=${() => setDialog("settings")}>Settings<//>` : null}
+            <${ThemeToggle} />
     </header>
+    <${ProgressBar} active=${runner.busy || loading || fetching} />
+    ${status && repos.length ? html`<${Toolbar} ctx=${ctx} perform=${perform} search=${search} setSearch=${setSearch} searchRef=${searchRef} push=${push} />` : null}
 
     ${!repos.length ? html`<main class="onboarding"><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
-      <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split">
-      <section class="graph-pane" aria-label="Commit graph">
-        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} /></div>
-        ${selected && repoId ? html`<${CommitPanel} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} />` : null}
+      <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split" ref=${mainRef} style=${{ "--panel-w": panelSplit.size + "px" }}>
+      <section class="graph-pane" aria-label="Commit graph" ref=${paneRef}>
+        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} /></div>
+        ${selected && repoId ? html`<${Splitter} split=${detailSplit} axis="y" grow=${-1} label="Resize the details" />
+          <${CommitPanel} key=${selected.type === "worktree" ? "worktree" : selected.sha} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} height=${detailSplit.size} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} actions=${fileActions} />` : null}
       </section>
+      <${Splitter} split=${panelSplit} axis="x" grow=${-1} label="Resize the side panel" />
       <aside class="panel" aria-label="Next step">
         ${repo && repo.error ? html`<${Alert} tone="bad" title="Cannot read this repository">${repo.error}<//>` : null}
         ${status ? html`
           <${ResultCard} runner=${runner} onPullRequest=${releasePullRequest} />
-          <${OperationBanner} status=${status} runner=${runner} />
+          <${OperationBanner} status=${status} runner=${runner} confirm=${confirm} />
           ${status["config.set"] === "0" ? html`<${Alert} tone="info" title="Using the default settings"><span>Integration <code>${c.integration || "?"}</code>, release <code>${c.release || "?"}</code>.</span> <a href="#" onClick=${e => { e.preventDefault(); setDialog("settings"); }}>Change</a><//>` : null}
           <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }]} />
-          ${tab === "start" ? html`<${StartTab} status=${status} runner=${runner} />` : null}
+          ${tab === "start" ? html`<${StartTab} status=${status} branches=${branches} runner=${runner} onContinue=${() => setTab("ship")} onSwitch=${switchTo} />` : null}
           ${tab === "ship" ? html`<${ShipTab} status=${status} runner=${runner} groups=${groups} setGroups=${setGroups} tested=${!!tested[key]} setTested=${v => setTested({ ...tested, [key]: v })} worktree=${worktree} onOpenFile=${openFile} />` : null}
           ${tab === "release" ? html`<${ReleaseTab} repoId=${repoId} status=${status} runner=${runner} onError=${fail} onLoaded=${() => reload()} />` : null}
 ` : html`<p class="hint">Loading…</p>`}
@@ -189,11 +351,13 @@ function App() {
 
     ${dialog === "add" ? html`<${AddRepoDialog} onAdd=${addRepo} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "settings" && status ? html`<${SettingsDialog} status=${status} branches=${branches} repoName=${repo ? repo.name : ""} onSave=${saveSettings} onRemove=${removeRepo} onClose=${() => setDialog(null)} />` : null}
-    ${dialog === "history" ? html`<${HistoryDialog} history=${history} onClose=${() => setDialog(null)} />` : null}
+    ${modalView()}
     ${menu ? html`<${ContextMenu} menu=${menu} onClose=${() => setMenu(null)} />` : null}
-    ${pending && pending.ask ? html`<${BranchHereDialog} commit=${pending.commit} onClose=${() => setPending(null)} onSubmit=${name => preview("branch", { name, commit: pending.commit.sha }, "Create branch " + name, "Create branch")} />` : null}
-    ${pending && !pending.ask ? html`<${ActionConfirm} pending=${pending} runner=${runner} onClose=${() => setPending(null)} />` : null}
-    <${Toast} toast=${toast} />
+    ${pending && pending.ask ? html`<${BranchHereDialog} commit=${pending.commit} onClose=${() => setPending(null)} onSubmit=${(name, publish) => preview("branch", { name, commit: pending.commit.sha, push: publish }, "Create branch " + name, publish ? "Create and push" : "Create branch")} />` : null}
+    ${pending && pending.diverged ? html`<${DivergedDialog} state=${push} runner=${runner} onClose=${() => setPending(null)} />` : null}
+    ${pending && !pending.ask && !pending.diverged ? html`<${ActionConfirm} pending=${pending} runner=${runner} onClose=${() => setPending(null)} />` : null}
+    ${confirmRequest ? html`<${ConfirmDialog} request=${confirmRequest} onAnswer=${answer} />` : null}
+    <${ToastHost} items=${toasts} queue=${queue} />
   </div>`;
 }
 

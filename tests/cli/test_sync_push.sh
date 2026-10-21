@@ -23,7 +23,7 @@ remote_commit develop file.txt "conflicting line" "a change of file.txt on devel
 echo "my line" > file.txt; git commit -q -am "my change of file.txt"
 shuttle -y sync
 assert_status 2 "$RC" "sync that hits a conflict"
-assert_contains "$OUT" "git rebase --continue" "...says how to go on"
+assert_contains "$OUT" "git shuttle continue" "...says how to go on"
 assert_contains "$OUT" "git rebase --abort" "...and how to give up"
 assert_eq "yes" "$([[ -d "$(git rev-parse --git-path rebase-merge)" ]] && echo yes || echo no)" "...and leaves the rebase for you to finish"
 git rebase --abort

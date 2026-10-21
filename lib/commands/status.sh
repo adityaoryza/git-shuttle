@@ -73,6 +73,9 @@ cmd_status() {
         for pair in "${conflicts[@]}"; do emit conflict "$pair"; done
         for pair in "${blockers[@]}"; do emit blocker "$pair"; done
         emit hook "$hook"
+        emit stash "$(git stash list 2>/dev/null | wc -l | tr -d ' ')"
+        local entry; entry=$(journal_entry "done"); emit journal.undo "$(cut -f3 <<<"$entry")"
+        entry=$(journal_entry undone); emit journal.redo "$(cut -f3 <<<"$entry")"
         emit config.remote "$remote"
         emit config.base "$(detect_base)"
         emit config.integration "$(cfg integration)"

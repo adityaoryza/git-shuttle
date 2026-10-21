@@ -1,7 +1,8 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { branchFromName, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { FileRow } from "./file-row.js";
 import { Alert, Badge, Button, Field, Input, Output, Segmented, cn } from "./ui.js";
 
@@ -43,8 +44,9 @@ export function ResultCard({ runner, onPullRequest }) {
   const j = runner.job;
   if (!j) return null;
   const tone = j.state === "done" ? "ok" : j.state === "running" ? "neutral" : "bad";
-  return html`<section class="result">
-    <header><strong>${j.label}</strong><${Badge} tone=${tone}>${j.state}<//><span class="grow" /><${Button} variant="ghost" size="icon" onClick=${runner.closeJob} aria-label="Dismiss">✕<//></header>
+  const check = html`<svg class="check-draw" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>`;
+  return html`<section class="result" tabIndex="-1">
+    <header>${j.state === "done" ? check : null}<strong>${j.label}</strong><${Badge} tone=${tone}>${j.state}<//><span class="grow" /><${Button} variant="ghost" size="icon" onClick=${runner.closeJob} aria-label="Dismiss">✕<//></header>
     <ol class="steps">${(j.steps || []).map(s => html`<li class=${"step-" + s.state}><code>${stepLabel(s.argv)}</code></li>`)}</ol>
     ${(j.steps || []).some(s => s.output) ? html`<details open=${j.state !== "done"}><summary class="hint">Output</summary>
       ${(j.steps || []).filter(s => s.output).map(s => html`<${Output}>${s.output}<//>`)}</details>` : null}
@@ -54,9 +56,11 @@ export function ResultCard({ runner, onPullRequest }) {
 }
 
 // ---- stopped half way
-export function OperationBanner({ status, runner }) {
+export function OperationBanner({ status, runner, confirm }) {
   if (!status || !status.operation) return null;
-  const abort = () => { if (window.confirm("Abort the " + status.operation + "? The repository returns to how it was before it started.")) runner.run("abort", {}, "Abort"); };
+  const abort = async () => {
+    if (await confirm({ title: "Abort the " + status.operation + "?", body: "The repository returns to how it was before it started.", confirmLabel: "Abort", tone: "destructive" })) runner.run("abort", {}, "Abort");
+  };
   return html`<${Alert} tone="bad" title=${"Stopped: a " + status.operation + " is waiting"}>
     <p>Nothing was forced and nothing was pushed. Resolve the conflicts in your editor, save, then continue.</p>
     ${status.conflict.length ? html`<ul class="files">${status.conflict.map(f => html`<li><code>${f}</code></li>`)}</ul>` : null}
@@ -66,18 +70,40 @@ export function OperationBanner({ status, runner }) {
 }
 
 // ---- 1. start a task
-export function StartTab({ status, runner }) {
+export function StartTab({ status, branches, runner, onContinue, onSwitch }) {
   const c = settings(status);
   const [name, setName] = useState("");
-  const prefix = c.branchPrefix || "feature/";
-  const branch = branchFromName(name, prefix);
-  const params = { name };
+  const [choice, setChoice] = useState("stash");     // what to do with uncommitted changes: the safe one is the default
+  const plan = startPlan({ status, branches, name, prefix: c.branchPrefix || "feature/", choice });
+  const { here } = plan;
+  const from = here.integrationRef || (c.integration ? "origin/" + c.integration : "");
+  const choose = value => { setChoice(value); runner.clearPreview(); };
+  const refused = refusedForChanges(runner.shown) && runner.shown.key === JSON.stringify(["start", plan.params]);
+  const withChoice = value => { setChoice(value); runner.preview("start", { name, [value]: true }); };
+  const existsText = plan.exists === "local" ? "A branch called " + plan.branch + " already exists here." : "A branch called " + plan.branch + " exists on the remote.";
   return html`<div class="tab">
-    <p class="lead">One branch per task, created from <code>${c.integration || "the integration branch"}</code>.</p>
+    <p class="state-line">${whereLine(here)}</p>
+    ${plan.onTask ? html`<div class="continue-card">
+      <div><strong>You are working on ${here.branch}</strong>
+        <span class="hint">${here.changes ? here.changes + " uncommitted" : "nothing uncommitted"}${here.ahead ? " · ↑" + here.ahead + " to ship" : ""}</span></div>
+      <${Button} variant="secondary" size="sm" onClick=${onContinue}>Continue here<//>
+    </div>` : null}
+    <span class="section">${plan.onTask ? "Start another task" : "Start a task"}</span>
+    <p class="lead">One branch per task. ${willDo(here, plan.branch, from, choice)}</p>
     <${Field} label="Task name"><${Input} value=${name} placeholder="e.g. keep manual order date" onInput=${e => { setName(e.target.value); runner.clearPreview(); }} /><//>
-    <p class="hint">Branch: <code>${branch || "—"}</code></p>
-    <${ActionBar} runner=${runner} action="start" params=${params} label="Create branch" disabled=${!branch} />
+    <p class="hint">Branch: <code>${plan.branch || "—"}</code></p>
+    ${plan.exists ? html`<${Alert} tone="warn"><span>${existsText}</span>
+      <div class="actions"><${Button} variant="secondary" size="sm" onClick=${() => onSwitch(plan.branch)}>Switch to it<//></div><//>` : null}
+    ${plan.needsChoice && !plan.exists ? html`<fieldset class="choice">
+      <legend>Your ${here.tracked === 1 ? "uncommitted change" : here.tracked + " uncommitted changes"} to tracked files</legend>
+      <label class="check"><input type="radio" name="changes" checked=${choice === "stash"} onChange=${() => choose("stash")} /><span><strong>Stash them first</strong><br /><span class="hint">kept in the stash list, named after the branch (new files stay where they are)</span></span></label>
+      <label class="check"><input type="radio" name="changes" checked=${choice === "carry"} onChange=${() => choose("carry")} /><span><strong>Take them along</strong><br /><span class="hint">git decides: it stops cleanly, changing nothing, if they conflict</span></span></label>
+    </fieldset>` : null}
+    <${ActionBar} runner=${runner} action="start" params=${plan.params} label="Create branch" disabled=${!plan.canCreate}>
+      ${plan.needsChoice || name ? html`<${Button} variant="ghost" size="sm" onClick=${() => { setName(""); runner.clearPreview(); }}>Cancel<//>` : null}
+    <//>
     <${PreviewBox} runner=${runner} action="start" />
+    ${refused ? html`<div class="actions"><${Button} variant="secondary" size="sm" onClick=${() => withChoice("stash")}>Stash and start<//><${Button} variant="secondary" size="sm" onClick=${() => withChoice("carry")}>Take changes along<//></div>` : null}
   </div>`;
 }
 

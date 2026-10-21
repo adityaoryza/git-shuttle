@@ -2,6 +2,7 @@
  * Branches are grouped in folders by the part of the name before the first "/", each folder with its own eye. */
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { groupBranches } from "../branches.js";
+import { upstreamMarker } from "../pushstate.js";
 import { Button, Input, cn } from "./ui.js";
 
 const Icon = ({ d, children, size = 16 }) => html`<svg class="icon" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d ? html`<path d=${d} />` : null}${children}</svg>`;
@@ -13,14 +14,19 @@ function EyeToggle({ state, onClick, label }) {
   return html`<button type="button" class=${cn("eye", "eye-" + state)} onClick=${onClick} aria-label=${label} title=${label}><${EyeIcon} off=${state === "none"} /></button>`;
 }
 
-function BranchRow({ item, hidden, onToggle, onSwitch, remote, indent, refsOf }) {
+function BranchRow({ item, hidden, onToggle, onSwitch, remote, indent, refsOf, onMenu, onCompare }) {
   const { b, leaf } = item;
   const off = hidden.has(b.ref);
+  const marker = upstreamMarker(b);
   return html`<div class=${cn("pick-row", b.current && "pick-current", indent && "indent")}>
     <${EyeToggle} state=${off ? "none" : "all"} onClick=${() => onToggle(refsOf(b))} label=${(off ? "Show " : "Hide ") + b.name + " in the graph"} />
     <button type="button" class=${cn("pick-name", off && "dim")} onClick=${() => !b.current && onSwitch(b.name)} title=${b.name + (b.current ? " — you are here" : remote ? " — check out a local copy" : " — switch to it")}>
       <span class="mono">${leaf}</span>${b.current ? html`<span class="badge badge-info">current</span>` : null}
     </button>
+    ${marker ? (b.ahead || b.behind) && onCompare
+      ? html`<button type="button" class=${cn("marker", "marker-btn")} onClick=${() => onCompare(b)} title=${"Compare " + b.name + " with " + b.upstream} aria-label=${"Compare " + b.name + " with " + b.upstream + " (" + marker + ")"}>${marker}</button>`
+      : html`<span class=${cn("marker", marker === "not pushed" && "marker-warn")}>${marker}</span>` : null}
+    ${onMenu ? html`<button type="button" class="icon-btn kebab" aria-label=${"Actions for " + b.name} aria-haspopup="menu" title=${"Actions for " + b.name} onClick=${e => { const r = e.currentTarget.getBoundingClientRect(); onMenu(r.left, r.bottom + 2, b); }} onContextMenu=${e => { e.preventDefault(); onMenu(e.clientX, e.clientY, b); }}>⋯</button>` : null}
   </div>`;
 }
 
@@ -29,7 +35,7 @@ function shownState(list, hidden) {
   return off === 0 ? "all" : off === list.length ? "none" : "some";
 }
 
-function Section({ title, list, hidden, setRefs, onSwitch, remote, open, setOpen, forceOpen, closedFolders, toggleFolder, refsOf }) {
+function Section({ title, list, hidden, setRefs, onSwitch, remote, open, setOpen, forceOpen, closedFolders, toggleFolder, refsOf, onMenu, onCompare }) {
   const { root, folders } = groupBranches(list);
   const isOpen = open || forceOpen;
   const state = shownState(list, hidden);
@@ -40,7 +46,7 @@ function Section({ title, list, hidden, setRefs, onSwitch, remote, open, setOpen
     </div>
     ${isOpen ? html`<div class="pick-body">
       ${list.length === 0 ? html`<p class="hint pad">Nothing matches.</p>` : null}
-      ${root.map(item => html`<${BranchRow} item=${item} hidden=${hidden} onToggle=${refs => setRefs(refs)} onSwitch=${onSwitch} remote=${remote} refsOf=${refsOf} />`)}
+      ${root.map(item => html`<${BranchRow} item=${item} hidden=${hidden} onToggle=${refs => setRefs(refs)} onSwitch=${onSwitch} remote=${remote} refsOf=${refsOf} onMenu=${onMenu} onCompare=${onCompare} />`)}
       ${folders.map(([name, items]) => {
         const key = title + ":" + name, fOpen = forceOpen || !closedFolders.has(key), fState = shownState(items.map(i => i.b), hidden);
         return html`<div class="pick-folder">
@@ -48,14 +54,14 @@ function Section({ title, list, hidden, setRefs, onSwitch, remote, open, setOpen
             <${EyeToggle} state=${fState} onClick=${() => setRefs(items.flatMap(i => refsOf(i.b)), fState === "none")} label=${(fState === "none" ? "Show all in " : "Hide all in ") + name + "/"} />
             <button type="button" class="pick-toggle" onClick=${() => toggleFolder(key)} aria-expanded=${fOpen}><${Chevron} open=${fOpen} /><span class="mono">${name}/</span><span class="count">${items.length}</span></button>
           </div>
-          ${fOpen ? items.map(item => html`<${BranchRow} item=${item} hidden=${hidden} onToggle=${refs => setRefs(refs)} onSwitch=${onSwitch} remote=${remote} indent refsOf=${refsOf} />`) : null}
+          ${fOpen ? items.map(item => html`<${BranchRow} item=${item} hidden=${hidden} onToggle=${refs => setRefs(refs)} onSwitch=${onSwitch} remote=${remote} indent refsOf=${refsOf} onMenu=${onMenu} onCompare=${onCompare} />`) : null}
         </div>`;
       })}
     </div>` : null}
   </section>`;
 }
 
-export function BranchPicker({ status, branches, hidden, setHidden, onSwitch, disabled }) {
+export function BranchPicker({ status, branches, hidden, setHidden, onSwitch, disabled, onMenu, onCompare }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [sections, setSections] = useState({ Local: true, Remote: false });
@@ -85,7 +91,7 @@ export function BranchPicker({ status, branches, hidden, setHidden, onSwitch, di
   // a local branch and the remote branch it tracks are one entry: hiding one hides the other, or the graph would still show it
   const remoteRefs = new Set(((branches && branches.remote) || []).map(b => b.ref));
   const refsOf = b => (b.upstream && remoteRefs.has("refs/remotes/" + b.upstream) ? [b.ref, "refs/remotes/" + b.upstream] : [b.ref]);
-  const common = { refsOf, hidden, setRefs, onSwitch: pick, closedFolders, toggleFolder, forceOpen: !!q };
+  const common = { refsOf, hidden, setRefs, onSwitch: pick, closedFolders, toggleFolder, forceOpen: !!q, onMenu: onMenu && ((x, y, b) => { setOpen(false); onMenu(x, y, b); }), onCompare: onCompare && (b => { setOpen(false); onCompare(b); }) };
 
   return html`<div class="picker" ref=${box}>
     <${Button} variant="outline" size="sm" class="branch-btn" onClick=${() => setOpen(!open)} aria-expanded=${open} aria-haspopup="dialog" disabled=${disabled} title="Current branch: switch branch or choose what the graph shows">

@@ -1,17 +1,29 @@
-/* The theme: "system" (the default), "light" or "dark", remembered in the browser. Pure parts are tested with node. */
+/* The theme: "light" or "dark". A saved choice always wins; without one, the system setting is used once and not saved.
+ * The pure parts are tested with node. */
 
-export const THEMES = ["system", "light", "dark"];
+export const THEMES = ["light", "dark"];
+const KEY = "shuttle.theme";
 
-export function nextTheme(current) {
-  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+export function otherTheme(theme) {
+  return theme === "dark" ? "light" : "dark";
 }
 
-export function readTheme(storage) {
-  try { const v = storage.getItem("shuttle.theme"); return THEMES.includes(v) ? v : "system"; } catch (e) { return "system"; }
+// The saved choice, or null when there is none (or the storage is not available).
+export function savedTheme(storage) {
+  try { const value = storage.getItem(KEY); return THEMES.includes(value) ? value : null; } catch (e) { return null; }
 }
 
-// Puts the theme on <html> ("system" removes the attribute) and remembers it.
-export function applyTheme(theme, root, storage) {
-  if (theme === "system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme", theme);
-  try { if (theme === "system") storage.removeItem("shuttle.theme"); else storage.setItem("shuttle.theme", theme); } catch (e) { /* not remembered */ }
+export function systemTheme(matchMedia) {
+  try { return matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"; } catch (e) { return "light"; }
+}
+
+export function currentTheme(storage, matchMedia) {
+  return savedTheme(storage) || systemTheme(matchMedia);
+}
+
+// Puts the theme on <html>; `remember` also saves it (a click does, the first visit does not).
+export function applyTheme(theme, root, storage, remember) {
+  root.setAttribute("data-theme", theme);
+  if (!remember) return;
+  try { storage.setItem(KEY, theme); } catch (e) { /* the choice is not kept */ }
 }

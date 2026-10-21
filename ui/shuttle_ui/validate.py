@@ -6,6 +6,7 @@ from .errors import BadRequest
 NAME_RE = re.compile(r"^[A-Za-z0-9._/\-]{1,200}$")
 HASH_RE = re.compile(r"^[0-9a-fA-F]{7,40}$")
 TRAILER_RE = re.compile(r"^[A-Za-z0-9\- ]{0,200}$")
+MAX_PATHS = 2000
 
 
 def text(value, field, limit=2000, required=False, single_line=False):
@@ -44,6 +45,14 @@ def display_name(value, field="name"):
     return value
 
 
+def paths_of(value):
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise BadRequest("paths must be a list")
+    return value
+
+
 def relative_path(value):
     if not isinstance(value, str) or not value or "\0" in value or len(value) > 500:
         raise BadRequest("a path is not valid")
@@ -53,14 +62,30 @@ def relative_path(value):
 
 
 def flag(value):
-    return bool(value) if isinstance(value, (bool, int)) else False
+    """An on/off option: true or false (0 and 1 are accepted); anything else is refused rather than guessed."""
+    if value is None or isinstance(value, bool):
+        return bool(value)
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    raise BadRequest("an option must be true or false")
 
 
 def build_commands(action, params):
     """The list of git-shuttle argument lists an action stands for (run in order, stopping at the first failure)."""
     p = params if isinstance(params, dict) else {}
+    from .validate_ops import build  # late: validate_ops imports the helpers of this module
+    more = build(action, p)
+    if more is not None:
+        return more
     if action == "start":
-        return [["start", text(p.get("name"), "name", 200, True, True)]]
+        args = ["start", text(p.get("name"), "name", 200, True, True)]
+        if flag(p.get("stash")) and flag(p.get("carry")):
+            raise BadRequest("choose --stash or --carry, not both")
+        if flag(p.get("stash")):
+            args.append("--stash")
+        if flag(p.get("carry")):
+            args.append("--carry")
+        return [args]
     if action == "cherry-pick":
         commits = p.get("commits") or []
         if not isinstance(commits, list) or not commits or len(commits) > 100:
@@ -80,16 +105,29 @@ def build_commands(action, params):
             if not isinstance(p["commit"], str) or not HASH_RE.match(p["commit"]):
                 raise BadRequest("a commit is not valid")
             args.append(p["commit"])
-        return [args]
+        return [args] + ([["push"]] if flag(p.get("push")) else [])
     if action == "switch":
         return [["switch", name(p.get("name"), "name")]]
     if action == "stage":
-        paths = [relative_path(x) for x in (p.get("paths") or [])]
-        if not paths:
+        paths = [relative_path(x) for x in paths_of(p.get("paths"))]
+        if not paths or len(paths) > MAX_PATHS:
             raise BadRequest("name the paths to stage")
         return [["stage", "--"] + paths]
-    if action == "sync":
-        return [["sync"]]
+    if action == "unstage":
+        paths = [relative_path(x) for x in paths_of(p.get("paths"))]
+        if not paths or len(paths) > MAX_PATHS:
+            raise BadRequest("name the paths to unstage")
+        return [["unstage", "--"] + paths]
+    if action == "discard":
+        paths = [relative_path(x) for x in paths_of(p.get("paths"))]
+        if not paths or len(paths) > MAX_PATHS:
+            raise BadRequest("name the paths to discard")
+        args = ["discard"]
+        if flag(p.get("staged")):
+            args.append("--staged")
+        if flag(p.get("untracked")):
+            args.append("--untracked")
+        return [args + ["--"] + paths]
     if action == "push":
         return [["push"] + (["--force-with-lease"] if flag(p.get("force")) else [])]
     if action == "continue":

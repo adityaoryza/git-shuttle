@@ -122,11 +122,11 @@ t("languageOf", () => {
 });
 t("repoLabels: only repositories that share a name get a place", () => {
   const repos = [
-    { id: "1", name: "PReauCess", path: "/home/a/project-19/PReauCess" },
-    { id: "2", name: "PReauCess", path: "/home/a/project/PReauCess" },
+    { id: "1", name: "shop", path: "/home/a/work/shop" },
+    { id: "2", name: "shop", path: "/home/a/play/shop" },
     { id: "3", name: "site", path: "/srv/site" },
   ];
-  assert.deepStrictEqual(repoLabels(repos).map(l => l.label), ["PReauCess — project-19/PReauCess", "PReauCess — project/PReauCess", "site"]);
+  assert.deepStrictEqual(repoLabels(repos).map(l => l.label), ["shop — work/shop", "shop — play/shop", "site"]);
   assert.deepStrictEqual(repoLabels(repos).map(l => l.title), repos.map(r => r.path));
   assert.deepStrictEqual(repoLabels([]), []);
   assert.strictEqual(repoLabels([{ id: "1", name: "x", path: "/" }, { id: "2", name: "x", path: "/a" }])[0].label, "x — ");

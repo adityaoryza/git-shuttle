@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# git shuttle continue | abort — finish or give up the rebase, merge or cherry-pick that stopped on a conflict
+# git shuttle continue | abort — finish or give up the rebase, merge, cherry-pick, revert or patch that stopped on a conflict
 
 cmd_continue() {
     need_repo
@@ -29,6 +29,8 @@ cmd_continue() {
         rebase)      run env GIT_EDITOR=true git rebase --continue || stop "the rebase stopped again: resolve the next conflict, then  git shuttle continue" ;;
         merge)       run git commit --no-edit || die "cannot finish the merge" ;;
         cherry-pick) run env GIT_EDITOR=true git cherry-pick --continue || stop "the cherry-pick stopped again: resolve the next conflict, then  git shuttle continue" ;;
+        am)          run git am --continue || stop "the patch stopped again: resolve the files, then  git shuttle continue" ;;
+        revert)      run env GIT_EDITOR=true git revert --continue || stop "the revert stopped again: resolve the next conflict, then  git shuttle continue" ;;
     esac
     step "done. Run  git shuttle ship  again (without a message) to go on with what is left."
 }
@@ -43,6 +45,8 @@ cmd_abort() {
         rebase)      run git rebase --abort || die "cannot abort the rebase" ;;
         merge)       run git merge --abort || die "cannot abort the merge" ;;
         cherry-pick) run git cherry-pick --abort || die "cannot abort the cherry-pick" ;;
+        am)          run git am --abort || die "cannot abort the patch" ;;
+        revert)      run git revert --abort || die "cannot abort the revert" ;;
     esac
     step "aborted"
 }

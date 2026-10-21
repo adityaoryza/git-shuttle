@@ -12,6 +12,8 @@ need_repo() {
 # need_branch — sets BRANCH to the checked out branch; a detached HEAD has none. Call it directly, never inside $( ).
 # shellcheck disable=SC2034  # BRANCH is read by the commands
 need_branch() {
+    # A dry run of "create a branch, then push it": the step after the branch assumes it was made.
+    if [[ "${DRY_RUN:-0}" == 1 && -n "${GIT_SHUTTLE_ASSUME_BRANCH:-}" ]]; then BRANCH=$GIT_SHUTTLE_ASSUME_BRANCH; return 0; fi
     BRANCH=$(git symbolic-ref -q --short HEAD 2>/dev/null) || die "HEAD is detached: check out a branch first"
 }
 
@@ -55,9 +57,11 @@ upstream_of() { git rev-parse --abbrev-ref --symbolic-full-name "$1@{upstream}" 
 # operation_in_progress — prints rebase, merge or cherry-pick when one is waiting to be finished (nothing otherwise).
 operation_in_progress() {
     local gd; gd=$(git rev-parse --git-dir 2>/dev/null) || return 0
-    if [[ -d "$gd/rebase-merge" || -d "$gd/rebase-apply" ]]; then printf 'rebase'
+    if [[ -f "$gd/rebase-apply/applying" ]]; then printf 'am'
+    elif [[ -d "$gd/rebase-merge" || -d "$gd/rebase-apply" ]]; then printf 'rebase'
     elif [[ -f "$gd/MERGE_HEAD" ]]; then printf 'merge'
     elif [[ -f "$gd/CHERRY_PICK_HEAD" ]]; then printf 'cherry-pick'
+    elif [[ -f "$gd/REVERT_HEAD" ]]; then printf 'revert'
     fi
 }
 

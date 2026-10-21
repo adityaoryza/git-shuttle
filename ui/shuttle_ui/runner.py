@@ -6,12 +6,27 @@ from .errors import BadRequest
 from .paths import SHUTTLE
 
 
+MAX_OUTPUT = 256 * 1024     # of what a job reports back to the page
+
+# Variables that would point git at another repository, index or diff program than the one a request names.
+_DROPPED_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+                "GIT_EXTERNAL_DIFF", "GIT_NAMESPACE", "GIT_COMMON_DIR", "GIT_PREFIX")
+
+
 def child_env(extra=None):
-    env = dict(os.environ)
-    env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "GIT_EDITOR": "true", "NO_COLOR": "1"})
+    env = {key: value for key, value in os.environ.items() if key not in _DROPPED_ENV}
+    # Paths come from git itself or from the page: they name files, never patterns.
+    env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "GIT_EDITOR": "true", "NO_COLOR": "1", "GIT_LITERAL_PATHSPECS": "1"})
     if extra:
         env.update(extra)
     return env
+
+
+def limited(raw):
+    """Decode command output for the page, cutting it at MAX_OUTPUT bytes."""
+    if len(raw) <= MAX_OUTPUT:
+        return raw.decode("utf-8", "replace")
+    return raw[:MAX_OUTPUT].decode("utf-8", "replace") + "\n[output cut: more than %d KiB]" % (MAX_OUTPUT // 1024)
 
 
 def run_shuttle(repo_path, args, dry_run=False, timeout=120, extra_env=None):
@@ -21,7 +36,7 @@ def run_shuttle(repo_path, args, dry_run=False, timeout=120, extra_env=None):
         done = subprocess.run(argv, cwd=repo_path, env=child_env(extra_env), capture_output=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         return 124, "timed out"
-    return done.returncode, (done.stdout + done.stderr).decode("utf-8", "replace")
+    return done.returncode, limited(done.stdout + done.stderr)
 
 
 def parse_porcelain(raw):
@@ -49,5 +64,26 @@ def shuttle_porcelain(repo_path, command, timeout=60):
 
 
 def git_output(repo_path, *args, timeout=120):
-    """A fixed, read-only git command (the arguments never come from the page)."""
-    return subprocess.run(["git"] + list(args), cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    """A fixed, read-only git command (the arguments never come from the page).
+
+    No file-system monitor hook runs (a repository can configure one), and `git status` does not take the optional lock
+    that refreshes the index. Git may still update the stat cache of the index, as it does for any user.
+    """
+    argv = ["git", "-c", "core.fsmonitor=false"] + list(args)
+    return subprocess.run(argv, cwd=repo_path, env=child_env({"GIT_OPTIONAL_LOCKS": "0"}), capture_output=True, timeout=timeout)
+
+
+def shuttle_records(repo_path, args, timeout=60):
+    """A read-only git-shuttle command whose porcelain output is NUL separated records of unit-separated fields."""
+    done = subprocess.run([SHUTTLE] + list(args) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    if done.returncode != 0:
+        raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 500)
+    return [rec.decode("utf-8", "replace").split("\x1f") for rec in done.stdout.split(b"\0") if rec]
+
+
+def shuttle_text(repo_path, args, timeout=60):
+    """A read-only git-shuttle command and its plain output (or the reason it refused)."""
+    done = subprocess.run([SHUTTLE] + list(args), cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    if done.returncode != 0:
+        raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 400)
+    return done.stdout.decode("utf-8", "replace")

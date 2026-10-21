@@ -7,10 +7,15 @@ lib/core/                what every command uses
     config.sh              git config shuttle.*, the base, integration and release branches
     git.sh                 repository state: branch, clean tree, refs, operations in progress
     policy.sh              protected branches and the commit message rules
+    refs.sh                commits and branches: is it on a remote, in a worktree, a merge commit; refuse to rewrite pushed history
+    journal.sh             what a command changed (branches, tags, HEAD, stash) before and after, for undo and redo
 lib/commands/            one file per command (cmd_<name>), loaded by bin/git-shuttle
 ui/shuttle_ui/           the web UI: a Python package, standard library only
     cli.py                 command line and server start         api.py       the routes
     http.py                requests, security checks, static files   validate.py  what the page may ask for
+    validate_ops.py        the actions on branches, commits, the stash and worktrees
+    actions.py             every action of the page and the command it stands for (the parity table)
+    redact.py              credentials replaced before text goes into the log
     diffs.py               a commit, the working tree, one file's diff (read only, capped)
     runner.py              runs git-shuttle, reads --porcelain      jobs.py      one action at a time per repository
     store.py               registered repositories and history      graph.py     the commit graph from `git log`
@@ -46,4 +51,7 @@ of the lane that waits for it, and its parents take columns for the next row.
 
 1. `lib/commands/<name>.sh` with a `cmd_<name>` function; add it to `main()` and `usage()` in `bin/git-shuttle`.
 2. A suite in `tests/cli/`, run through `tests/run.sh`.
-3. If the page needs it: a case in `validate.build_commands`, and a test in `tests/ui/test_server.py`.
+3. If the page needs it: a case in `validate.build_commands` (or `validate_ops.build`), a test in `tests/ui/`.
+4. The parity test fails until the command is in `COMMANDS` of `ui/shuttle_ui/actions.py` and its actions are in `CATALOG` and have a
+   behaviour in `ui/shuttle_ui/static/js/ops.js` (its label, the reason it is unavailable, the form it needs, the request it makes).
+5. A command that changes refs goes through `journaled` in `bin/git-shuttle`, so that `undo` can take it back.

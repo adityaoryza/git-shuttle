@@ -1,16 +1,38 @@
-/* The dialogs: add a repository, change its settings, read the history. */
-import { html, useState } from "../../vendor/preact-htm.js";
+/* The dialogs: add a repository, change its settings. */
+import { html, useState, useEffect } from "../../vendor/preact-htm.js";
+import { api } from "../api.js";
 import { DEFAULT_RELEASE_PATTERN, branchOptions, inferReleasePattern, normalizePrefix, prefixOptions, releasePreview } from "../logic.js";
 import { Combobox } from "./combobox.js";
 import { Badge, Button, Field, Input, Modal, cn } from "./ui.js";
 
+/* Pick a repository by walking through your home folder (the server lists folder names only, nothing outside your home). */
 export function AddRepoDialog({ onAdd, onClose }) {
   const [path, setPath] = useState("");
+  const [listing, setListing] = useState(null);
+  const [error, setError] = useState("");
   const [name, setName] = useState("");
-  const submit = () => path.trim() && onAdd(path.trim(), name.trim());
-  return html`<${Modal} title="Add a repository" onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Cancel<//><${Button} onClick=${submit} disabled=${!path.trim()}>Add<//>`}>
-    <${Field} label="Absolute path of a git repository" hint="Only repositories added here can be acted on.">
-      <${Input} class="mono" autofocus value=${path} placeholder="/home/you/projects/my-repo" onInput=${e => setPath(e.target.value)} onKeyDown=${e => e.key === "Enter" && submit()} /><//>
+  const go = async target => {
+    try {
+      const d = await api("GET", "browse" + (target ? "?path=" + encodeURIComponent(target) : ""));
+      setListing(d); setPath(d.path); setError("");
+      try { localStorage.setItem("shuttle.lastFolder", d.path); } catch (e) { /* not remembered */ }
+    } catch (e) { setError(e.message); }
+  };
+  useEffect(() => { let last = ""; try { last = localStorage.getItem("shuttle.lastFolder") || ""; } catch (e) { /* none */ } go(last).then(() => {}); }, []);
+  // outside your home folder nothing is listed, but a path you type can still be added (the server checks that it is a repository)
+  const typed = !!error && path.trim().startsWith("/");
+  const canAdd = !!(listing && listing.repo) || typed;
+  const submit = () => canAdd && onAdd(listing && listing.repo ? listing.path : path.trim(), name.trim());
+  const tail = p => p.split("/").filter(Boolean).pop() || "/";
+  return html`<${Modal} title="Add a repository" onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Cancel<//><${Button} onClick=${submit} disabled=${!canAdd} title=${canAdd ? "" : "Open a folder that is a git repository"}>Add ${listing && listing.repo ? tail(listing.path) : typed ? tail(path.trim()) : ""}<//>`}>
+    <${Field} label="Folder" hint="Type a path and press Enter, or click through the folders. Only folders inside your home folder are listed.">
+      <${Input} class="mono" autofocus value=${path} placeholder="/home/you/projects/my-repo" onInput=${e => setPath(e.target.value)} onKeyDown=${e => e.key === "Enter" && go(path.trim())} /><//>
+    ${error ? html`<span class="field-hint warn" role="alert">${error}${typed ? " The path can still be added if it is a git repository." : ""}</span>` : null}
+    ${listing ? html`<div class="folders" role="listbox" aria-label="Folders">
+      ${listing.parent ? html`<button type="button" role="option" class="folder" onClick=${() => go(listing.parent)}><span aria-hidden="true">↰</span> <span>..</span> <span class="hint">up</span></button>` : null}
+      ${listing.dirs.length === 0 ? html`<p class="hint pad">No folders here.</p>` : listing.dirs.map(d => html`<button type="button" role="option" class="folder" onClick=${() => go(listing.path + "/" + d.name)}><span aria-hidden="true">▸</span> <span class="mono">${d.name}</span>${d.repo ? html`<${Badge} tone="ok">git repository<//>` : null}</button>`)}
+    </div>
+    ${listing.repo ? html`<${Badge} tone="ok">This folder is a git repository<//>` : html`<p class="hint">Open a folder that is a git repository, then Add.</p>`}` : html`<p class="hint">Loading…</p>`}
     <${Field} label="Display name (optional)" hint="Shown in the list. The folder name is used when empty; you can rename it later in Settings."><${Input} maxlength="80" value=${name} onInput=${e => setName(e.target.value)} onKeyDown=${e => e.key === "Enter" && submit()} /><//>
   <//>`;
 }
@@ -74,14 +96,5 @@ export function SettingsDialog({ status, branches, repoName, onSave, onRemove, o
     <//>
 
     ${RULE_FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Input} class="mono" value=${form[key]} onInput=${e => set(key, e.target.value)} /><//>`)}
-  <//>`;
-}
-
-export function HistoryDialog({ history, onClose }) {
-  return html`<${Modal} title="History" wide onClose=${onClose}>
-    ${history.length === 0 ? html`<p class="hint">Nothing has been run yet. Only actions run from this UI are listed, on this machine.</p>` : html`<table class="table">
-      <thead><tr><th>Time</th><th>Repository</th><th>Action</th><th>Result</th></tr></thead>
-      <tbody>${history.map(e => html`<tr><td class="mono">${(e.time || "").replace("T", " ")}</td><td>${e.repo}</td><td>${e.action}</td>
-        <td><${Badge} tone=${e.state === "done" ? "ok" : "bad"}>${e.state}<//></td></tr>`)}</tbody></table>`}
   <//>`;
 }

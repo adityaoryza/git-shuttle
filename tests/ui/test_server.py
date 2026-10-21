@@ -13,6 +13,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui"))
 from shuttle_ui import cli, http as ui_http  # noqa: E402
+from shuttle_ui.errors import BadRequest  # noqa: E402
 from shuttle_ui.store import Store  # noqa: E402
 
 os.environ.update({
@@ -149,7 +150,7 @@ class TestSecurity(Base):
             self.assertEqual(status, 200, name)
             self.assertIn(ctype, headers["Content-Type"])
             self.assertNotIn(b"test-token-123", data)
-        for bad in ("../cli.py", "%2e%2e/cli.py", "..%2fcli.py", "js/../../cli.py", "js/../../__init__.py", "vendor/README.md", "js", "js/", "", "nothing.js", "%2e%2e%2f%2e%2e%2fbin/git-shuttle", "/etc/passwd", "//etc/passwd"):
+        for bad in ("../cli.py", "%2e%2e/cli.py", "..%2fcli.py", "js/../../cli.py", "js/../../__init__.py", "vendor/README.md", "js", "js/", "", "nothing.js", "%2e%2e%2f%2e%2e%2fbin/git-shuttle", "js/package.json", "/etc/passwd", "//etc/passwd"):
             self.assertEqual(self.request("GET", "/static/" + bad, token=False)[0], 404, bad)
 
     def test_icons_and_the_theme_script_are_served_with_the_right_types(self):
@@ -200,7 +201,7 @@ class TestSecurity(Base):
         self.assertEqual(status, 200, data)
         self.assertGreaterEqual(len(data["commits"]), 1)
         first = data["commits"][0]
-        self.assertEqual(set(first), {"sha", "parents", "author", "time", "refs", "subject"})
+        self.assertEqual(set(first), {"sha", "parents", "author", "email", "time", "committer", "committer_email", "committer_time", "refs", "subject", "body"})
         self.assertIn("origin", data["remotes"])
         self.assertTrue(any(r.startswith("HEAD -> ") for c in data["commits"] for r in c["refs"]))
 
@@ -301,12 +302,25 @@ class TestSecurity(Base):
             ("pr", {"base": "bad name"}),
             ("init", {"integration": "x;y"}),
             ("init", {"forbidTrailers": "bad!name"}),
+            ("start", {"name": "x", "stash": True, "carry": True}),
+            ("unstage", {"paths": []}),
+            ("unstage", {"paths": "a.txt"}),
+            ("unstage", {"paths": ["--all"]}),
+            ("unstage", {"paths": ["../x"]}),
+            ("discard", {"paths": []}),
+            ("discard", {"paths": ["/etc/passwd"]}),
+            ("discard", {"paths": ["a.txt"], "staged": "yes"}),
+            ("discard", {"paths": ["a.txt"], "untracked": 5}),
+            ("stage", {"paths": ["a"] * 2001}),
             ("switch", {"name": "-x"}),
             ("switch", {"name": "a b"}),
             ("switch", {}),
             ("branch", {"name": "ok", "commit": "--all"}),
             ("branch", {"name": "ok", "commit": 5}),
             ("branch", {"name": "x;y"}),
+            ("branch", {"name": "-x", "push": True}),
+            ("branch", {"name": "ok", "commit": "--all", "push": True}),
+            ("push", {"force": "yes please"}),
             ("cherry-pick", {"commits": []}),
             ("cherry-pick", {"commits": ["--abort"]}),
             ("cherry-pick", {"commits": "abcdef1"}),
@@ -342,6 +356,16 @@ class TestActions(Base):
     def setUp(self):
         git(self.world.work, "checkout", "-q", "main", check=False)
 
+    def own_world(self):
+        """Repositories for one test only; the fake gh of the shared world stays the one in use afterwards."""
+        gh = os.environ.get("GIT_SHUTTLE_GH")
+        world = World()
+        def restore():
+            world.close()
+            os.environ["GIT_SHUTTLE_GH"] = gh
+        self.addCleanup(restore)
+        return world
+
     def test_repos_and_status(self):
         status, data = self.api("GET", "repos")
         self.assertEqual(status, 200)
@@ -352,6 +376,114 @@ class TestActions(Base):
         status, data = self.api("GET", "repos/%s/status" % self.rid())
         self.assertEqual(status, 200)
         self.assertIn("blocker", data["status"])
+
+    def test_fetch_says_what_it_changed(self):
+        world = self.own_world()                # its own repositories: this test moves develop on the remote
+        work, remote = world.work, world.remote
+        route = "repos/%s/fetch" % self.store.add_repo(os.path.realpath(work))["id"]
+        status, data = self.api("POST", route, {})
+        self.assertEqual((status, data["ok"], data["remote"]), (200, True, "origin"))
+        self.assertTrue(data["summary"]["up_to_date"], "nothing changed since the clone")
+        self.assertEqual((data["summary"]["new_commits"], data["summary"]["created"], data["summary"]["updated"], data["summary"]["pruned"]), (0, [], [], []))
+        # a branch appears on the remote, and develop moves forward there
+        git(remote, "branch", "fetch-demo", "develop")
+        tip = git(work, "rev-parse", "origin/develop")
+        git(work, "checkout", "-q", "develop")
+        write(os.path.join(work, "fetched.txt"), "new\n")
+        git(work, "add", "fetched.txt"); git(work, "commit", "-q", "-m", "fetched work")
+        newest = git(work, "rev-parse", "HEAD")
+        git(work, "push", "-q", "origin", "develop")
+        git(work, "update-ref", "refs/remotes/origin/develop", tip)       # as if this clone had not seen the push
+        git(work, "checkout", "-q", "main")
+        summary = self.api("POST", route, {})[1]["summary"]
+        self.assertEqual(summary["created"], ["refs/remotes/origin/fetch-demo"])
+        self.assertEqual(summary["updated"], ["refs/remotes/origin/develop"])
+        self.assertEqual((summary["new_commits"], summary["new_shas"], summary["up_to_date"]), (1, [newest], False))
+        # the branch is deleted on the remote: the next fetch prunes it here
+        git(remote, "branch", "-D", "fetch-demo")
+        summary = self.api("POST", route, {})[1]["summary"]
+        self.assertEqual((summary["pruned"], summary["created"], summary["updated"]), (["refs/remotes/origin/fetch-demo"], [], []))
+        self.assertEqual(git(work, "branch", "-r", "--list", "origin/fetch-demo"), "")
+
+    def test_a_failed_fetch_has_no_summary(self):
+        world = self.own_world()
+        git(world.work, "remote", "add", "broken", "/nonexistent/remote.git")
+        git(world.work, "config", "shuttle.remote", "broken")
+        data = self.api("POST", "repos/%s/fetch" % self.store.add_repo(os.path.realpath(world.work))["id"], {})[1]
+        self.assertEqual((data["ok"], data["summary"]), (False, None))
+        self.assertTrue(data["output"])
+
+    def test_start_can_stash_or_carry_uncommitted_changes(self):
+        work = self.world.work
+        git(work, "checkout", "-q", "-b", "feature/busy", "develop")
+        for params, stashed in (({"stash": True}, 1), ({"carry": True}, 0)):
+            git(work, "checkout", "-q", "feature/busy")
+            write(os.path.join(work, "file.txt"), "base\ndev\nuncommitted\n")
+            refused = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "start", "params": {"name": "Busy " + str(stashed)}})[1]
+            self.assertFalse(refused["ok"], "the default still refuses")
+            self.assertIn("uncommitted changes", refused["steps"][0]["output"])
+            preview = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "start", "params": {"name": "Busy " + str(stashed), **params}})[1]
+            self.assertTrue(preview["ok"], preview)
+            job = self.run_job("start", {"name": "Busy " + str(stashed), **params})
+            self.assertEqual(job["state"], "done", job)
+            self.assertEqual(len(git(work, "stash", "list").splitlines()), stashed)
+            git(work, "stash", "drop", check=False); git(work, "checkout", "-q", "--", ".")
+        git(work, "checkout", "-q", "main")
+
+    def test_a_branch_made_here_can_be_published_in_the_same_action(self):
+        work, remote = self.world.work, self.world.remote
+        tip = git(work, "rev-parse", "develop")
+        params = {"name": "feature/published-here", "commit": tip, "push": True}
+        preview = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "branch", "params": params})[1]
+        self.assertTrue(preview["ok"], preview)
+        self.assertEqual([s["argv"] for s in preview["steps"]], [["branch", "feature/published-here", tip], ["push"]], "both steps are in the preview")
+        self.assertIn("git push -u origin feature/published-here", preview["steps"][1]["output"], "the preview pushes the branch that will exist")
+        self.assertEqual(git(work, "branch", "--list", "feature/published-here"), "", "a preview makes nothing")
+        job = self.run_job("branch", params)
+        self.assertEqual(job["state"], "done", job)
+        self.assertEqual(git(remote, "rev-parse", "feature/published-here"), tip, "the branch exists on the remote")
+        self.assertEqual(git(work, "rev-parse", "--abbrev-ref", "feature/published-here@{upstream}"), "origin/feature/published-here")
+        git(work, "checkout", "-q", "main")
+        # without the flag only the branch is made
+        plain = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "branch", "params": {"name": "feature/local-only", "commit": tip}})[1]
+        self.assertEqual(len(plain["steps"]), 1)
+
+    def test_branches_say_where_they_stand_against_their_upstream(self):
+        work = self.world.work
+        git(work, "checkout", "-q", "-b", "feature/tracked", "develop")
+        git(work, "push", "-q", "-u", "origin", "feature/tracked")
+        git(work, "checkout", "-q", "-b", "feature/never-pushed", "develop")
+        git(work, "checkout", "-q", "feature/tracked")
+        write(os.path.join(work, "t1.txt"), "1\n"); git(work, "add", "-A"); git(work, "commit", "-q", "-m", "ahead 1")
+        write(os.path.join(work, "t2.txt"), "2\n"); git(work, "add", "-A"); git(work, "commit", "-q", "-m", "ahead 2")
+        git(work, "checkout", "-q", "main")
+        by_name = {b["name"]: b for b in self.api("GET", "repos/%s/branches" % self.rid())[1]["local"]}
+        self.assertEqual((by_name["feature/tracked"]["upstream"], by_name["feature/tracked"]["ahead"], by_name["feature/tracked"]["behind"]), ("origin/feature/tracked", 2, 0))
+        self.assertEqual((by_name["feature/never-pushed"]["upstream"], by_name["feature/never-pushed"]["ahead"]), ("", 0), "no upstream: not pushed")
+        # the remote loses the branch: the upstream is gone
+        git(self.world.remote, "branch", "-D", "feature/tracked")
+        git(work, "fetch", "-q", "--prune", "origin")
+        gone = {b["name"]: b for b in self.api("GET", "repos/%s/branches" % self.rid())[1]["local"]}["feature/tracked"]
+        self.assertTrue(gone["gone"])
+
+    def test_files_can_be_staged_unstaged_and_discarded(self):
+        work = self.world.work
+        git(work, "checkout", "-q", "-b", "feature/files-ui", "develop")
+        write(os.path.join(work, "a.txt"), "a\n"); write(os.path.join(work, "b.txt"), "b\n")
+        git(work, "add", "-A"); git(work, "commit", "-q", "-m", "two files")
+        write(os.path.join(work, "a.txt"), "a changed\n"); write(os.path.join(work, "new.txt"), "new\n")
+        staged = lambda: git(work, "diff", "--cached", "--name-only").split()
+        self.assertEqual(self.run_job("stage", {"paths": ["a.txt", "new.txt"]})["state"], "done")
+        self.assertEqual(sorted(staged()), ["a.txt", "new.txt"])
+        self.assertEqual(self.run_job("unstage", {"paths": ["a.txt"]})["state"], "done")
+        self.assertEqual(staged(), ["new.txt"])
+        refused = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "discard", "params": {"paths": ["new.txt"]}})[1]
+        self.assertFalse(refused["ok"], "an untracked file is not deleted unless asked")
+        self.assertEqual(self.run_job("discard", {"paths": ["a.txt"]})["state"], "done")
+        self.assertEqual(open(os.path.join(work, "a.txt")).read(), "a\n")
+        self.assertEqual(self.run_job("discard", {"paths": ["new.txt"], "staged": True, "untracked": True})["state"], "done")
+        self.assertFalse(os.path.exists(os.path.join(work, "new.txt")))
+        git(work, "checkout", "-q", "main")
 
     def test_start_creates_the_branch(self):
         job = self.run_job("start", {"name": "My Task"})
@@ -445,7 +577,7 @@ class TestActions(Base):
         self.assertEqual(log[0], "Merge branch 'feat/two' into develop")
         self.assertIn("[FEAT] tw_a: first", log); self.assertIn("[FEAT] tw_b: second", log)
         self.assertEqual(git(self.world.work, "branch", "--show-current"), "feat/two")
-        self.assertTrue(any(h["action"] == "ship" and h["state"] == "done" for h in self.api("GET", "history")[1]["history"]))
+        self.assertTrue(any(h["action"] == "ship" and h["state"] == "done" for h in self.api("GET", "history")[1]["entries"]))
 
     def test_ship_stops_at_the_first_failure(self):
         self.world.feature("feat/stops", {"st_a/a.py": "a\n"})
@@ -560,7 +692,7 @@ class TestRename(Base):
     def test_the_history_uses_the_display_name(self):
         self.api("POST", "repos/%s/rename" % self.rid(), {"name": "Shown name"})
         self.run_job("sync")   # on the protected main it is refused, and the history says for which repository
-        self.assertEqual(self.api("GET", "history")[1]["history"][0]["repo"], "Shown name")
+        self.assertEqual(self.api("GET", "history")[1]["entries"][0]["repo"], "Shown name")
         self.api("POST", "repos/%s/rename" % self.rid(), {"name": os.path.basename(self.world.work)})
 
     def test_invalid_names_are_refused(self):
@@ -840,6 +972,198 @@ class TestBrowse(Base):
             self.assertFalse(os.path.exists(marker))
         finally:
             git(self.lab, "config", "--unset", "diff.external"); git(self.lab, "config", "--unset", "diff.textconv")
+
+
+class TestHardening(Base):
+    """Things a hostile page, repository or client could try: each one has a test."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.lab = tempfile.mkdtemp(prefix="shuttle-ui-hard.")
+        git(cls.lab, "init", "-q", "-b", "main")
+        write(os.path.join(cls.lab, "a*.txt"), "star\n")
+        write(os.path.join(cls.lab, "ab.txt"), "plain\n")
+        write(os.path.join(cls.lab, "x.txt"), "x\n")
+        git(cls.lab, "add", "-A"); git(cls.lab, "commit", "-q", "-m", "files")
+        cls.repo = cls.store.add_repo(os.path.realpath(cls.lab), "hard")
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.lab, ignore_errors=True)
+        super().tearDownClass()
+
+    def diff(self, source, path, **extra):
+        return self.api("POST", "repos/%s/diff" % self.repo["id"], {"source": source, "path": path, **extra})
+
+    # -- paths are names, never patterns
+    def test_a_path_with_glob_characters_names_one_file(self):
+        write(os.path.join(self.lab, "a*.txt"), "star changed\n")
+        write(os.path.join(self.lab, "ab.txt"), "plain changed\n")
+        try:
+            status, d = self.diff("worktree", "a*.txt")
+            self.assertEqual(status, 200)
+            self.assertIn("star changed", d["text"])
+            self.assertNotIn("plain changed", d["text"])
+        finally:
+            git(self.lab, "checkout", "--", ".")
+
+    def test_pathspec_magic_is_not_interpreted(self):
+        write(os.path.join(self.lab, "x.txt"), "changed\n")
+        try:
+            for magic in (":(exclude)ab.txt", ":(top)x.txt", ":/x.txt", ":!ab.txt"):
+                status, d = self.diff("worktree", magic)
+                self.assertEqual((status, d["text"]), (200, ""), magic)
+        finally:
+            git(self.lab, "checkout", "--", ".")
+
+    def test_git_is_started_without_variables_that_redirect_it(self):
+        from shuttle_ui import runner
+        names = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_EXTERNAL_DIFF", "GIT_NAMESPACE")
+        old = dict(os.environ)
+        os.environ.update({name: "/elsewhere" for name in names})
+        try:
+            env = runner.child_env()
+        finally:
+            os.environ.clear(); os.environ.update(old)
+        for name in names:
+            self.assertNotIn(name, env)
+        self.assertEqual(env["GIT_LITERAL_PATHSPECS"], "1")
+        self.assertEqual(env["GIT_CONFIG_GLOBAL"], "/dev/null", "settings that isolate git are kept")
+
+    def test_a_repository_cannot_run_its_file_system_monitor_hook(self):
+        marker = os.path.join(self.lab, ".git", "monitor-ran")
+        git(self.lab, "config", "core.fsmonitor", "touch %s; echo" % marker)
+        try:
+            subprocess.run(["git", "status"], cwd=self.lab, capture_output=True)
+            if not os.path.exists(marker):
+                self.skipTest("this git does not run core.fsmonitor like a hook")
+            os.remove(marker)
+            for route in ("worktree", "branches", "graph"):
+                self.api("GET", "repos/%s/%s" % (self.repo["id"], route))
+            self.diff("worktree", "x.txt")
+            self.assertFalse(os.path.exists(marker))
+        finally:
+            git(self.lab, "config", "--unset", "core.fsmonitor")
+
+    # -- the remote name comes from the repository's own configuration
+    def test_a_remote_name_cannot_be_an_option(self):
+        git(self.lab, "config", "shuttle.remote", "-x")
+        try:
+            status, d = self.api("POST", "repos/%s/fetch" % self.repo["id"], {})
+            self.assertEqual(status, 400, d)
+        finally:
+            git(self.lab, "config", "--unset", "shuttle.remote")
+
+    # -- static files and requests
+    def test_a_nul_byte_in_a_static_name_is_a_plain_404(self):
+        with self.assertRaises(BadRequest) as caught:
+            ui_http.static_file("/static/js/\x00.js")
+        self.assertEqual(caught.exception.status, 404)
+
+    def test_nested_brackets_are_a_bad_request_not_a_crash(self):
+        raw = ('{"a":' + "[" * 200000 + "]" * 200000 + "}").encode()
+        status, data, _, _ = self.request("POST", "/api/repos", raw=raw, headers={"Content-Type": "application/json", "Content-Length": str(len(raw))})
+        self.assertEqual(status, 400, data)
+
+    def test_a_refused_body_closes_the_connection(self):
+        import socket
+        for headers, expected in (("Content-Type: text/plain", b" 415 "), ("Content-Type: application/json\r\nContent-Length: %d" % (ui_http.MAX_BODY + 1), b" 413 ")):
+            sock = socket.create_connection(("127.0.0.1", self.port), timeout=10)
+            sock.sendall(("POST /api/repos HTTP/1.1\r\nHost: 127.0.0.1:%d\r\nX-Shuttle-Token: test-token-123\r\n%s\r\n" % (self.port, headers)).encode()
+                         + (b"Content-Length: 3\r\n\r\nabc" if "Content-Length" not in headers else b"\r\n"))
+            sock.settimeout(5)
+            reply = b""
+            try:
+                while True:         # reading to the end only works when the server closes the connection
+                    chunk = sock.recv(65536)
+                    if not chunk:
+                        break
+                    reply += chunk
+            except ConnectionResetError:    # closing with the body still unread may reset the connection
+                pass
+            self.assertIn(expected, reply.split(b"\r\n")[0] + b" ")
+            sock.close()
+
+    def test_a_client_that_stops_sending_is_dropped(self):
+        import socket
+        old, ui_http.Handler.timeout = ui_http.Handler.timeout, 1
+        try:
+            sock = socket.create_connection(("127.0.0.1", self.port), timeout=10)
+            sock.sendall(b"GET /api/repos HTTP/1.1\r\nHost: 127")
+            time.sleep(1.6)
+            sock.settimeout(5)
+            self.assertEqual(sock.recv(1), b"")
+            sock.close()
+        finally:
+            ui_http.Handler.timeout = old
+
+    # -- sizes
+    def test_a_huge_commit_message_is_cut(self):
+        write(os.path.join(self.lab, "m.txt"), "m\n")
+        git(self.lab, "add", "m.txt")
+        with open(os.path.join(self.lab, ".git", "big-message"), "w") as f:
+            f.write("subject\n\n" + "word " * 60000)
+        git(self.lab, "commit", "-q", "-F", os.path.join(self.lab, ".git", "big-message"))
+        d = self.api("GET", "repos/%s/commits/%s" % (self.repo["id"], git(self.lab, "rev-parse", "HEAD")))[1]
+        self.assertLessEqual(len(d["message"]), 100000)
+        self.assertTrue(d["message"].startswith("subject"))
+
+    def test_job_output_is_cut(self):
+        from shuttle_ui import runner
+        cut = runner.limited(b"x" * (runner.MAX_OUTPUT + 500))
+        self.assertLess(len(cut), runner.MAX_OUTPUT + 100)
+        self.assertIn("output cut", cut)
+        self.assertEqual(runner.limited(b"short"), "short")
+
+    def test_old_jobs_are_forgotten(self):
+        from shuttle_ui import jobs as jobs_mod
+        registry = jobs_mod.Jobs(self.store)
+        for i in range(jobs_mod.KEEP_FINISHED + 20):
+            registry.jobs["j%d" % i] = {"id": "j%d" % i, "finished": 1000 + i}
+        registry.jobs["running"] = {"id": "running", "finished": None}
+        registry._forget_old()
+        self.assertEqual(len(registry.jobs), jobs_mod.KEEP_FINISHED + 1)
+        self.assertIn("running", registry.jobs)
+        self.assertIn("j%d" % (jobs_mod.KEEP_FINISHED + 19), registry.jobs)
+        self.assertNotIn("j0", registry.jobs)
+
+    def test_the_history_file_is_rotated_and_stays_private(self):
+        from shuttle_ui import store as store_mod
+        folder = tempfile.mkdtemp(prefix="shuttle-hist.")
+        old = store_mod.MAX_HISTORY_BYTES
+        store_mod.MAX_HISTORY_BYTES = 3000
+        try:
+            small = Store(folder)
+            for i in range(200):
+                small.log({"time": "t", "repo": "r", "action": "a%d" % i, "state": "done", "exit": 0, "commands": []})
+            self.assertLess(os.path.getsize(small.history_file), 3000 + 300)
+            self.assertTrue(os.path.exists(os.path.join(folder, "history.1.jsonl")), "the old entries are kept once")
+            history = small.history()
+            self.assertEqual(history[0]["action"], "a199", "the newest entry comes first")
+            self.assertEqual([e["id"] for e in history[:3]], [200, 199, 198], "ids keep growing across a rotation")
+            for name in ("history.jsonl", "history.1.jsonl"):
+                self.assertEqual(oct(os.stat(os.path.join(folder, name)).st_mode & 0o777), "0o600", name)
+            self.assertEqual(Store(folder).log({"action": "after restart"})["id"], 201, "a new process goes on from the last id")
+        finally:
+            store_mod.MAX_HISTORY_BYTES = old
+            shutil.rmtree(folder, ignore_errors=True)
+
+    def test_the_settings_folder_is_private(self):
+        from shuttle_ui import store as store_mod
+        folder = tempfile.mkdtemp(prefix="shuttle-cfgdir.")
+        os.makedirs(os.path.join(folder, "git-shuttle"), mode=0o755)
+        old = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = folder
+        try:
+            path = store_mod.config_dir()
+            self.assertEqual(oct(os.stat(path).st_mode & 0o777), "0o700")
+        finally:
+            if old is None:
+                del os.environ["XDG_CONFIG_HOME"]
+            else:
+                os.environ["XDG_CONFIG_HOME"] = old
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 if __name__ == "__main__":
