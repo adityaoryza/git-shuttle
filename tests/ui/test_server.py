@@ -11,7 +11,8 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui"))
-import server as ui  # noqa: E402
+from shuttle_ui import cli, http as ui_http  # noqa: E402
+from shuttle_ui.store import Store  # noqa: E402
 
 os.environ.update({
     "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_CONFIG_NOSYSTEM": "1", "NO_COLOR": "1",
@@ -79,8 +80,8 @@ class Base(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.world = World()
-        cls.store = ui.Store(cls.world.config)
-        cls.server = ui.make_server(0, cls.store, token="test-token-123")
+        cls.store = Store(cls.world.config)
+        cls.server = cli.make_server(0, cls.store, token="test-token-123")
         cls.port = cls.server.server_address[1]
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -142,13 +143,22 @@ class TestSecurity(Base):
         self.assertIn("text/html", headers["Content-Type"])
 
     def test_only_the_listed_static_files_are_served(self):
-        for name, ctype in (("app.js", "javascript"), ("logic.js", "javascript"), ("app.css", "text/css")):
+        for name, ctype in (("js/main.js", "javascript"), ("js/logic.js", "javascript"), ("vendor/preact-htm.js", "javascript"), ("css/app.css", "text/css")):
             status, _, data, headers = self.request("GET", "/static/" + name, token=False)
             self.assertEqual(status, 200, name)
             self.assertIn(ctype, headers["Content-Type"])
             self.assertNotIn(b"test-token-123", data)
-        for bad in ("server.py", "../server.py", "%2e%2e/server.py", "..%2fserver.py", "index.html", "app.js/../../server.py", "", "nothing.js"):
+        for bad in ("../cli.py", "%2e%2e/cli.py", "..%2fcli.py", "js/../../cli.py", "js/../../__init__.py", "vendor/README.md", "js", "js/", "", "nothing.js", "%2e%2e%2f%2e%2e%2fbin/git-shuttle", "/etc/passwd", "//etc/passwd"):
             self.assertEqual(self.request("GET", "/static/" + bad, token=False)[0], 404, bad)
+
+    def test_the_graph_lists_commits_with_parents_and_refs(self):
+        status, data = self.api("GET", "repos/%s/graph" % self.rid())
+        self.assertEqual(status, 200, data)
+        self.assertGreaterEqual(len(data["commits"]), 1)
+        first = data["commits"][0]
+        self.assertEqual(set(first), {"sha", "parents", "author", "time", "refs", "subject"})
+        self.assertIn("origin", data["remotes"])
+        self.assertTrue(any(r.startswith("HEAD -> ") for c in data["commits"] for r in c["refs"]))
 
     def test_the_page_runs_no_inline_script(self):
         _, _, data, headers = self.request("GET", "/", token=False)
@@ -191,7 +201,7 @@ class TestSecurity(Base):
         self.assertEqual(self.request("POST", "/api/repos", raw=b"{not json", headers={"Content-Type": "application/json"})[0], 400)
         self.assertEqual(self.request("POST", "/api/repos", raw=b"[1,2]", headers={"Content-Type": "application/json"})[0], 400)
         # the size is read from the header: the server answers before reading a body that large
-        self.assertEqual(self.request("POST", "/api/repos", raw=b"{}", headers={"Content-Type": "application/json", "Content-Length": str(ui.MAX_BODY + 10)})[0], 413)
+        self.assertEqual(self.request("POST", "/api/repos", raw=b"{}", headers={"Content-Type": "application/json", "Content-Length": str(ui_http.MAX_BODY + 10)})[0], 413)
 
     def test_other_methods_are_refused(self):
         for method in ("PUT", "DELETE", "PATCH"):

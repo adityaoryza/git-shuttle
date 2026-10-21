@@ -12,9 +12,14 @@ fi
 export GIT_PAGER=cat
 
 ROOT=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd -P)
-for file in core git cmd_config cmd_status cmd_commit cmd_sync cmd_push cmd_merge cmd_pick cmd_hook cmd_init cmd_ship cmd_release cmd_continue cmd_candidates cmd_start cmd_pr cmd_stage; do
+# The shared parts first (order matters: each one uses the ones before it), then one file per command.
+for file in output config git policy; do
     # shellcheck source=/dev/null
-    source "$ROOT/lib/$file.sh"
+    source "$ROOT/lib/core/$file.sh"
+done
+for file in "$ROOT"/lib/commands/*.sh; do
+    # shellcheck source=/dev/null
+    source "$file"
 done
 
 usage() {
@@ -100,7 +105,7 @@ main() {
         start)         cmd_start "$@" ;;
         stage)         cmd_stage "$@" ;;
         ui)            command -v python3 >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
-                       exec python3 "$ROOT/ui/server.py" "$@" ;;
+                       PYTHONPATH="$ROOT/ui" exec python3 -m shuttle_ui "$@" ;;
         pr)            cmd_pr "$@" ;;
         hook)          cmd_hook "$@" ;;
         config)        cmd_config "$@" ;;

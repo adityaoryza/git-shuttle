@@ -24,6 +24,21 @@ $ git checkout feat/invoice-total
 It is a thin layer over git, not a replacement: every command it runs is printed first, and it stops at the first thing that
 fails, saying how to go on.
 
+## The web UI at a glance
+
+`git shuttle ui` opens a local page: the commit graph on the left, and the one thing to do next on the right. The same flow as the
+commands, with a preview before every run.
+
+| 1. Start a task | 2. Ship: one commit per module |
+|---|---|
+| ![Start a task: a branch named from the task, previewed](docs/images/1-start.png) | ![Ship: changed files grouped by module, messages checked against your rules](docs/images/3-ship-ready.png) |
+| **3. Preview: the exact commands** | **4. Done: the graph shows the merge** |
+| ![Preview of every git command that will run](docs/images/4-ship-preview.png) | ![The merge in the graph, with the result of each step](docs/images/5-shipped.png) |
+| **5. Release: pick commits in order** | **6. Settings per repository** |
+| ![Release: commits picked and ordered, release branch name from a pattern](docs/images/6-release.png) | ![Settings: branches, message rules, test command](docs/images/7-settings.png) |
+| **A conflict stops it, safely** | |
+| ![A rebase conflict: the files are listed, with Continue and Abort](docs/images/8-conflict.png) | |
+
 ## Why
 
 A team that merges feature branches into a staging branch and cherry-picks chosen commits into a release branch repeats the same
@@ -137,27 +152,16 @@ branch. A branch merged by fast-forward or squash leaves no trace of its commits
 git shuttle ui
 ```
 
-Opens a page on your own machine that follows the same steps as the commands, for several repositories at once:
+A page on your own machine: the **commit graph** of the repository on the left, and on the right the one thing to do next.
+It opens on the tab that fits where you are.
 
-1. **Start** a task: a branch from the integration branch, named for you.
-2. **Work and test**: the changed files, and the test command to copy (the UI never runs it) with a "tested" tick.
-3. **Commit per module**: the changed files grouped by their first folder, in the order you choose (dependencies first), each with a
-   message that is checked against your rules while you type.
-4. **Merge**: directly, or through a pull request. A **preview** shows the exact git commands (`--dry-run`); the run button stays
-   disabled until the preview is made for exactly what is on the screen.
-5. **Release**: the branches merged since the last release, their commits to tick and reorder, the release branch name from your
-   pattern, then a pull request to the release branch.
+- **Start**: name a task, get a branch cut from the integration branch.
+- **Ship**: your changed files grouped by module, one commit each, in the order you set; the test command to copy; then merge
+  directly or open a pull request.
+- **Release**: tick the commits that were merged since the last release, order them, make the release branch.
 
-When something stops on a conflict, the page says which files, and has **continue** and **abort** buttons. Every action is
-logged on your machine (`~/.config/git-shuttle/history.jsonl`).
-
-It runs commands on your repositories, so it is built to be hard to misuse:
-
-- it listens on `127.0.0.1` only, and refuses any `Host` or `Origin` that is not itself (DNS rebinding, other websites);
-- every call needs the random token printed when it starts (the link carries it after `#`, which a server never sees in a log);
-- nothing goes through a shell: every value is validated and becomes an argument of `git-shuttle`;
-- only the repositories you registered can be acted on, and one action runs at a time per repository;
-- the page loads no external script, style or font.
+Every button first **previews** the exact git commands (`--dry-run`); Run only unlocks for the preview of exactly what is on
+the screen. A conflict shows its files with Continue and Abort. See [docs/ui.md](docs/ui.md) for the design and the security model.
 
 Python 3 (standard library only) is needed for it; the commands do not need it.
 
@@ -170,12 +174,11 @@ with the `git` you already have and its own configuration (`git config shuttle.*
 ## Development
 
 ```bash
-make lint     # bash -n and ShellCheck
-make test     # every test builds its own throw-away repositories; no network (the UI tests need python3 and node)
+make lint     # bash -n, ShellCheck, and a syntax check of the Python and JavaScript
+make test     # every test builds its own throw-away repositories; no network
 ```
 
-Tests use a bare repository as the "remote" and a clone as the working copy, with git isolated from the configuration of whoever
-runs them. A change should come with a test, and `make lint && make test` must pass.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/architecture.md](docs/architecture.md) for how the code is laid out.
 
 ## License
 
