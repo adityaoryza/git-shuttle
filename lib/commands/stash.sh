@@ -46,7 +46,8 @@ stash_push() {
     confirm "Put them aside?"
     local args=(stash push -m "$message")
     (( untracked )) && args+=(--include-untracked)
-    run git "${args[@]}" || die "cannot stash"
+    # No pathspec is given here, and with GIT_LITERAL_PATHSPECS=1 (the web UI sets it) git stash leaves the new files behind.
+    GIT_LITERAL_PATHSPECS=0 run git "${args[@]}" || die "cannot stash"
     step "stashed"
 }
 
