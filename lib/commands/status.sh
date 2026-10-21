@@ -73,6 +73,7 @@ cmd_status() {
         for pair in "${conflicts[@]}"; do emit conflict "$pair"; done
         for pair in "${blockers[@]}"; do emit blocker "$pair"; done
         emit hook "$hook"
+        emit gh "$(command -v "${GIT_SHUTTLE_GH:-gh}" >/dev/null 2>&1 && echo 1 || echo 0)"   # 0: a pull request cannot be opened from here
         emit stash "$(git stash list 2>/dev/null | wc -l | tr -d ' ')"
         local entry; entry=$(journal_entry "done"); emit journal.undo "$(cut -f3 <<<"$entry")"
         entry=$(journal_entry undone); emit journal.redo "$(cut -f3 <<<"$entry")"

@@ -3,6 +3,15 @@
 **The same steps, in the same order, with the same checks, every time you take a branch from your work to the integration
 branch and to a release.** One command instead of a copied list of ten.
 
+> ### Install in one line
+>
+> ```bash
+> curl -fsSL https://github.com/adityaoryza/git-shuttle/raw/main/install.sh | bash
+> ```
+>
+> Then, inside any repository: **`git shuttle ui`** opens the web page, **`git shuttle --help`** lists the commands.
+> Works on Linux, macOS (bash 4.4+) and WSL2. Other ways and options: [Install](#install).
+
 ```
 $ git shuttle merge
 repository: acme-shop (/home/me/acme-shop)

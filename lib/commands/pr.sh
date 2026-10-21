@@ -27,7 +27,7 @@ cmd_pr() {
     base=${base:-$INTEGRATION}
     [[ "$branch" != "$base" ]] || die "'$branch' is the base of the pull request"
     local gh=${GIT_SHUTTLE_GH:-gh}
-    command -v "$gh" >/dev/null 2>&1 || die "the GitHub CLI (gh) is not installed (see its documentation to install it)"
+    command -v "$gh" >/dev/null 2>&1 || die "the GitHub CLI (gh) is not installed: install it (brew install gh, winget install GitHub.cli, or your package manager) and run  gh auth login ; or push the branch and open the pull request on the hosting site"
 
     if [[ -z "$title" ]]; then title=$(git log -1 --format=%s); fi
     [[ -n "$title" ]] || die "no title: pass --title"
