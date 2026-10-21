@@ -171,8 +171,10 @@ main() {
         stage)         cmd_stage "$@" ;;
         unstage)       cmd_unstage "$@" ;;
         discard)       cmd_discard "$@" ;;
-        ui)            command -v python3 >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
-                       PYTHONPATH="$ROOT/ui" exec python3 -m shuttle_ui "$@" ;;
+        ui)            # python3, or python where python3 is only a stub (Windows)
+                       py=python3; "$py" -c '' >/dev/null 2>&1 || py=python
+                       "$py" -c '' >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
+                       PYTHONPATH="$ROOT/ui" exec "$py" -m shuttle_ui "$@" ;;
         pr)            cmd_pr "$@" ;;
         hook)          cmd_hook "$@" ;;
         config)        cmd_config "$@" ;;

@@ -105,7 +105,9 @@ mistakes hard.
 | the browser tests (`make e2e`) | Node.js and Playwright's Chromium, downloaded on demand | Chromium from Playwright 1.64 |
 
 Linux and WSL2 are the platforms the tests run on. macOS is not tested: its own bash is 3.2, which `git shuttle` refuses with a
-message asking for a newer one (for example from Homebrew). Windows without WSL is not supported.
+message asking for a newer one (for example from Homebrew). Windows is best used through WSL2. With Git for Windows (Git Bash) the
+commands and the web page start and read your repositories, but that is experimental and untested: the dialogs that ask for a folder or
+a file expect a path that starts with `/`, which a Windows path (`C:\...`) does not.
 
 ## Install
 
