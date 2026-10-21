@@ -1,6 +1,7 @@
 /* The right-click menu of a commit, and the two small dialogs its actions open. */
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { shortHash } from "../logic.js";
+import { canSkipPreview, skipPreview } from "../skip-preview.js";
 import { Alert, Button, Field, Input, Modal, Output } from "./ui.js";
 
 export function ContextMenu({ menu, onClose }) {
@@ -56,10 +57,15 @@ export function DivergedDialog({ state, runner, onClose }) {
 
 /* Shows what an action will do (a dry run), then runs it on request. */
 export function ActionConfirm({ pending, runner, onClose }) {
+  const [never, setNever] = useState(false);
   const ready = runner.fresh(pending.action, pending.params);
   const p = runner.shown && runner.shown.key === JSON.stringify([pending.action, pending.params]) ? runner.shown : null;
-  return html`<${Modal} title=${pending.label} wide onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Cancel<//>
-      <${Button} variant=${pending.tone === "destructive" ? "destructive" : "default"} disabled=${!ready || runner.busy} onClick=${() => { onClose(); runner.run(pending.action, pending.params, pending.label); }}>${pending.verb || "Run"}<//>`}>
+  // only for what is easy to take back: the risky actions always show their preview
+  const mayStop = canSkipPreview(pending.action, pending.params, pending.tone);
+  const go = () => { if (mayStop && never) skipPreview(pending.action); onClose(); runner.run(pending.action, pending.params, pending.label); };
+  return html`<${Modal} title=${pending.label} wide onClose=${onClose} footer=${html`${mayStop ? html`<label class="check push-left"><input type="checkbox" checked=${never} onChange=${e => setNever(e.target.checked)} /> Don't show this preview again</label>` : null}<${Button} variant="ghost" onClick=${onClose}>Cancel<//>
+      <${Button} variant=${pending.tone === "destructive" ? "destructive" : "default"} disabled=${!ready || runner.busy} onClick=${go}>${pending.verb || "Run"}<//>`}>
     ${!p ? html`<p class="hint">Checking what it would do…</p>` : html`<p class="hint">${p.ok ? "Exactly what will run:" : "Refused, nothing was changed:"}</p><${Output}>${p.steps.map(s => s.output).join("\n")}<//>`}
+    ${mayStop && never ? html`<p class="hint">From now on this runs at once. You can turn the previews back on in Settings.</p>` : null}
   <//>`;
 }
