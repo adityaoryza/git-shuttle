@@ -1,7 +1,7 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { GH_MISSING, ghMissing, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { FileRow } from "./file-row.js";
 import { Alert, Badge, Button, Field, Input, Output, Segmented, cn } from "./ui.js";
@@ -166,6 +166,7 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested, 
   if (included.length) blockers = blockers.filter(b => !b.startsWith("nothing to ship"));
   const problems = [...blockers];
   for (const g of included) { const p = messageProblem(g.message, c); if (p) problems.push(g.module + ": " + p); }
+  if (how === "pr" && ghMissing(status)) problems.push(GH_MISSING.title);
   if (how === "pr" && !(pr.title || (included[0] && included[0].message))) problems.push("the pull request title is empty");
   const untested = !!c.upgradeCommand && !tested;
 
@@ -193,6 +194,7 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested, 
     <div class="stack">
       <span class="section">Destination</span>
       <${Segmented} value=${how} onChange=${v => { setHow(v); runner.clearPreview(); }} options=${[{ value: "merge", label: "Merge into " + into }, { value: "pr", label: "Pull request" }]} />
+      ${how === "pr" && ghMissing(status) ? html`<${Alert} tone="warn" title=${GH_MISSING.title}>${GH_MISSING.text}<//>` : null}
       ${how === "pr" ? html`<${Field} label="Title" hint="empty = first commit message"><${Input} value=${pr.title} onInput=${e => { setPr({ ...pr, title: e.target.value }); runner.clearPreview(); }} /><//>
         <${Field} label="Description"><textarea class="input" rows="4" value=${pr.body} onInput=${e => { setPr({ ...pr, body: e.target.value }); runner.clearPreview(); }} /><//>
         <label class="check"><input type="checkbox" checked=${pr.draft} onChange=${e => { setPr({ ...pr, draft: e.target.checked }); runner.clearPreview(); }} /> Draft</label>` : null}
