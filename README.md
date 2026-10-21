@@ -120,7 +120,7 @@ a file expect a path that starts with `/`, which a Windows path (`C:\...`) does 
 
 ## Install
 
-One line, from the latest release (it installs into `~/.local`; `PREFIX=/usr/local` and `GIT_SHUTTLE_VERSION=v0.1.1` change that):
+One line, from the latest release (it installs into `~/.local`; `PREFIX=/usr/local` and `GIT_SHUTTLE_VERSION=v0.1.2` change that):
 
 ```bash
 curl -fsSL https://github.com/adityaoryza/git-shuttle/raw/main/install.sh | bash

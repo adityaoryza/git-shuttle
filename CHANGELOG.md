@@ -2,6 +2,24 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.1.2] - 2026-10-21
+
+### Added
+- `install.sh`: install from the latest release with one line, `curl -fsSL https://github.com/adityaoryza/git-shuttle/raw/main/install.sh | bash`
+  (a tag, and where to install, can be chosen). The README opens with it.
+- The web page says so when the GitHub CLI (`gh`) is missing: a warning in the Ship panel (the pull request button is disabled) and a message
+  on the release button, with what to install and the way around it. `status --porcelain` reports `gh=0|1`, and the message of `pr` says what to do.
+- "Don't show this preview again" on the preview of an action that is easy to take back (pull, switch, branch, tag, cherry-pick, stash, push
+  and the like). Reset, discard, drop, rewrite, delete and a force push always show it. Settings can turn the previews back on.
+
+### Changed
+- Windows with Git for Windows (Git Bash): the web page starts through Git's bash and reads repositories, and `git shuttle ui` uses `python`
+  where `python3` is only the Microsoft Store stub. This is experimental: dialogs that ask for a path expect one that starts with `/`. WSL2 is
+  still the recommended way on Windows.
+
+### Fixed
+- The banner test no longer hard-codes the version.
+
 ## [0.1.1] - 2026-10-21
 
 ### Fixed
@@ -71,5 +89,6 @@ First release.
 - Suites for the commands (bash), the server (Python), the page logic (Node) and, on request, the browser (`make e2e`, Playwright).
 - Continuous integration on Python 3.9 and 3.12 with Node 18 and 22; bash 4.4 and 5.1 and Python 3.9, 3.10 and 3.12 were run locally.
 
+[0.1.2]: https://github.com/adityaoryza/git-shuttle/releases/tag/v0.1.2
 [0.1.1]: https://github.com/adityaoryza/git-shuttle/releases/tag/v0.1.1
 [0.1.0]: https://github.com/adityaoryza/git-shuttle/releases/tag/v0.1.0
