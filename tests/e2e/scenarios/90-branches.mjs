@@ -1,7 +1,7 @@
 import { overflowsHorizontally } from "../lib/checks.mjs";
 
 const confirmWith = async (page, verb) => { const d = page.locator(".modal"); const b = d.getByRole("button", { name: verb, exact: true }); await b.waitFor(); await page.waitForFunction(el => !el.disabled, await b.elementHandle()); await b.click(); };
-const openPicker = async page => { await page.waitForFunction(() => document.querySelector(".progress").getAttribute("aria-busy") === "false"); await page.locator(".branch-btn").click(); await page.locator(".popover").waitFor(); };
+const openPicker = async page => { await page.waitForFunction(() => document.querySelector(".progress").getAttribute("aria-busy") === "false"); if (!(await page.locator(".popover").count())) await page.locator(".branch-btn").click(); await page.locator(".popover").waitFor(); };
 const kebab = (page, name) => page.getByRole("button", { name: `Actions for ${name}`, exact: true });
 const branches = t => t.demo.git(["branch", "--format=%(refname:short)"]).split("\n");
 
@@ -25,6 +25,35 @@ export const scenarios = {
     t.ok("...but not merging itself", !here.some(i => /Merge feature\/invoice_totals into/.test(i)));
     t.ok("deleting the branch you are on is unavailable and says why", (await page.getByRole("menuitem", { name: /Delete/ }).innerText()).includes("you are on it"));
     await page.keyboard.press("Escape");
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "branch list: it stays open behind the actions menu of a branch"(t) {
+    const page = await t.page();
+    await openPicker(page);
+    await kebab(page, "feature/invoice_totals").click();
+    await page.getByRole("menu").waitFor();
+    t.ok("the actions menu opens over the list, and the list is still there", (await page.locator(".popover").count()) === 1 && (await page.getByRole("menu").count()) === 1);
+    t.ok("...the menu is above the list (it can be clicked)", await page.evaluate(() => { const m = document.querySelector(".ctx").getBoundingClientRect(); const e = document.elementFromPoint(m.x + m.width / 2, m.y + 12); return !!(e && e.closest(".ctx")); }));
+    await page.getByRole("menuitem", { name: /Delete/ }).hover();
+    await page.getByRole("menuitem", { name: /Delete/ }).click({ force: true });        // refused for the branch you are on: nothing happens
+    t.ok("an action that is refused leaves both open", (await page.locator(".popover").count()) === 1 && (await page.getByRole("menu").count()) === 1);
+    await page.keyboard.press("Escape");
+    await page.getByRole("menu").waitFor({ state: "detached" });
+    t.ok("the first Escape closes the menu only", (await page.locator(".popover").count()) === 1);
+    await page.keyboard.press("Escape");
+    await page.locator(".popover").waitFor({ state: "detached" });
+    t.ok("the second Escape closes the list", true);
+    await openPicker(page);
+    await kebab(page, "feature/invoice_totals").click();
+    await page.getByRole("menuitem", { name: "Copy branch name" }).click();
+    await page.locator(".popover").waitFor({ state: "detached" });
+    t.ok("choosing an action closes the menu and the list", (await page.getByRole("menu").count()) === 0);
+    await openPicker(page);
+    await kebab(page, "feature/invoice_totals").click();
+    await page.getByRole("menu").waitFor();
+    await page.locator("header, .topbar, body").first().click({ position: { x: 5, y: 5 } });
+    t.ok("a click away closes both", (await page.locator(".popover").count()) === 0 && (await page.getByRole("menu").count()) === 0);
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
 

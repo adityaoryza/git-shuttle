@@ -12,7 +12,7 @@ export const scenarios = {
   async "update: nothing is asked of the internet until the button is clicked"(t) {
     const page = await t.page();
     let asked = 0;
-    await page.route("**/api/update/**", r => { asked++; r.abort(); });
+    await page.route(/\/api\/update\/(check|apply)$/, r => { asked++; r.abort(); });      // the reminder is the server's own look: the page asks only for what it was told
     await open(page);
     await page.waitForTimeout(500);
     t.ok("opening About does not look for a release", asked === 0, asked);

@@ -5,7 +5,7 @@ import { BrandMark, ExternalLink } from "./links.js";
 import { UpdatePanel } from "./update-panel.js";
 import { Button, Modal } from "./ui.js";
 
-export function AboutDialog({ version, auto, notify, onClose }) {
+export function AboutDialog({ version, auto, notify, notice, onNotice, onClose }) {
   return html`<${Modal} title=${"About " + PRODUCT} onClose=${onClose} className="about" initialFocus=".modal-foot button" footer=${html`<${Button} onClick=${onClose}>Close<//>`}>
     <div class="about-head">
       <${BrandMark} size=${56} />
@@ -23,7 +23,7 @@ export function AboutDialog({ version, auto, notify, onClose }) {
       <h4 class="about-title">Project</h4>
       <ul class="about-list">${PROJECT_LINKS.map(link => html`<li><${ExternalLink} href=${link.href}>${link.label}<//></li>`)}</ul>
     </section>
-    <${UpdatePanel} auto=${auto} notify=${notify} />
+    <${UpdatePanel} auto=${auto} notify=${notify} notice=${notice} onNotice=${onNotice} />
     <p class="hint">It runs on this machine only. This page loads nothing from the internet; a link opens in a new tab when you click it.</p>
   <//>`;
 }
