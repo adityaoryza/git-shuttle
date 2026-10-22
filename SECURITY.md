@@ -9,7 +9,8 @@ Only the latest release receives fixes.
 
 | Version | Supported |
 |---|---|
-| 0.1.x | yes |
+| 0.3.x | yes |
+| older | no: update with `git shuttle update` |
 
 ## Reporting a vulnerability
 

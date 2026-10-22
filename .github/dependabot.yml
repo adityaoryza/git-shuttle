@@ -1,0 +1,7 @@
+version: 2
+updates:
+  # git-shuttle has no package dependencies: the only thing to keep current is the actions of the CI
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

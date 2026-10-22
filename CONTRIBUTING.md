@@ -2,6 +2,8 @@
 
 Bug reports and pull requests are welcome.
 
+By taking part you agree to the [code of conduct](CODE_OF_CONDUCT.md).
+
 ## Set up
 
 Needs `bash` 4.4+, `git`, `shellcheck` (lint), `python3` and `node` (the UI tests). Nothing else is installed.

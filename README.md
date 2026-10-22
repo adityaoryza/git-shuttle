@@ -8,6 +8,13 @@
 <p align="center"><strong>Branch, commit, merge and release with a preview before every step.</strong><br>
 By <a href="https://adityaoryza.my.id/en">Aditya Oryza Mahendra</a></p>
 
+<p align="center">
+  <a href="https://github.com/adityaoryza/git-shuttle/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/adityaoryza/git-shuttle/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/adityaoryza/git-shuttle/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/adityaoryza/git-shuttle"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/github/license/adityaoryza/git-shuttle"></a>
+  <img alt="bash 4.4+, python 3.9+" src="https://img.shields.io/badge/bash-4.4%2B-4EAA25"><img alt="python 3.9+" src="https://img.shields.io/badge/python-3.9%2B-3776AB">
+</p>
+
 **The same steps, in the same order, with the same checks, every time you take a branch from your work to the integration
 branch and to a release.** One command instead of a copied list of ten.
 
