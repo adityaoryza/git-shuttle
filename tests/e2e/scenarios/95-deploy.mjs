@@ -15,12 +15,19 @@ const addServer = async (page, values) => {
   if (values.branch) await form.getByLabel("Branch the server runs").selectOption(values.branch);
   return form;
 };
-// (a toast stays while the pointer is on it: the pointer is moved away first)
-const quiet = async page => { await page.mouse.move(5, 5); await settled(page); };
+// A toast stays while the pointer is on it (the pointer is moved away first), and an error toast stays until it is dismissed: those are
+// dismissed here. Without that a job that was meant to fail made the next click wait for a toast that never leaves.
+const quiet = async page => {
+  for (const close of await page.locator(".toast .toast-close").all()) await close.click().catch(() => {});
+  await page.mouse.move(5, 5);        // after the dismissing: the pointer must not be left where the next toast appears
+  await settled(page);
+};
 const settled = page => page.waitForFunction(() => !document.querySelector(".toast-title"), null, { timeout: 20000 }).catch(async e => { throw new Error("a toast stays: " + (await page.locator(".toast").allInnerTexts()).join(" // ")); });
-// a finished job; then the toast that says so is let go (it sits over the buttons of the panel while it shows)
+// a finished job; a failed one raises its error toast a moment later: wait for it, then let the toasts go (they sit over the buttons of the panel)
 const finished = async (page, label) => {
-  await page.locator(".result", { hasText: label }).locator(".badge", { hasText: /done|failed|stopped/ }).waitFor();
+  const badge = page.locator(".result", { hasText: label }).locator(".badge", { hasText: /done|failed|stopped/ });
+  await badge.waitFor();
+  if (/failed|stopped/.test(await badge.innerText())) await page.locator(".toast").first().waitFor({ timeout: 5000 }).catch(() => {});
   await quiet(page);
 };
 const press = async (page, name) => { await quiet(page); await page.getByRole("button", { name, exact: true }).click(); };
