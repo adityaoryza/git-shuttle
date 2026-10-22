@@ -66,6 +66,7 @@ CATALOG = [
     {"id": "settings", "label": "Settings", "group": "App", "cli": "git shuttle init", "where": "top bar Settings"},
     {"id": "add-repo", "label": "Add a repository", "group": "App", "cli": "", "where": "top bar Add"},
     {"id": "shortcuts", "label": "Keyboard shortcuts", "group": "App", "cli": "", "where": "?", "key": "?"},
+    {"id": "about", "label": "About git-shuttle", "group": "App", "cli": "", "where": "top bar logo, footer"},
 ]
 
 # Every command of the tool and where the page offers it (ids of CATALOG, or a sentence for what is not an action).

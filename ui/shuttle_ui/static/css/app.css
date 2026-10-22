@@ -50,7 +50,10 @@ ul { margin: 6px 0 0; padding-left: 18px; }
 /* layout */
 .app { display: flex; flex-direction: column; height: 100%; }
 .topbar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; min-height: 52px; padding: 6px 16px; border-bottom: 1px solid var(--border); flex: none; min-width: 0; }
-.brand { font-weight: 500; margin-right: 8px; white-space: nowrap; }
+.brand { display: inline-flex; align-items: center; gap: 8px; margin-right: 8px; padding: 2px 6px; border: 0; border-radius: var(--radius); background: transparent; color: inherit; font: inherit; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.brand:hover { background: var(--accent); }
+.brand:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.brand img { display: block; border-radius: 5px; }
 .topbar .hint { white-space: nowrap; }
 .brand b { color: var(--info); }
 .input.repo-select { width: auto; min-width: 140px; max-width: 260px; height: 32px; padding: 0 8px; background: var(--background); }
@@ -472,3 +475,19 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .log-step { display: grid; gap: 4px; } .log-cmd { font: 12px var(--mono); color: var(--muted-foreground); overflow-wrap: anywhere; }
 .log-more { padding: 10px; text-align: center; color: var(--muted-foreground); font-size: 12px; }
 .trow.is-open { background: var(--muted); }
+
+/* brand: credit line, About dialog, first-run mark */
+.credit { display: flex; flex: none; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 8px; padding: 4px 12px; border-top: 1px solid var(--border); color: var(--muted-foreground); font-size: 12px; }
+.credit a, .credit .link { color: var(--muted-foreground); font-size: 12px; }
+.credit a:hover, .credit .link:hover { color: var(--foreground); }
+.about-head { display: flex; align-items: center; gap: 14px; }
+.about-head img { border-radius: 12px; }
+.about-name { margin: 0; font-size: 20px; font-weight: 600; }
+.about-name b { color: var(--info); }
+.about-head .hint { margin: 2px 0 0; }
+.about-tagline { margin: 0; }
+.about-title { margin: 0 0 8px; font-size: 13px; font-weight: 600; }
+.about-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.about-links a.btn { text-decoration: none; }
+.about-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.onboarding-mark { margin: 0 auto; border-radius: 14px; }
