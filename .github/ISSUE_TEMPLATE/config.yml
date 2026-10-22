@@ -1,5 +1,8 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Report a security problem privately
     url: https://github.com/adityaoryza/git-shuttle/security/advisories/new
     about: Please do not open a public issue for a vulnerability.
+  - name: Read the documentation first
+    url: https://github.com/adityaoryza/git-shuttle#readme
+    about: The README and docs/ui.md answer most questions about commands, settings and the web UI.

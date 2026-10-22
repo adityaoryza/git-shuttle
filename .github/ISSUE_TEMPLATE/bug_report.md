@@ -1,6 +1,7 @@
 ---
 name: Bug report
 about: Something did not do what it should
+labels: bug
 ---
 
 **Command or screen**
