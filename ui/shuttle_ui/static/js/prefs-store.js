@@ -12,15 +12,17 @@ export function savePref(key, value) {
 // Brings the settings back into the storage before the page is drawn, and from then on sends every change of a "shuttle." setting to the server.
 let timer = null;
 const pending = new Map();
-function flush() {
-  timer = null;
-  for (const [key, value] of pending) savePref("ls:" + key, value);
+// keepalive: the page is being left (a reload, a closed tab): the request must still reach the server, or the next page would be given the
+// old value, which wins over the storage.
+function flush(keepalive) {
+  if (timer) { clearTimeout(timer); timer = null; }
+  for (const [key, value] of pending) api("POST", "prefs", { key: "ls:" + key, value }, { keepalive: !!keepalive }).catch(() => {});
   pending.clear();
 }
 function mirror(key, value) {
   if (!isMirrored(key)) return;
   pending.set(key, value);
-  if (!timer) timer = setTimeout(flush, 300);
+  if (!timer) timer = setTimeout(() => flush(false), 300);
 }
 export async function syncStorage() {
   const prefs = await loadPrefs();
@@ -33,5 +35,6 @@ export async function syncStorage() {
     Storage.prototype.setItem = function (key, value) { original.call(this, key, value); if (this === localStorage) mirror(key, String(value)); };
     Storage.prototype.removeItem = function (key) { remove.call(this, key); if (this === localStorage) mirror(key, null); };
   } catch (e) { /* the settings are then kept in the browser only */ }
+  addEventListener("pagehide", () => flush(true));
   return prefs;
 }

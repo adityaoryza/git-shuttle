@@ -16,6 +16,9 @@ export const scenarios = {
       t.ok("the second click goes back", (await page.getAttribute("html", "data-theme")) === scheme);
       t.ok("there is no third state", (await page.locator(".theme-btn").count()) === 1 && !(await button.getAttribute("aria-label")).includes("system"));
       t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+      // the choice is kept by the server for every address: the next visitor of this test must be a first visit again
+      await page.waitForTimeout(500);
+      await page.evaluate(() => fetch("/api/prefs", { method: "POST", headers: { "X-Shuttle-Token": sessionStorage.getItem("shuttle.token"), "Content-Type": "application/json" }, body: JSON.stringify({ key: "ls:shuttle.theme", value: null }) }));
     }
   },
 };
