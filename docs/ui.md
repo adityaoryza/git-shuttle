@@ -93,6 +93,12 @@ The Deploy tab updates a server after a push, in as few steps as possible.
 3. **Test the connection** runs nothing on the server but `true`: it is the way to check the user and the password before a deploy. If a
    deploy says the server does not find the command, one click ("Run it in a login shell") fixes the target.
 
+**Remember on this computer** (a box next to the password, per server) keeps the password so that you do not type it again: by the keyring of
+the desktop on Linux, by Windows itself on Windows and WSL (DPAPI: only protected text is kept in `~/.config/git-shuttle/vault`, which is
+useless elsewhere); nothing is ever kept in clear, and without one of them the page says how to get it. It is kept only after a login that
+worked, for that repository, server and address; the page never gets it back (it shows "Password saved" and **Forget**). Whoever can run
+programs as you, or open this page, can use it to deploy: a key (`ssh-copy-id`) is safer still.
+
 The password is sent with the request, typed once at the prompt that asks for it on a pseudo terminal, and dropped. It is not part of the
 job, the history, the log or the answers of the API (a test reads them all), a copy that the terminal echoes is cut out of the output, and a
 wrong password is not sent a second time. The routes are `GET repos/ID/deploy`, `POST repos/ID/deploy/plan` and the actions `deploy`,

@@ -83,7 +83,8 @@ assert_contains "$OUT" "replays:    1 commit(s) of 'feat/m' on top of origin/dev
 shuttle -y sync --merge
 assert_status 0 "$RC" "sync --merge"
 assert_contains "$(git log -1 --format=%s)" "Merge remote-tracking branch 'origin/develop'" "...makes a merge commit instead of a rebase"
-assert_eq "m work" "$(git log --format=%s --no-merges -1)" "...and keeps your commit as it was"
+# the first parent of the merge is your branch: by date alone the answer depends on whether the two commits fell in the same second
+assert_eq "m work" "$(git log --first-parent --format=%s --no-merges -1)" "...and keeps your commit as it was"
 shuttle -y sync --merge
 assert_contains "$OUT" "nothing to merge" "a second time there is nothing to do"
 

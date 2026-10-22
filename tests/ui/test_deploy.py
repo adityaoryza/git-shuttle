@@ -1,13 +1,26 @@
 """Tests of the deploy of the web UI: the targets, the plan, the job, and the sudo password (which must stay out of everything it
 passes through). ssh is a stand-in (GIT_SHUTTLE_SSH): no server, no network."""
 import os
+import shutil
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_server import Base, git, write  # noqa: E402
 
 PASSWORD = "S3cret-pw!zq9"
+
+# the stand-in of `secret-tool` (the keyring): a file per key, in a folder that is NOT in the repositories of the test
+FAKE_SECRET_TOOL = r'''#!/usr/bin/env bash
+dir="$FAKE_VAULT_DIR"; mkdir -p "$dir"; key="${*: -1}"
+case "$1" in
+    store) cat >"$dir/$key" ;;
+    lookup) [[ -f "$dir/$key" ]] && cat "$dir/$key" || exit 1 ;;
+    clear) rm -f "$dir/$key" ;;
+esac
+'''
 
 FAKE_SSH = r'''#!/usr/bin/env bash
 # the stand-in for ssh. "true" is the check. With FAKE_SSH_SUDO=1 the command asks for a sudo password on its terminal, as sudo does.
@@ -54,6 +67,13 @@ class TestDeploy(Base):
         write(cls.ssh, FAKE_SSH)
         os.chmod(cls.ssh, 0o755)
         os.environ.update({"GIT_SHUTTLE_SSH": cls.ssh, "FAKE_SSH_LOG": cls.ssh_log, "FAKE_SSH_PASSWORD": PASSWORD})
+        # the keychain: a stand-in, and a config folder of its own (the real one of the user is never touched)
+        cls.keep = tempfile.mkdtemp(prefix="shuttle-vault-test.")
+        cls.fake_secret_tool = os.path.join(cls.keep, "secret-tool")
+        write(cls.fake_secret_tool, FAKE_SECRET_TOOL)
+        os.chmod(cls.fake_secret_tool, 0o755)
+        os.environ.update({"GIT_SHUTTLE_SECRET_TOOL": cls.fake_secret_tool, "FAKE_VAULT_DIR": os.path.join(cls.keep, "keyring"),
+                           "XDG_CONFIG_HOME": os.path.join(cls.keep, "config")})
         # a module on develop
         git(world.work, "checkout", "-q", "develop")
         write(os.path.join(world.work, "sale_documents", "__manifest__.py"), "{}\n")
@@ -61,7 +81,14 @@ class TestDeploy(Base):
         git(world.work, "add", "."); git(world.work, "commit", "-q", "-m", "a module"); git(world.work, "push", "-q", "origin", "develop")
         git(world.work, "checkout", "-q", "main")
 
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.keep, ignore_errors=True)
+        super().tearDownClass()
+
     def setUp(self):
+        shutil.rmtree(os.path.join(self.keep, "keyring"), ignore_errors=True)
+        shutil.rmtree(os.path.join(self.keep, "config"), ignore_errors=True)
         git(self.world.work, "checkout", "-q", "main", check=False)
         for name in ("FAKE_SSH_SUDO", "FAKE_SSH_ECHO", "FAKE_SSH_LOGIN"):
             os.environ.pop(name, None)
@@ -239,6 +266,128 @@ class TestDeploy(Base):
         self.assertEqual(job["state"], "stopped", job["steps"][-1]["output"])
         self.assertIn("did not find the command", job["steps"][-1]["output"])
         self.assertIn("bash -ic", job["steps"][-1]["output"])
+
+    def test_a_job_never_gets_the_terminal_of_the_server(self):
+        """ssh asks for a password on /dev/tty: a job without a password that inherited the terminal of `git shuttle ui` made the prompt
+        show in that window, where nobody could tell why the page waited."""
+        import pty
+        probe = os.path.join(self.world.root, "probe-ssh")
+        write(probe, '#!/usr/bin/env bash\n{ [ -t 0 ] && echo stdin-tty || echo stdin-none; (exec </dev/tty) 2>/dev/null && echo dev-tty || echo dev-none; } >>"$FAKE_SSH_LOG.probe"\nexit 0\n')
+        os.chmod(probe, 0o755)
+        marker = self.ssh_log + ".probe"
+        if os.path.exists(marker):
+            os.remove(marker)
+        os.environ["GIT_SHUTTLE_SSH"] = probe
+        self.addCleanup(lambda: os.environ.update({"GIT_SHUTTLE_SSH": self.ssh}))
+        ui_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui")
+        snippet = ("import sys; sys.path.insert(0, %r)\nfrom shuttle_ui.runner import run_shuttle\n"
+                   "code, out = run_shuttle(%r, ['deploy', 'staging', '--check'])\nsys.exit(code)\n") % (ui_dir, self.world.work)
+        pid, fd = pty.fork()                                 # the child has a controlling terminal, like `git shuttle ui` in a window
+        if pid == 0:
+            os.execv(sys.executable, [sys.executable, "-c", snippet])
+        try:
+            while os.read(fd, 4096):
+                pass
+        except OSError:
+            pass
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+        seen = open(marker).read().split()
+        self.assertTrue(seen, "ssh was called")
+        self.assertEqual(set(seen), {"stdin-none", "dev-none"}, "no input and no controlling terminal to open")
+
+    # -- "Remember on this computer"
+    def targets(self):
+        return self.api("GET", "repos/%s/deploy" % self.rid())[1]
+
+    def saved(self):
+        return [t for t in self.targets()["targets"] if t["target"] == "staging"][0]["saved"]
+
+    def test_the_page_is_told_where_a_password_can_be_kept(self):
+        info = self.targets()["vault"]
+        self.assertEqual((info["available"], info["kind"]), (True, "keyring"))
+        with mock.patch("shuttle_ui.vault.backend", return_value=(None, "No keychain here.")):
+            info = self.targets()["vault"]
+        self.assertEqual((info["available"], info["how"]), (False, "No keychain here."))
+
+    def test_a_password_is_kept_only_when_asked_and_only_after_the_login_worked(self):
+        self.setup_target(sudo="ask")
+        os.environ["FAKE_SSH_SUDO"] = "1"
+        job, answer = self.run_with_password(PASSWORD)
+        self.assertEqual(job["state"], "done")
+        self.assertEqual(self.saved(), "", "not asked: not kept")
+        job, answer = self.run_with_password("not-the-password", {"remember": True, "modules": "sale_documents"})
+        self.assertEqual(job["state"], "failed")
+        self.assertEqual(self.saved(), "", "a wrong password is never kept")
+        job, answer = self.run_with_password(PASSWORD, {"remember": True, "modules": "sale_documents"})
+        self.assertEqual(job["state"], "done", job["steps"][-1]["output"])
+        self.assertTrue(job.get("remembered"))
+        self.assertTrue(self.saved(), "kept after a login that worked")
+        self.assertNotIn(PASSWORD, str(answer), "the answer about the job never has it")
+        self.assertNotIn(PASSWORD, str(self.targets()), "the list of servers never has it")
+        self.assertNotIn(PASSWORD, self.everything_on_disk(), "not in the repositories, the history, the logs")
+        with open(os.path.join(self.keep, "config", "git-shuttle", "vault-index.json")) as handle:
+            self.assertNotIn(PASSWORD, handle.read(), "the list of what is kept has no secret")
+        with open(os.path.join(os.environ["FAKE_VAULT_DIR"], os.listdir(os.environ["FAKE_VAULT_DIR"])[0])) as handle:
+            self.assertEqual(handle.read(), PASSWORD, "the keychain has it (this is the stand-in of the keychain)")
+
+    def test_a_kept_password_is_used_without_the_page_sending_it(self):
+        self.setup_target(sudo="ask")
+        os.environ["FAKE_SSH_SUDO"] = "1"
+        self.run_with_password(PASSWORD, {"remember": True, "modules": "sale_documents"})
+        status, data = self.api("POST", "repos/%s/run" % self.rid(), {"action": "deploy", "params": {"target": "staging", "use_saved": True, "modules": "sale_documents"}})
+        self.assertEqual(status, 200, data)
+        import time
+        deadline = time.time() + 60
+        while time.time() < deadline:
+            _, d = self.api("GET", "jobs/" + data["job"])
+            if d["job"]["state"] != "running":
+                break
+            time.sleep(0.1)
+        self.assertEqual(d["job"]["state"], "done", d["job"]["steps"][-1]["output"])
+        self.assertIn("server ran: staging-update", d["job"]["steps"][-1]["output"])
+        self.assertNotIn(PASSWORD, str(d))
+        self.assertNotIn("use_saved", str(d), "the way it was asked is not part of the job either")
+
+    def test_forgetting_removes_it_and_a_use_of_it_is_refused(self):
+        self.setup_target(sudo="ask")
+        os.environ["FAKE_SSH_SUDO"] = "1"
+        self.run_with_password(PASSWORD, {"remember": True, "modules": "sale_documents"})
+        self.assertTrue(self.saved())
+        status, _ = self.api("POST", "repos/%s/deploy/forget-password" % self.rid(), {"target": "staging"})
+        self.assertEqual(status, 200)
+        self.assertEqual(self.saved(), "")
+        self.assertEqual(os.listdir(os.environ["FAKE_VAULT_DIR"]), [], "removed from the keychain")
+        status, data = self.api("POST", "repos/%s/run" % self.rid(), {"action": "deploy", "params": {"target": "staging", "use_saved": True, "modules": "sale_documents"}})
+        self.assertEqual(status, 400, data)
+
+    def test_a_password_belongs_to_one_address(self):
+        self.setup_target(sudo="ask")
+        os.environ["FAKE_SSH_SUDO"] = "1"
+        self.run_with_password(PASSWORD, {"remember": True, "modules": "sale_documents"})
+        self.setup_target(sudo="ask", host="deploy@203.0.113.99")
+        self.assertEqual(self.saved(), "", "another address: the password of the other server is not offered")
+        status, _ = self.api("POST", "repos/%s/run" % self.rid(), {"action": "deploy", "params": {"target": "staging", "use_saved": True, "modules": "sale_documents"}})
+        self.assertEqual(status, 400)
+
+    def test_without_a_keychain_the_job_still_works_and_says_why_nothing_was_kept(self):
+        self.setup_target(sudo="ask")
+        os.environ["FAKE_SSH_SUDO"] = "1"
+        with mock.patch("shuttle_ui.vault.backend", return_value=(None, "No keychain here.")):
+            job, answer = self.run_with_password(PASSWORD, {"remember": True, "modules": "sale_documents"})
+        self.assertEqual(job["state"], "done")
+        self.assertIn("No keychain here.", job.get("remember_error", ""))
+        self.assertFalse(job.get("remembered"))
+        self.assertNotIn(PASSWORD, str(answer))
+
+    def test_the_flags_of_a_kept_password_are_only_for_a_deploy(self):
+        for params in ({"remember": True}, {"use_saved": True}):
+            status, _ = self.api("POST", "repos/%s/run" % self.rid(), {"action": "fetch", "params": params})
+            self.assertEqual(status, 400, params)
+        status, _ = self.api("POST", "repos/%s/deploy/forget-password" % self.rid(), {"target": "../x"})
+        self.assertEqual(status, 400)
+        status, _ = self.api("POST", "repos/%s/deploy/forget-password" % self.rid(), {"target": "nothing"})
+        self.assertEqual(status, 404)
 
     def test_a_wrong_login_password_is_not_sent_again(self):
         os.environ["FAKE_SSH_LOGIN"] = "1"

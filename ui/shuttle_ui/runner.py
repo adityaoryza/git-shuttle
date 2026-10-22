@@ -6,6 +6,10 @@ from .errors import BadRequest
 from .paths import SHUTTLE_ARGV
 
 
+# What the server starts never gets the terminal of the server: no input, and no controlling terminal to open (/dev/tty). ssh asks for a
+# password there, and git for a passphrase: that prompt would show in the window that runs `git shuttle ui`, where nobody can see why the page waits.
+NO_TERMINAL = {"stdin": subprocess.DEVNULL, "start_new_session": True}
+
 MAX_OUTPUT = 256 * 1024     # of what a job reports back to the page
 
 # Variables that would point git at another repository, index or diff program than the one a request names.
@@ -33,7 +37,7 @@ def run_shuttle(repo_path, args, dry_run=False, timeout=120, extra_env=None):
     """One git-shuttle command in a repository; returns (exit status, output)."""
     argv = SHUTTLE_ARGV + ["-n" if dry_run else "-y"] + list(args)
     try:
-        done = subprocess.run(argv, cwd=repo_path, env=child_env(extra_env), capture_output=True, timeout=timeout)
+        done = subprocess.run(argv, cwd=repo_path, env=child_env(extra_env), capture_output=True, **NO_TERMINAL, timeout=timeout)
     except subprocess.TimeoutExpired:
         return 124, "timed out"
     return done.returncode, limited(done.stdout + done.stderr)
@@ -57,7 +61,7 @@ def parse_porcelain(raw):
 
 
 def shuttle_porcelain(repo_path, command, timeout=60, extra=()):
-    done = subprocess.run(SHUTTLE_ARGV + [command] + list(extra) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    done = subprocess.run(SHUTTLE_ARGV + [command] + list(extra) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, **NO_TERMINAL, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 500)
     return parse_porcelain(done.stdout)
@@ -70,12 +74,12 @@ def git_output(repo_path, *args, timeout=120):
     that refreshes the index. Git may still update the stat cache of the index, as it does for any user.
     """
     argv = ["git", "-c", "core.fsmonitor=false"] + list(args)
-    return subprocess.run(argv, cwd=repo_path, env=child_env({"GIT_OPTIONAL_LOCKS": "0"}), capture_output=True, timeout=timeout)
+    return subprocess.run(argv, cwd=repo_path, env=child_env({"GIT_OPTIONAL_LOCKS": "0"}), capture_output=True, **NO_TERMINAL, timeout=timeout)
 
 
 def shuttle_records(repo_path, args, timeout=60):
     """A read-only git-shuttle command whose porcelain output is NUL separated records of unit-separated fields."""
-    done = subprocess.run(SHUTTLE_ARGV + list(args) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    done = subprocess.run(SHUTTLE_ARGV + list(args) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, **NO_TERMINAL, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 500)
     return [rec.decode("utf-8", "replace").split("\x1f") for rec in done.stdout.split(b"\0") if rec]
@@ -83,7 +87,7 @@ def shuttle_records(repo_path, args, timeout=60):
 
 def shuttle_text(repo_path, args, timeout=60):
     """A read-only git-shuttle command and its plain output (or the reason it refused)."""
-    done = subprocess.run(SHUTTLE_ARGV + list(args), cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+    done = subprocess.run(SHUTTLE_ARGV + list(args), cwd=repo_path, env=child_env(), capture_output=True, **NO_TERMINAL, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 400)
     return done.stdout.decode("utf-8", "replace")

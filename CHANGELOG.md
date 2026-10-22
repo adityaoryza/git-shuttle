@@ -2,6 +2,24 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.3.1] - 2026-10-22
+
+### Added
+- "Remember on this computer" in the Deploy tab (opt-in, per server): the password is kept by the system and nothing else. On Linux by the
+  keyring of the desktop (`secret-tool`); on Windows and WSL by Windows itself (DPAPI, through PowerShell: only the protected text is kept in
+  the config folder, useless on another computer or for another Windows user); not on macOS yet, and never in a file in clear. It is kept
+  only after a login that worked, bound to the repository, the server and its address, never sent back to the page (which only shows
+  "Password saved" and Forget), and used only to answer the prompt of ssh or sudo. A key is still the safest way: `ssh-copy-id` once.
+- The Deploy tab asks for the password on the page when the server asks for one and none was typed, and "Test the connection" checks the
+  user and the password without running the command of the server.
+
+### Fixed
+- A job of the web UI no longer gets the terminal of the window that runs `git shuttle ui`: ssh asked for its password there, where nobody
+  could tell why the page waited.
+- Typing in the Modules field of the Deploy tab no longer makes the plan disappear under the cursor (the field lost the focus and the next
+  keys went to the shortcuts of the page, for example the one that opens the command log).
+- A test of `sync --merge` that depended on whether two commits fell in the same second no longer fails on a slow runner.
+
 ## [0.3.0] - 2026-10-22
 
 The release with `git shuttle deploy` and the Deploy tab: after a push, one click (or one command) updates a server over ssh.
