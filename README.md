@@ -1,4 +1,12 @@
-# git-shuttle
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="ui/shuttle_ui/static/brand/wordmark-dark.svg">
+    <img src="ui/shuttle_ui/static/brand/wordmark-light.svg" alt="git-shuttle" height="56">
+  </picture>
+</h1>
+
+<p align="center"><strong>Branch, commit, merge and release with a preview before every step.</strong><br>
+By <a href="https://adityaoryza.my.id/en">Aditya Oryza Mahendra</a></p>
 
 **The same steps, in the same order, with the same checks, every time you take a branch from your work to the integration
 branch and to a release.** One command instead of a copied list of ten.

@@ -2,6 +2,17 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Added
+- Web UI: the logo and name in the top bar, a credit line at the bottom (version, author) and an About dialog (author links,
+  project links, licence, the version of the server). It is also in the Actions palette, and the first-run screen shows the logo.
+  The page still loads nothing from the internet: a link opens in a new tab only when it is clicked.
+
+### Fixed
+- Web UI: a dialog without a field (About, for one) now moves the focus to its first button when it opens, even when the page does not
+  render again afterwards.
+
 ## [0.1.1] - 2026-10-21
 
 ### Fixed
