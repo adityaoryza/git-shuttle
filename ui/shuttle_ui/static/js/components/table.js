@@ -5,6 +5,9 @@ import { clamp, clearPrefs, dropIndex, fitWidth, keyResize, layoutWidths, loadPr
 import { cn } from "./ui.js";
 import { useSize } from "./splitter.js";
 
+// the room at the right of the header that the gear of the column menu has for itself
+const GUTTER = 32;
+
 let canvas;
 function textWidth(text, font) {
   canvas = canvas || document.createElement("canvas");
@@ -32,9 +35,9 @@ export function ResizableTable({ id, label, columns: defaultColumns, sections, t
   const update = next => { setPrefs(next); savePrefs(localStorage, id, next); };
 
   const columns = useMemo(() => orderedColumns(defaultColumns, prefs.order), [defaultColumns, prefs.order]);
-  const shown = useMemo(() => visibleColumns(columns, prefs.hidden, room || 100000), [columns, prefs.hidden, room]);
+  const shown = useMemo(() => visibleColumns(columns, prefs.hidden, (room || 100000) - GUTTER), [columns, prefs.hidden, room]);
   const wanted = useMemo(() => startWidths(columns, prefs.widths), [columns, prefs.widths]);
-  const widths = useMemo(() => layoutWidths(shown, wanted, room || 100000), [shown, wanted, room]);
+  const widths = useMemo(() => layoutWidths(shown, wanted, (room || 100000) - GUTTER), [shown, wanted, room]);
   const template = shown.map(c => widths[c.key] + "px").join(" ");
 
   // the rows in order: each section sorted by itself (a tree keeps its own order)
@@ -149,7 +152,7 @@ export function ResizableTable({ id, label, columns: defaultColumns, sections, t
   const empty_ = !flat.length;
 
   return html`<div class=${cn("table", klass)} ref=${root} onKeyDown=${onKeyDown}>
-    <div class="trow thead" role="row" style=${{ gridTemplateColumns: template }}>
+    <div class="trow thead" role="row" style=${{ gridTemplateColumns: template + " " + GUTTER + "px" }}>
       ${shown.map((col, i) => html`<div key=${col.key} class=${cn("tcell", "thcell", col.align && "t-" + col.align, moving && moving.key === col.key && "is-moving")} role="columnheader" data-col=${col.key} aria-sort=${col.sortable === false ? undefined : ariaSort(col)}
         onPointerDown=${e => pressHeader(e, col)} onPointerMove=${dragHeader} onPointerUp=${dropHeader} onPointerCancel=${dropHeader} onKeyDown=${e => headerKeys(e, col)}>
         ${col.sortable === false ? html`<span class="thlabel" tabIndex=${reorderable ? 0 : undefined} title=${reorderable ? "Drag to move, or Alt+Left and Alt+Right" : undefined}>${col.label}</span>`
@@ -158,7 +161,7 @@ export function ResizableTable({ id, label, columns: defaultColumns, sections, t
           onPointerDown=${e => startDrag(e, col)} onPointerMove=${moveDrag} onPointerUp=${endDrag} onPointerCancel=${endDrag} onKeyDown=${e => handleKey(e, col)} onDblClick=${() => fit(col)} title="Drag to resize, double click to fit the content"></span>` : null}
       </div>`)}
       ${moving ? html`<span class="col-drop" aria-hidden="true" style=${{ left: shown.slice(0, moving.to).reduce((sum, c) => sum + widths[c.key], 0) + "px" }}></span>` : null}
-      <button type="button" class="table-gear" aria-label="Columns" aria-expanded=${menu} title="Columns" onClick=${() => setMenu(!menu)}>⚙</button>
+      <span class="table-gutter"><button type="button" class="table-gear" aria-label="Columns" aria-expanded=${menu} title="Columns" onClick=${() => setMenu(!menu)}>⚙</button></span>
     </div>
     ${menu ? html`<div class="table-menu" role="dialog" aria-label="Columns">
       ${defaultColumns.map(col => html`<label class="check"><input type="checkbox" checked=${!prefs.hidden.includes(col.key) || required(col)} disabled=${required(col)} onChange=${() => toggleColumn(col.key)} /> ${col.label}${required(col) ? html` <span class="hint">(always shown)</span>` : null}</label>`)}

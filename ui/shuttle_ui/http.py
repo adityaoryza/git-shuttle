@@ -84,6 +84,7 @@ class Handler(BaseHTTPRequestHandler):
         if length < 0 or length > MAX_BODY:
             raise BadRequest("the request is too large", 413)
         raw = self.rfile.read(length) if length else b"{}"
+        self._body_read = True
         try:
             data = json.loads(raw.decode("utf-8") or "{}")
         except (ValueError, RecursionError):     # RecursionError: absurdly nested brackets
@@ -109,18 +110,39 @@ class Handler(BaseHTTPRequestHandler):
         body = self._json_body() if method == "POST" else {key: values[0] for key, values in parse_qs(urlparse(self.path).query, max_num_fields=20).items()}
         return self._send(200, handle(self.server, method, path[len("/api/"):], body))
 
+    def _drain(self):
+        """Read and drop a body that the answer does not need.
+
+        Left unread, it would be taken for the start of the next request on a kept-alive connection, and a connection closed with
+        unread data can be reset before the client has read the answer (a browser then reports a network error, not the 4xx).
+        """
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            self.close_connection = True
+            return
+        if 0 < length <= MAX_BODY:
+            self.rfile.read(length)
+        elif length > MAX_BODY:
+            self.close_connection = True
+
     def _dispatch(self, method):
         started = time.monotonic()
         path = urlparse(self.path).path
+        self._body_read = False
         try:
             self._route(method, path)
         except BadRequest as error:
+            if not self._body_read:
+                self._drain()
             if error.status in REFUSED:
                 log.refused(error.status, str(error), self.client_address[0], method, path)
             if error.status in (413, 415):
                 self.close_connection = True    # the body was not read: the connection cannot be reused
             self._send(error.status, {"error": str(error)})
         except Exception as error:  # never leave a request without an answer
+            if not self._body_read:
+                self._drain()
             log.failed(method, path, error, self.server.verbose)
             self._send(500, {"error": "internal error: %s" % type(error).__name__})
         log.request(method, path, self.status, (time.monotonic() - started) * 1000)

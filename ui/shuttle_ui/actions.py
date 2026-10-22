@@ -67,6 +67,7 @@ CATALOG = [
     {"id": "add-repo", "label": "Add a repository", "group": "App", "cli": "", "where": "top bar Add"},
     {"id": "shortcuts", "label": "Keyboard shortcuts", "group": "App", "cli": "", "where": "?", "key": "?"},
     {"id": "about", "label": "About git-shuttle", "group": "App", "cli": "", "where": "top bar logo, footer"},
+    {"id": "update", "label": "Check for updates", "group": "App", "cli": "git shuttle update --check", "where": "About dialog"},
 ]
 
 # Every command of the tool and where the page offers it (ids of CATALOG, or a sentence for what is not an action).
@@ -118,6 +119,7 @@ COMMANDS = {
     "unstage": ["unstage"],
     "discard": ["discard"],
     "ui": ["this page is the ui command"],
+    "update": ["update"],
     "help": ["the shortcuts sheet"],
     "version": ["the version is shown by the server, GET /api/version"],
 }

@@ -33,6 +33,8 @@ Commands:
   ship [-m MSG] [-- PATH...]    commit, then merge: the whole way to the integration branch, after one question
   release --onto NEW BRANCH...  a release branch from the remote release branch; a branch name stands for its commits
         [--from BASE] [--strategy-option ours|theirs] [--push]
+  release --onto NEW --empty [--push]
+                                the release branch with no commit yet; later,  release --onto NAME --append COMMIT...  adds commits to it
   start NAME [--from BRANCH] [--stash|--carry]
                                 a branch for new work, cut from the remote integration branch (snake_case, with the prefix);
                                 --stash puts uncommitted changes in the stash first, --carry takes them along
@@ -88,6 +90,7 @@ Commands:
         [--from BASE] [--strategy-option ours|theirs] [--push]
   hook install|uninstall|status a commit-msg hook that applies the message rules to every commit
   config                        the effective settings
+  update [--check] [--to TAG]   bring git-shuttle to the latest release (a copy made by install.sh); --check only looks
 
 Options:
   -y, --yes       do not ask before each command (needed without a terminal)
@@ -175,6 +178,7 @@ main() {
                        py=python3; "$py" -c '' >/dev/null 2>&1 || py=python
                        "$py" -c '' >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }
                        PYTHONPATH="$ROOT/ui" exec "$py" -m shuttle_ui "$@" ;;
+        update)        cmd_update "$@" ;;
         pr)            cmd_pr "$@" ;;
         hook)          cmd_hook "$@" ;;
         config)        cmd_config "$@" ;;

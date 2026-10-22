@@ -116,6 +116,26 @@ git checkout -q -b manual release; git cherry-pick "$(git rev-parse feat/c1)" >/
 PJ=$(porcelain_json candidates --porcelain)
 assert_contains "$(pj commit)" "-"$'\x1f'"c1 commit" "a commit that is in the release branch is marked -"
 assert_contains "$(pj commit)" "+"$'\x1f'"c2 second" "...the others stay +"
+# a release branch that is on its way: its commits are "~", not "+" (they are not in the release branch, but they are in a release)
+git config shuttle.releasePattern "rel-q/{n}"
+shuttle -y release --onto rel-q/1 --push feat/c2
+git checkout -q main
+PJ=$(porcelain_json candidates --porcelain)
+assert_contains "$(pj commit)" "~"$'\x1f'"c2 second"$'\x1f'"rel-q/1" "a commit that is in a release branch on its way is marked ~, with the branch"
+assert_contains "$(pj commit)" "~"$'\x1f'"c2 first"$'\x1f'"rel-q/1" "...both commits of the branch"
+assert_contains "$(pj commit)" "-"$'\x1f'"c1 commit" "...a commit that is in the release branch stays -"
+shuttle candidates
+assert_contains "$OUT" "(in rel-q/1)" "the plain listing says where it is"
+git config shuttle.releasePattern "no-such/{n}"
+PJ=$(porcelain_json candidates --porcelain)
+assert_contains "$(pj commit)" "+"$'\x1f'"c2 second" "with another pattern it is a + again (the pattern names the release branches)"
+git config shuttle.releasePattern "rel-q/{n}"
+git push -q origin rel-q/1:release
+PJ=$(porcelain_json candidates --porcelain)
+assert_contains "$(pj commit)" "-"$'\x1f'"c2 second" "once the release branch is in the release branch, its commits are released (-), no longer ~"
+assert_not_contains "$(pj commit)" "~" "...and nothing is left marked ~"
+git push -q -f origin manual:release
+git config --unset shuttle.releasePattern
 shuttle candidates --bogus
 assert_status 1 "$RC" "candidates with an unknown argument"
 # an empty list

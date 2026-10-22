@@ -63,8 +63,58 @@ release_branch_name() {
     done
 }
 
+# release_empty NAME FROM PUSH — the release branch, cut from the remote release branch, with no commit yet.
+release_empty() {
+    local onto=$1 from=${2:-$RELEASE} push=$3 remote
+    remote=$(cfg_remote)
+    refuse_operation
+    git check-ref-format --branch "$onto" >/dev/null 2>&1 || die "'$onto' is not a valid branch name"
+    require_clean_tree
+    git show-ref -q --verify "refs/heads/$onto" && die "the branch '$onto' already exists"
+    fetch_remote
+    have_ref "refs/remotes/$remote/$from" || die "the branch '$from' does not exist on '$remote' (--from <branch>, or git config shuttle.release <branch>)"
+    git show-ref -q --verify "refs/remotes/$remote/$onto" && die "the branch '$onto' already exists on '$remote'"
+    show_where "$(git symbolic-ref -q --short HEAD || echo '(detached)')"
+    info "new branch: $onto, from $remote/$from, with no commit yet (add them later with  git shuttle release --onto $onto --append COMMIT...)"
+    confirm "Create '$onto'?"
+    run git checkout --no-track -b "$onto" "$remote/$from" || die "cannot create '$onto'"
+    step "'$onto' is ready, at $remote/$from"
+    if (( push )); then push_branch "$onto" 0; else info "Push it with:  git shuttle push --allow-protected   (or  git push -u $remote $onto)"; fi
+}
+
+# release_append NAME PUSH COMMIT... — more commits on a release branch that exists: it is checked out and they are picked in order.
+release_append() {
+    local onto=$1 push=$2; shift 2
+    local remote; remote=$(cfg_remote)
+    refuse_operation
+    git check-ref-format --branch "$onto" >/dev/null 2>&1 || die "'$onto' is not a valid branch name"
+    require_clean_tree
+    refuse_protected "$onto" "add commits"
+    fetch_remote
+    if ! git show-ref -q --verify "refs/heads/$onto"; then
+        have_ref "refs/remotes/$remote/$onto" || die "there is no release branch '$onto', locally or on '$remote' (create it with  git shuttle release --onto $onto --empty)"
+        show_where "$(git symbolic-ref -q --short HEAD || echo '(detached)')"
+        info "a local copy of $remote/$onto is made, then the commits are picked onto it"
+        confirm "Switch to '$onto' and pick ${#} commit(s)?"
+        run git checkout --track -b "$onto" "$remote/$onto" || die "cannot switch to '$onto'"
+    else
+        local current; current=$(git symbolic-ref -q --short HEAD || true)
+        if [[ "$current" != "$onto" ]]; then
+            show_where "${current:-(detached)}"
+            confirm "Switch to '$onto' and pick ${#} commit(s)?"
+            run git checkout "$onto" || die "cannot switch to '$onto'"
+        fi
+    fi
+    if (( DRY_RUN )); then
+        info "(dry run) then: git shuttle cherry-pick $*${push:+$([[ $push == 1 ]] && printf ', and push the branch')}"
+        return 0
+    fi
+    cmd_cherry_pick "$@" || return $?
+    if (( push )); then push_branch "$onto" 0; fi
+}
+
 cmd_release() {
-    local args=() item hashes h seen=" " auto_name
+    local args=() item hashes h seen=" " auto_name empty=0 append=0 onto="" from="" push=0 commits=()
     need_repo
     load_branches
     while (( $# )); do
@@ -73,14 +123,20 @@ cmd_release() {
                 [[ $# -ge 2 ]] || die "$1 needs a value"
                 if [[ "$2" == auto ]]; then
                     auto_name=$(release_branch_name) || exit 1
+                    onto=$auto_name
                     args+=("$1" "$auto_name")
                 else
+                    onto=$2
                     args+=("$1" "$2")
                 fi
                 shift 2 ;;
+            --empty) empty=1; shift ;;
+            --append) append=1; shift ;;
             --from|-X|--strategy-option)
-                [[ $# -ge 2 ]] || die "$1 needs a value"; args+=("$1" "$2"); shift 2 ;;
-            --push) args+=("$1"); shift ;;
+                [[ $# -ge 2 ]] || die "$1 needs a value"
+                [[ "$1" != --from ]] || from=$2
+                args+=("$1" "$2"); shift 2 ;;
+            --push) push=1; args+=("$1"); shift ;;
             -*) die "release: unknown option '$1'" ;;
             *)
                 item=$1; shift
@@ -91,10 +147,23 @@ cmd_release() {
                 fi
                 [[ -n "$hashes" ]] || die "'$item' has no commits to pick"
                 for h in $hashes; do
-                    [[ "$seen" == *" $h "* ]] || { args+=("$h"); seen="$seen$h "; }
+                    [[ "$seen" == *" $h "* ]] || { args+=("$h"); commits+=("$h"); seen="$seen$h "; }
                 done
                 ;;
         esac
     done
+    (( ! empty || ! append )) || die "release: --empty and --append do not go together"
+    if (( empty )); then
+        [[ -n "$onto" ]] || die "release --empty needs the new branch:  git shuttle release --onto auto --empty"
+        (( ${#commits[@]} == 0 )) || die "release --empty makes a branch with no commit: leave the commits out, or use --append later"
+        release_empty "$onto" "$from" "$push"
+        return
+    fi
+    if (( append )); then
+        [[ -n "$onto" ]] || die "release --append needs the release branch:  git shuttle release --onto <branch> --append COMMIT..."
+        (( ${#commits[@]} )) || die "release --append needs at least one commit"
+        release_append "$onto" "$push" "${commits[@]}"
+        return
+    fi
     cmd_pick "${args[@]}"
 }

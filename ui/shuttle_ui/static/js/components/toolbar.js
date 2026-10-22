@@ -2,7 +2,7 @@
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { reasonOf, labelOf, syncPlan } from "../ops.js";
 import { pushTitle } from "../pushstate.js";
-import { Button, Input, cn } from "./ui.js";
+import { Button, Search, cn } from "./ui.js";
 
 const KEYS = { undo: "Ctrl+Z", redo: "Ctrl+Shift+Z", push: "Shift+P", branch: "B", stash: "S", "stash-pop": "Shift+S", log: "L", fetch: "Shift+F" };
 
@@ -53,6 +53,6 @@ export function Toolbar({ ctx, perform, search, setSearch, searchRef, push }) {
     <span class="grow"></span>
     <${Tool} id="log" ctx=${ctx} perform=${perform} label="Log" glyph="☰" always />
     <${Button} variant="ghost" size="sm" class="tool" data-tool="palette" title="Every action (Ctrl+K)" aria-label="Every action (Ctrl+K)" onClick=${() => perform("palette")}><span class="glyph" aria-hidden="true">⌘</span><span class="tool-label">Actions</span><//>
-    <${Input} class="tool-search" type="search" inputRef=${searchRef} placeholder="Search commits (Ctrl+F)" aria-label="Search commits" value=${search} onInput=${e => setSearch(e.target.value)} onKeyDown=${e => e.key === "Escape" && (setSearch(""), e.target.blur())} />
+    <${Search} class="tool-search" wrapClass="tool-search-wrap" inputRef=${searchRef} placeholder="Search commits (Ctrl+F)" aria-label="Search commits" value=${search} onInput=${e => setSearch(e.target.value)} onKeyDown=${e => e.key === "Escape" && (setSearch(""), e.target.blur())} />
   </div>`;
 }

@@ -2,7 +2,7 @@
 import { html, useState, useEffect, useRef, useMemo, useCallback } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { activeFilters, durationText, emptyFilters, historyQuery, loadFilters, mergePage, relative, resultOf, saveFilters, withDays } from "../logview.js";
-import { Button, Input, Modal, Skeleton, cn } from "./ui.js";
+import { Button, Modal, Search, Skeleton, cn } from "./ui.js";
 import { ResizableTable } from "./table.js";
 
 const PAGE = 50;
@@ -76,7 +76,7 @@ export function LogPanel({ repos, version, onClose, onRerun, onCopy, notify, con
     { key: "repo", label: "Repository", min: 90, width: 140, priority: 3, sortable: false, render: r => r.entry.repo },
     { key: "action", label: "Action", min: 140, width: 260, priority: 9, flex: true, required: true, sortable: false, render: r => html`<span title=${(r.entry.commands || []).join("\n")}>${r.entry.label || r.entry.action}</span>` },
     { key: "result", label: "Result", min: 90, width: 110, priority: 8, required: true, sortable: false, render: r => { const x = resultOf(r.entry.state); return html`<span class=${"badge badge-" + x.tone}><span aria-hidden="true">${x.icon}</span> ${x.label}</span>`; } },
-    { key: "duration", label: "Took", min: 70, width: 84, priority: 2, align: "right", sortable: false, render: r => durationText(r.entry.duration) },
+    { key: "duration", label: "Took", min: 80, width: 90, priority: 2, align: "right", sortable: false, render: r => durationText(r.entry.duration) },
   ], []);
   const n = activeFilters(filters);
 
@@ -86,10 +86,10 @@ export function LogPanel({ repos, version, onClose, onRerun, onCopy, notify, con
       <select class="input" aria-label="Filter by action" value=${filters.action} onChange=${e => set("action", e.target.value)}><option value="">All actions</option>${facets.actions.map(a => html`<option value=${a}>${a}</option>`)}</select>
       <select class="input" aria-label="Filter by period" value=${filters.range} onChange=${e => set("range", e.target.value)}>${RANGES.map(([v, l]) => html`<option value=${v}>${l}</option>`)}</select>
       <div class="segmented" role="group" aria-label="Filter by result">${[["", "All"], ["done", "Done"], ["stopped", "Stopped"], ["failed", "Failed"]].map(([v, l]) => html`<button type="button" class=${filters.result === v ? "on" : ""} aria-pressed=${filters.result === v} onClick=${() => set("result", v)}>${l}${v ? " " + (counts[v] || 0) : ""}</button>`)}</div>
-      <${Input} type="search" autofocus inputRef=${search} placeholder="Search (/)" aria-label="Search the log" value=${filters.q} onInput=${e => set("q", e.target.value)} />
+      <${Search} wrapClass="log-search" autofocus inputRef=${search} placeholder="Search (/)" aria-label="Search the log" value=${filters.q} onInput=${e => set("q", e.target.value)} />
       ${n ? html`<button type="button" class="link" onClick=${() => setFilters(emptyFilters())}>Clear filters (${n})</button>` : null}
-      <span class="grow"></span><span class="hint" aria-live="polite">${entries ? total + (total === 1 ? " entry" : " entries") : ""}</span>
-      <${Button} size="sm" variant="ghost" onClick=${clear} disabled=${!total && !n}>Clear log<//>
+      <span class="log-status"><span class="hint" aria-live="polite">${entries ? total + (total === 1 ? " entry" : " entries") : ""}</span>
+      <${Button} size="sm" variant="ghost" onClick=${clear} disabled=${!total && !n}>Clear log<//></span>
     </div>
     ${entries === null ? html`<${Skeleton} rows=${8} />` : html`<${ResizableTable} id="log" label="Command log" columns=${columns} sections=${sections} rowKey=${r => r.key} selected=${new Set(active ? [active] : [])} activeKey=${active}
       onSelect=${(set_, k) => setActive(k)} onRowClick=${r => r.entry && toggle(r.entry.id)} onOpen=${r => toggle(r.entry.id)}

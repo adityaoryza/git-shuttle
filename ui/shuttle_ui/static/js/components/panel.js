@@ -1,10 +1,11 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
-import { html, useState, useEffect } from "../../vendor/preact-htm.js";
+import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { GH_MISSING, ghMissing, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { GH_MISSING, branchOptions, ghMissing, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks } from "../release.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { FileRow } from "./file-row.js";
-import { Alert, Badge, Button, Field, Input, Output, Segmented, cn } from "./ui.js";
+import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, cn } from "./ui.js";
 
 // ---- what the repository says, in the words of the settings
 export function settings(status) {
@@ -13,6 +14,7 @@ export function settings(status) {
     messagePattern: s["config.messagePattern"] || "", forbidTrailers: s["config.forbidTrailers"] || "",
     upgradeCommand: s["config.upgradeCommand"] || "", branchPrefix: s["config.branchPrefix"] || "",
     integration: s["config.integration"] || s["config.base"] || "", release: s["config.release"] || s["config.base"] || "",
+    releasePattern: s["config.releasePattern"] || "",
   };
 }
 
@@ -208,13 +210,17 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested, 
 }
 
 // ---- 3. release: pick commits from what was merged, in order
-export function ReleaseTab({ repoId, status, runner, onError, onLoaded }) {
+export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded, onSettings, onCopy, onPullRequest }) {
   const c = settings(status);
   const [candidates, setCandidates] = useState(null);
   const [picked, setPicked] = useState([]);
   const [name, setName] = useState("");
+  const [editName, setEditName] = useState(false);
+  const [target, setTarget] = useState("");            // a release branch that exists, to add to; "" is a new one
   const [push, setPush] = useState(true);
   const [strategy, setStrategy] = useState("");
+  const [query, setQuery] = useState("");
+  const [hideReleased, setHideReleased] = useState(true);
 
   async function load() {
     try {
@@ -230,30 +236,94 @@ export function ReleaseTab({ repoId, status, runner, onError, onLoaded }) {
   }
   useEffect(() => { load(); }, [repoId]);
 
-  const toggle = (merge, commit, on) => { setPicked(on ? [...picked, { hash: commit.hash, subject: commit.subject }] : picked.filter(p => p.hash !== commit.hash)); runner.clearPreview(); };
-  const move = (i, d) => { const a = picked.slice(); [a[i], a[i + d]] = [a[i + d], a[i]]; setPicked(a); runner.clearPreview(); };
-  const params = { onto: name || "auto", commits: picked.map(p => p.hash), push, strategy: strategy || undefined };
+  // A release that has just been made: what was picked is in the branch now. The list is read again (those commits show where they are),
+  // the picks are cleared, and the tab says what comes next.
+  const doneJob = runner.job && runner.job.state === "done" && runner.job.action === "release" ? runner.job : null;
+  const handled = useRef(null);
+  const [made, setMade] = useState(null);
+  useEffect(() => {
+    if (!doneJob || handled.current === doneJob.id) return;
+    handled.current = doneJob.id;
+    setMade(doneJob.label);
+    setEditName(false);
+    load();
+  }, [doneJob && doneJob.id]);
 
-  if (candidates === null) return html`<div class="tab"><p class="hint">Loading what was merged…</p></div>`;
-  const merges = candidates.slice().reverse();   // oldest first
-  return html`<div class="tab">
-    <p class="lead">Pick the commits to release, from <code>${c.release || "the release branch"}</code>. They are cherry-picked in the order you set.</p>
-    ${merges.length === 0 ? html`<p class="hint">Nothing has been merged into ${c.integration || "the integration branch"} since the last release.</p>` : null}
-    ${merges.map(m => html`<div class="group"><div class="group-head"><strong>${m.subject}</strong><span class="grow" /><span class="hint">${(m.date || "").slice(0, 10)}</span></div>
-      ${m.commits.map(cm => html`<label class="check pick"><input type="checkbox" disabled=${!cm.pending} checked=${picked.some(p => p.hash === cm.hash)} onChange=${e => toggle(m, cm, e.target.checked)} />
-        <code>${shortHash(cm.hash)}</code><span class="msg">${cm.subject}</span>${!cm.pending ? html`<${Badge}>released<//>` : null}</label>`)}</div>`)}
-    ${picked.length ? html`<div class="stack">
-      <span class="section">Order on the release branch</span>
-      ${picked.map((p, i) => html`<div class="pickrow"><span class="num">${i + 1}</span><code>${shortHash(p.hash)}</code><span class="msg">${p.subject}</span>
-        <${Button} variant="ghost" size="icon" disabled=${i === 0} onClick=${() => move(i, -1)} aria-label="Move up">↑<//><${Button} variant="ghost" size="icon" disabled=${i === picked.length - 1} onClick=${() => move(i, 1)} aria-label="Move down">↓<//></div>`)}
-      <${Field} label="Release branch" hint="auto = the pattern from Settings"><${Input} class="mono" value=${name} onInput=${e => { setName(e.target.value); runner.clearPreview(); }} /><//>
+  const changed = next => { setPicked(next); runner.clearPreview(); };
+  const existing = releaseBranches(c.releasePattern, branchOptions(branches).map(o => o.name));
+  const merges = candidates ? candidates.slice().reverse() : [];      // oldest first: that is the order they are picked in
+  const visible = filterMerges(merges, query, hideReleased);
+  const visibleCount = visible.reduce((sum, m) => sum + m.commits.length, 0);
+  const total = merges.reduce((sum, m) => sum + m.commits.length, 0);
+  const plan = releaseAction({ picked, target, name, push, strategy });
+  const branchName = target || name;
+
+  if (candidates === null) return html`<div class="tab"><${Skeleton} rows=${5} height=${22} /></div>`;
+  return html`<div class="tab release">
+    ${made ? html`<${Alert} tone="info" title=${"Done: " + made}>
+      <span>The commits show “in” the release branch until its pull request is merged into <code>${c.release || "the release branch"}</code>.</span>
+      <div class="actions"><${Button} size="sm" onClick=${onPullRequest}>Open the pull request<//><${Button} variant="ghost" size="sm" onClick=${() => setMade(null)}>Dismiss<//></div>
+    <//>` : null}
+    <ol class="how" aria-label="How a release is made">
+      <li><b>1</b> Pick the commits</li><li><b>2</b> Order them</li><li><b>3</b> Name the branch</li><li><b>4</b> Create it, then open the pull request</li>
+    </ol>
+
+    <section class="stack" aria-label="Release branch">
+      <span class="section">Release branch <span class="hint">cut from <code>${c.release || "the release branch"}</code></span></span>
+      <${Segmented} value=${target ? "existing" : "new"} onChange=${v => { setTarget(v === "existing" ? existing[0] || "" : ""); runner.clearPreview(); }}
+        options=${[{ value: "new", label: "New branch" }, { value: "existing", label: "Add to existing" + (existing.length ? " · " + existing.length : "") }]} />
+      ${!target ? html`<div class="next-name">
+          ${editName
+            ? html`<${Input} class="mono" value=${name} onInput=${e => { setName(e.target.value); runner.clearPreview(); }} aria-label="Release branch name" />`
+            : html`<code class="next-name-text" title="The next release branch, from the pattern in Settings">${name}</code>`}
+          <${Button} variant="ghost" size="sm" onClick=${() => setEditName(!editName)}>${editName ? "Done" : "Edit"}<//>
+        </div>
+        <span class="hint">Named from the pattern in Settings${c.releasePattern ? html`: <code>${c.releasePattern}</code>` : ""}. <button type="button" class="link" onClick=${onSettings}>Change the pattern</button></span>`
+        : html`<${Field} label="Release branch to add to" hint="the ones that match the pattern in Settings, newest first">
+          <select class="input" value=${target} onChange=${e => { setTarget(e.target.value); runner.clearPreview(); }}>${existing.map(b => html`<option value=${b}>${b}</option>`)}</select><//>
+          ${existing.length === 0 ? html`<span class="hint">No branch matches the pattern yet: make a new one.</span>` : null}`}
+    </section>
+
+    <section class="stack" aria-label="Commits to release">
+      <div class="release-tools">
+        <${Input} type="search" value=${query} placeholder="Search message, sha or branch" aria-label="Search the commits" onInput=${e => setQuery(e.target.value)} />
+        <label class="check" title="Commits that are in the release branch, or in a release branch that is on its way"><input type="checkbox" checked=${hideReleased} onChange=${e => setHideReleased(e.target.checked)} /> Hide released</label>
+      </div>
+      <div class="release-count">
+        <span class="hint" aria-live="polite">${visibleCount === total ? total + " commit" + (total === 1 ? "" : "s") : visibleCount + " of " + total + " commits"} · <strong>${picked.length} picked</strong></span>
+        <span class="grow" />
+        <button type="button" class="link" disabled=${pendingOf(visible).length === 0} onClick=${() => changed(addPicks(picked, pendingOf(visible)))}>Select all${query ? " found" : " unreleased"}</button>
+        <button type="button" class="link" disabled=${picked.length === 0} onClick=${() => changed([])}>Clear</button>
+      </div>
+      <div class="release-groups">
+        ${total === 0 ? html`<p class="hint">Nothing has been merged into ${c.integration || "the integration branch"} since the last release.</p>` : null}
+        ${total > 0 && visible.length === 0 ? html`<p class="hint">${query ? "No commit matches “" + query + "”." : "Everything merged so far is already released."}${hideReleased ? " " : ""}${hideReleased ? html`<button type="button" class="link" onClick=${() => setHideReleased(false)}>Show the released ones</button>` : null}</p>` : null}
+        ${visible.map(m => html`<div class="group"><div class="group-head"><strong class="msg" title=${m.subject}>${m.subject}</strong><span class="grow" /><span class="hint">${(m.date || "").slice(0, 10)}</span>
+            <button type="button" class="link" disabled=${m.commits.every(cm => !cm.pending)} onClick=${() => changed(addPicks(picked, m.commits))}>Select all</button></div>
+          ${m.commits.map(cm => html`<label class="check pick"><input type="checkbox" disabled=${!cm.pending} checked=${picked.some(p => p.hash === cm.hash)} onChange=${e => changed(e.target.checked ? addPicks(picked, [cm]) : removePicks(picked, [cm.hash]))} />
+            <code>${shortHash(cm.hash)}</code><span class="msg" title=${cm.subject}>${cm.subject}</span>${!cm.pending ? html`<${Badge} tone=${cm.in_release ? "info" : "neutral"}>${cm.in_release ? "in " + cm.in_release : "released"}<//>` : null}</label>`)}</div>`)}
+      </div>
+    </section>
+
+    ${picked.length ? html`<section class="stack" aria-label="Order on the release branch">
+      <span class="section">Order on the release branch <span class="hint">cherry-picked from the top</span></span>
+      ${picked.map((p, i) => html`<div class="pickrow"><span class="num">${i + 1}</span><code>${shortHash(p.hash)}</code><span class="msg" title=${p.subject}>${p.subject}</span>
+        <${Button} variant="ghost" size="icon" disabled=${i === 0} onClick=${() => changed(movePick(picked, i, -1))} aria-label=${"Move " + shortHash(p.hash) + " up"}>↑<//>
+        <${Button} variant="ghost" size="icon" disabled=${i === picked.length - 1} onClick=${() => changed(movePick(picked, i, 1))} aria-label=${"Move " + shortHash(p.hash) + " down"}>↓<//>
+        <${Button} variant="ghost" size="icon" onClick=${() => changed(removePicks(picked, [p.hash]))} aria-label=${"Remove " + shortHash(p.hash)}>✕<//></div>`)}
+      <div class="actions"><${Button} variant="outline" size="sm" onClick=${() => onCopy && onCopy(releaseNotes(branchName, picked))}>Copy release notes<//><span class="hint">Markdown for the pull request, by module.</span></div>
+    </section>` : null}
+
+    <section class="stack" aria-label="Create">
       <details class="advanced"><summary>Advanced</summary>
         <label class="check"><input type="checkbox" checked=${push} onChange=${e => { setPush(e.target.checked); runner.clearPreview(); }} /> Push the branch</label>
         <${Field} label="On conflict"><select class="input" value=${strategy} onChange=${e => { setStrategy(e.target.value); runner.clearPreview(); }}>
           <option value="">Stop and show me</option><option value="theirs">Take the picked commit</option><option value="ours">Keep the release branch</option></select><//>
       </details>
-      <${ActionBar} runner=${runner} action="release" params=${params} label="Create release branch" />
+      ${plan.action
+        ? html`<${ActionBar} runner=${runner} action=${plan.action} params=${plan.params} label=${plan.label} />`
+        : html`<div class="actions"><${Button} disabled>${plan.label}<//><span class="hint">Pick the commits to add above.</span></div>`}
       <${PreviewBox} runner=${runner} action="release" />
-    </div>` : null}
+    </section>
   </div>`;
 }

@@ -143,13 +143,13 @@ export const scenarios = {
     t.ok("what was merged since the last release is listed", (await page.locator(".group", { hasText: "Merge branch" }).count()) >= 3);
     await page.locator(".pick input:not([disabled])").nth(0).check();
     await page.locator(".pick input:not([disabled])").nth(2).check();
-    const name = await page.locator(".tab").getByRole("textbox", { name: /Release branch/ }).inputValue();
+    const name = await page.locator(".next-name-text").innerText();
     const stamp = new Date(); const yymmdd = String(stamp.getFullYear()).slice(2) + String(stamp.getMonth() + 1).padStart(2, "0") + String(stamp.getDate()).padStart(2, "0");
     t.ok("the branch name follows the pattern", name === `release/${yymmdd}-v1.0`, name);
     t.ok("the order of the picked commits is shown", (await page.locator(".pickrow").count()) === 2);
     await page.getByRole("button", { name: "Preview" }).click();
     await page.locator(".preview").waitFor();
-    await page.getByRole("button", { name: "Create release branch" }).click();
+    await page.getByRole("button", { name: "Create the release branch with 2 commits" }).click();
     await page.waitForSelector(".toast-success", { timeout: 60000 });
     t.ok("the release branch exists on the remote with the two commits", t.demo.remoteGit(["rev-list", "--count", "main.." + name]) === "2", t.demo.remoteGit(["branch", "--list", "release/*"]));
     t.ok("you are back where you were", t.demo.git(["branch", "--show-current"]) !== name || true);

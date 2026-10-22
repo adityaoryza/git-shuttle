@@ -491,3 +491,23 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .about-links a.btn { text-decoration: none; }
 .about-list { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
 .onboarding-mark { margin: 0 auto; border-radius: 14px; }
+
+/* updates in the About dialog */
+.update-panel { display: grid; gap: 8px; }
+.update-panel .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* release tab */
+.how { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; font-size: 12.5px; color: var(--muted-foreground); }
+.how li { display: flex; align-items: center; gap: 8px; }
+.how b { flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: var(--foreground); font-size: 11px; }
+.next-name { display: flex; align-items: center; gap: 8px; }
+.next-name .input { flex: 1; min-width: 0; }
+.next-name-text { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--background); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.release-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.release-tools .input { flex: 1; min-width: 160px; }
+.release-count { display: flex; align-items: center; gap: 12px; }
+.release-count .link:disabled { color: var(--muted-foreground); cursor: not-allowed; text-decoration: none; }
+.release-groups { display: grid; gap: 10px; max-height: min(52vh, 460px); overflow: auto; padding-right: 2px; }
+.release-groups .group-head { flex-wrap: wrap; }
+.release-groups .group-head .msg { flex: 1 1 100%; white-space: normal; }
+.pick .msg, .pickrow .msg { min-width: 0; }

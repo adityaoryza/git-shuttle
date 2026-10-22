@@ -10,7 +10,7 @@ import { ContextMenu } from "./context-menu.js";
 import { DiffView } from "./diff-view.js";
 import { Splitter, useSize, useSplit } from "./splitter.js";
 import { ResizableTable } from "./table.js";
-import { Button, Input, Segmented } from "./ui.js";
+import { Button, Search, Segmented } from "./ui.js";
 
 const GROUPS = [["staged", "Staged"], ["unstaged", "Changes not staged"], ["untracked", "Untracked"]];
 const GROUP_SOURCE = { staged: "staged", unstaged: "worktree", untracked: "untracked" };
@@ -201,7 +201,7 @@ export function CommitPanel({ repoId, selected, remotes, height, onSelectCommit,
     <div class="detail-body" ref=${body} style=${{ "--files-w": filesSplit.size + "px" }}>
       <div class="files-pane">
         <div class="files-tools">
-          <${Input} placeholder="Filter files…" aria-label="Filter files" value=${query} onInput=${e => typeQuery(e.target.value)} />
+          <${Search} wrapClass="filter-wrap" placeholder="Filter files…" aria-label="Filter files" value=${query} onInput=${e => typeQuery(e.target.value)} />
           <${Segmented} value=${mode} onChange=${v => { setMode(v); store("shuttle.filemode", v); }} options=${[{ value: "list", label: "List" }, { value: "tree", label: "Tree" }]} />
         </div>
         <${ResizableTable} id=${worktree ? "worktree" : "commit"} label="Changed files" columns=${columns} sections=${sections} tree=${mode === "tree"} rowKey=${rowKey}

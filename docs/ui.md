@@ -85,6 +85,12 @@ The logo in the top bar, the line at the bottom and the Actions palette ("About 
 server, the author's links and the project links. The addresses are in one file, `static/js/brand.js`, and a test checks that no other
 address appears in the page: it makes no request to the internet, and a link opens in a new tab (`noopener noreferrer`) only when clicked.
 
+The dialog also looks for a newer release and installs it (`POST /api/update/check` and `/api/update/apply`, which run
+`git shuttle update`). They are called only when the button is clicked; the page sends no parameter, so it cannot choose the address
+that is asked (GitHub, over https) or the version that is installed. One update runs at a time, and the result is in the history.
+Releases are fetched from the tag archive of the repository over https; they are not signed, so the trust is the one you give to the
+repository and to the connection.
+
 ## API
 
 `GET /api/version`, `repos`, `repos/<id>/status|branches|graph|worktree|stashes|stashes/<n>|worktrees|journal`, `commits/<sha>` (and
