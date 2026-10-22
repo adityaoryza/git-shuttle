@@ -20,7 +20,10 @@ import time
 
 from .errors import BadRequest
 
-TIMEOUT = 30
+# PowerShell of Windows is slow to start now and then (a first call after a while took 13 s here, and more on a machine with a scanner that
+# looks at every script): a long wait, and one more try, before it is said to have failed.
+TIMEOUT = 120
+TRIES = 2
 _SERVICE = "git-shuttle"
 
 # The scripts are fixed texts (nothing of a request is in them); the data comes in by standard input.
@@ -123,12 +126,16 @@ def saved_at(key):
 # -- the backends ------------------------------------------------------------------------------------------------------------
 
 def _run(argv, data=None):
-    try:
-        done = subprocess.run(argv, input=data, capture_output=True, timeout=TIMEOUT, stdin=None if data is not None else subprocess.DEVNULL,
-                              start_new_session=True)
-    except (OSError, subprocess.TimeoutExpired) as error:
-        raise BadRequest("the keychain did not answer: %s" % error, 500)
-    return done
+    for attempt in range(TRIES):
+        try:
+            return subprocess.run(argv, input=data, capture_output=True, timeout=TIMEOUT, stdin=None if data is not None else subprocess.DEVNULL,
+                                  start_new_session=True)
+        except subprocess.TimeoutExpired:
+            if attempt + 1 < TRIES:
+                continue
+            raise BadRequest("the keychain did not answer in time (Windows can be slow to start the first time): try again, or type the password", 504)
+        except OSError as error:
+            raise BadRequest("the keychain cannot be started: %s" % error, 500)
 
 
 def _ps(script, data):

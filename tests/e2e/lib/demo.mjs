@@ -115,7 +115,7 @@ echo "server ran: $last"
 dir="${path.join(root, "keyring")}"; mkdir -p "$dir"; key="\${*: -1}"
 case "$1" in
   store) cat > "$dir/$key" ;;
-  lookup) [[ -f "$dir/$key" ]] && cat "$dir/$key" || exit 1 ;;
+  lookup) [[ -f "$dir/.broken" ]] && exit 1; [[ -f "$dir/$key" ]] && cat "$dir/$key" || exit 1 ;;
   clear) rm -f "$dir/$key" ;;
 esac
 `, { mode: 0o755 });
