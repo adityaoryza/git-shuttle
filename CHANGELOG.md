@@ -2,9 +2,12 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
-## [Unreleased]
+## [0.3.3] - 2026-10-22
 
 ### Fixed
+- Using a saved password no longer leaves the page waiting for the keychain: it is read by the job, not by the request. PowerShell of
+  Windows can take more than 30 s to start (a cold start took 13 s here), so the wait is now 120 s with one more try, and when the keychain
+  does not answer the job stops with the reason and the page shows the field to type the password (which can be saved again).
 - A browser test of the table (resizing a column with the pointer) started the drag where the handle had been before the table was laid
   out again, and failed now and then on a slow runner: it waits until the handle stops moving.
 
