@@ -2,6 +2,12 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+- A browser test of the table (resizing a column with the pointer) started the drag where the handle had been before the table was laid
+  out again, and failed now and then on a slow runner: it waits until the handle stops moving.
+
 ## [0.3.2] - 2026-10-22
 
 ### Fixed

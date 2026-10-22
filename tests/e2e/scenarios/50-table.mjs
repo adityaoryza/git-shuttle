@@ -4,7 +4,15 @@ const openWorktree = async page => { await page.locator(".row-wip").click(); awa
 const handle = (page, label) => page.getByRole("separator", { name: `Resize the ${label} column` });
 const width = async loc => +(await loc.getAttribute("aria-valuenow"));
 const rowNames = page => page.locator(".detail .tbody .trow:not(.tdir) .fname").allInnerTexts();
-const dragBy = async (page, loc, dx) => { const b = await loc.boundingBox(); const x = b.x + b.width / 2, y = b.y + b.height / 2; await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx / 2, y, { steps: 4 }); await page.mouse.move(x + dx, y, { steps: 4 }); await page.mouse.up(); };
+// The handle is where the table put it AFTER it was laid out again (the pane was just widened): wait until it stops moving, or the drag
+// starts on the old place and moves nothing. This failed now and then on a slow machine.
+const still = async (page, loc) => {
+  let before = "";
+  for (let i = 0; i < 30; i++) { const now = JSON.stringify(await loc.boundingBox()); if (now === before) return; before = now; await page.waitForTimeout(100); }
+};
+const dragBy = async (page, loc, dx) => { await still(page, loc); const b = await loc.boundingBox(); const x = b.x + b.width / 2, y = b.y + b.height / 2; await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x + dx / 2, y, { steps: 4 }); await page.mouse.move(x + dx, y, { steps: 4 }); await page.mouse.up(); };
+// the width a moment after the pointer is up (it is set by the next frame)
+const widthAfter = async (page, loc, ok) => { for (let i = 0; i < 30; i++) { const w = await width(loc); if (ok(w)) return w; await page.waitForTimeout(100); } return width(loc); };
 
 export const scenarios = {
   async "table: the working tree, in sections, with its columns"(t) {
@@ -27,9 +35,10 @@ export const scenarios = {
     await openWorktree(page);
     const name = handle(page, "Name");
     await page.getByRole("separator", { name: "Resize the file list" }).focus(); await page.keyboard.press("End");     // room to grow
+    await still(page, name);
     const start = await width(name);
     await dragBy(page, name, 60);
-    t.ok("dragging the handle makes the column wider", (await width(name)) >= start + 50, `${start} → ${await width(name)}`);
+    t.ok("dragging the handle makes the column wider", (await widthAfter(page, name, w => w >= start + 50)) >= start + 50, `${start} → ${await width(name)}`);
     t.ok("no text got selected while dragging", (await page.evaluate(() => String(getSelection()))) === "");
     const dragged = await width(name);
     await name.focus(); await page.keyboard.press("ArrowLeft");
