@@ -259,6 +259,7 @@ export const OPS = {
   "add-repo": { label: "Add a repository", special: "add", reason: () => "" },
   "shortcuts": { label: "Keyboard shortcuts", special: "shortcuts", reason: () => "" },
   "about": { label: "About git-shuttle", special: "about", reason: () => "" },
+  "update": { label: "Check for updates", special: "about", reason: () => "" },
 };
 
 // Actions that are about a commit or a branch: the palette points at the list, where their menu has them.

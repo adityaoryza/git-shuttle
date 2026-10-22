@@ -75,6 +75,7 @@ export const scenarios = {
     await page.keyboard.press("?");
     t.ok("? shows the shortcuts", await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible());
     t.ok("...with Ctrl+K in it", (await page.locator(".shortcuts").innerText()).includes("Ctrl+K"));
+    await page.waitForTimeout(150);      // the dialog listens for Escape once it has been drawn
     await page.keyboard.press("Escape");
     await page.getByRole("dialog").waitFor({ state: "detached" });
     await page.keyboard.press("Control+f");

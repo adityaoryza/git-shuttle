@@ -1,6 +1,7 @@
 /* Ctrl+K: every action of the page by name, with the command line it stands for. */
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { filterActions } from "../ops.js";
+import { SearchIcon } from "./ui.js";
 
 export function Palette({ entries, onPick, onClose, early, onReady }) {
   const [query, setQuery] = useState(early ? early.current.text : "");
@@ -31,7 +32,7 @@ export function Palette({ entries, onPick, onClose, early, onReady }) {
   };
   return html`<div class="overlay overlay-top" onMouseDown=${e => { if (e.target === e.currentTarget) onClose(); }}>
     <div class="palette" role="dialog" aria-label="Actions" onKeyDown=${key}>
-      <input class="input palette-input" ref=${focusNow} role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant=${found[at] ? "pal-" + at : undefined} placeholder="Type an action: push, rename a branch, stash…" value=${query} onInput=${e => setQuery(e.target.value)} />
+      <div class="palette-head"><${SearchIcon} /><input class="input palette-input" ref=${focusNow} role="combobox" aria-expanded="true" aria-controls="palette-list" aria-activedescendant=${found[at] ? "pal-" + at : undefined} placeholder="Type an action: push, rename a branch, stash…" value=${query} onInput=${e => setQuery(e.target.value)} /></div>
       <ul id="palette-list" role="listbox" ref=${list}>
         ${found.length === 0 ? html`<li class="palette-empty">No action matches “${query}”.</li>` : found.map((e, i) => html`<li id=${"pal-" + i} role="option" aria-selected=${i === at} aria-disabled=${!!e.reason} class=${(i === at ? "on " : "") + (e.reason ? "off" : "")} onMouseMove=${() => setAt(i)} onClick=${() => choose(e)}>
           <span class="pal-main"><span class="pal-label">${e.label}</span><span class="pal-group">${e.group}</span>${e.key ? html`<kbd>${e.key}</kbd>` : null}</span>

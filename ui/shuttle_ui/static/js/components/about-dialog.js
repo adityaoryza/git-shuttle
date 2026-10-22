@@ -1,17 +1,11 @@
 /* About: what this is, who made it, where to find the code. The page asks nobody for anything until a link is clicked. */
 import { html } from "../../vendor/preact-htm.js";
-import { AUTHOR, EXTERNAL, LINKS, PRODUCT, PROJECT_LINKS, TAGLINE } from "../brand.js";
+import { AUTHOR, LINKS, PRODUCT, PROJECT_LINKS, TAGLINE } from "../brand.js";
+import { BrandMark, ExternalLink } from "./links.js";
+import { UpdatePanel } from "./update-panel.js";
 import { Button, Modal } from "./ui.js";
 
-export function ExternalLink({ href, children, class: klass, ...rest }) {
-  return html`<a href=${href} target=${EXTERNAL.target} rel=${EXTERNAL.rel} class=${klass} ...${rest}>${children}</a>`;
-}
-
-export function BrandMark({ size = 32, class: klass }) {
-  return html`<img src="/static/brand/mark.svg" width=${size} height=${size} alt="" class=${klass} />`;
-}
-
-export function AboutDialog({ version, onClose }) {
+export function AboutDialog({ version, auto, notify, onClose }) {
   return html`<${Modal} title=${"About " + PRODUCT} onClose=${onClose} className="about" initialFocus=".modal-foot button" footer=${html`<${Button} onClick=${onClose}>Close<//>`}>
     <div class="about-head">
       <${BrandMark} size=${56} />
@@ -29,6 +23,7 @@ export function AboutDialog({ version, onClose }) {
       <h4 class="about-title">Project</h4>
       <ul class="about-list">${PROJECT_LINKS.map(link => html`<li><${ExternalLink} href=${link.href}>${link.label}<//></li>`)}</ul>
     </section>
+    <${UpdatePanel} auto=${auto} notify=${notify} />
     <p class="hint">It runs on this machine only. This page loads nothing from the internet; a link opens in a new tab when you click it.</p>
   <//>`;
 }

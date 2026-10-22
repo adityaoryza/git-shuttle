@@ -83,4 +83,78 @@ shuttle -y release --onto rel/11 --push feat/two
 assert_status 0 "$RC" "release --push"
 assert_eq "work on two" "$(remote_log rel/11 | head -1)" "...the branch is on the remote"
 
+# --- --empty: the release branch with no commit yet --------------------------------------------------------------------------------
+git checkout -q main
+shuttle -y release --onto rel/e1 --empty
+assert_status 0 "$RC" "release --empty"
+assert_eq "rel/e1" "$(git branch --show-current)" "...you are on the new branch"
+assert_eq "$(git rev-parse origin/release)" "$(git rev-parse HEAD)" "...it is the remote release branch, with no commit of its own"
+assert_eq "0" "$(git rev-list --count origin/release..rel/e1)" "...nothing from the integration branch"
+assert_eq "" "$(git rev-parse --abbrev-ref 'rel/e1@{upstream}' 2>/dev/null)" "...without an upstream, as a release branch made by pick"
+git checkout -q main
+shuttle -y release --onto rel/e1 --empty
+assert_status 1 "$RC" "release --empty on a name that exists"
+assert_contains "$OUT" "already exists" "...is refused"
+shuttle -y release --onto rel/e2 --empty feat/one
+assert_status 1 "$RC" "release --empty with commits"
+assert_contains "$OUT" "no commit" "...is refused: it makes a branch with none"
+assert_eq "no" "$(git show-ref -q --verify refs/heads/rel/e2 && echo yes || echo no)" "...and no branch was made"
+shuttle -y release --empty
+assert_status 1 "$RC" "release --empty without a name"
+shuttle -y release --onto rel/e3 --empty --append
+assert_status 1 "$RC" "--empty with --append"
+before=$(git rev-parse HEAD)
+shuttle -n release --onto rel/e4 --empty --push
+assert_status 0 "$RC" "release --empty --dry-run"
+assert_eq "no" "$(git show-ref -q --verify refs/heads/rel/e4 && echo yes || echo no)" "...creates nothing"
+assert_eq "$before" "$(git rev-parse HEAD)" "...and does not move you"
+shuttle -y release --onto rel/e5 --empty --push
+assert_status 0 "$RC" "release --empty --push"
+assert_eq "$(git rev-parse origin/release)" "$(git -C "$REMOTE" rev-parse rel/e5)" "...the branch is on the remote, at the release branch"
+git checkout -q main
+echo dirty >> file.txt
+shuttle -y release --onto rel/e6 --empty
+assert_status 1 "$RC" "release --empty with uncommitted changes"
+git checkout -q -- file.txt
+
+# --- --append: more commits on a release branch that exists ------------------------------------------------------------------------
+git checkout -q main
+shuttle -y release --onto rel/e1 --append feat/one
+assert_status 0 "$RC" "release --append a branch"
+assert_eq "rel/e1" "$(git branch --show-current)" "...you are on the release branch"
+assert_eq "2" "$(git rev-list --count origin/release..rel/e1)" "...with the commits of the branch, picked in order"
+git checkout -q main
+shuttle -y release --onto rel/e1 --append feat/one feat/two
+assert_status 0 "$RC" "release --append again, with one that is already there"
+assert_eq "3" "$(git rev-list --count origin/release..rel/e1)" "...only the new one is added"
+assert_eq "work on two" "$(git log --format=%s -1)" "...on top"
+git checkout -q main
+shuttle -y release --onto rel/nowhere --append feat/one
+assert_status 1 "$RC" "release --append to a branch that does not exist"
+assert_contains "$OUT" "--empty" "...says how to make it"
+shuttle -y release --onto rel/e1 --append
+assert_status 1 "$RC" "release --append without a commit"
+shuttle -y release --append feat/one
+assert_status 1 "$RC" "release --append without the release branch"
+shuttle -y release --onto main --append feat/one
+assert_status 1 "$RC" "release --append onto a protected branch"
+assert_contains "$OUT" "protected" "...is refused"
+git branch -q -D rel/e1; git fetch -q origin
+git -C "$REMOTE" branch -q rel/remote-only origin/release 2>/dev/null || git -C "$REMOTE" branch -q rel/remote-only release
+git fetch -q origin
+shuttle -y release --onto rel/remote-only --append feat/one
+assert_status 0 "$RC" "release --append to a release branch that only the remote has"
+assert_eq "rel/remote-only" "$(git branch --show-current)" "...a local copy is made and used"
+assert_eq "2" "$(git rev-list --count origin/release..rel/remote-only)" "...with the commits of the branch"
+git checkout -q main
+shuttle -y release --onto rel/remote-only --append --push feat/two
+assert_status 0 "$RC" "release --append --push"
+assert_eq "$(git rev-parse rel/remote-only)" "$(git -C "$REMOTE" rev-parse rel/remote-only)" "...the commits are on the remote branch too"
+git checkout -q main
+before=$(git rev-parse rel/remote-only)
+shuttle -n release --onto rel/remote-only --append feat/two
+assert_status 0 "$RC" "release --append --dry-run"
+assert_eq "$before" "$(git rev-parse rel/remote-only)" "...changes nothing"
+assert_eq "main" "$(git branch --show-current)" "...and does not move you"
+
 finish

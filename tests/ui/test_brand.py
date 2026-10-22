@@ -12,8 +12,8 @@ ALLOWED = (
     "http://127.0.0.1", "http://127\\.0\\.0\\.1",                                                                # the local server (and the pattern that recognises its link)
     "http://www.w3.org/2000/svg",                                                                               # the XML namespace of an SVG file: never requested
 )
-# not scanned: third-party files, and the one script whose comments and case patterns spell out the shape of a remote URL
-SKIP = ("ui/shuttle_ui/static/vendor/", "THIRD_PARTY_NOTICES.md", "lib/commands/link.sh", "tests/", "node_modules/", ".git/")
+# not scanned: third-party files, and the scripts whose comments and case patterns spell out the shape of a URL (link.sh, update.sh)
+SKIP = ("ui/shuttle_ui/static/vendor/", "THIRD_PARTY_NOTICES.md", "lib/commands/link.sh", "lib/commands/update.sh", "tests/", "node_modules/", ".git/")
 TEXT = (".md", ".py", ".js", ".mjs", ".css", ".html", ".svg", ".sh", ".yml", ".yaml", ".json", ".txt")
 
 

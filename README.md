@@ -144,6 +144,20 @@ make install        # links bin/git-shuttle into ~/.local/bin
 
 An executable called `git-shuttle` in your `PATH` is run by `git shuttle`. `make install PREFIX=/usr/local` installs for every user.
 
+### Update
+
+```bash
+git shuttle update --check     # is there a newer release? changes nothing
+git shuttle update             # install it, after one question (-y skips it)
+```
+
+It works on a copy made by the one-line installer. The release is downloaded next to the installed copy, checked (it has to run and
+report the version that was asked for) and only then swapped in; if anything fails, the installed copy is left as it was. A git clone
+is not touched (update it with `git pull`), and neither is a copy somebody put somewhere by hand. `git shuttle update --to v0.1.1`
+installs a named release, a pre-release or an older one. A running `git shuttle ui` has to be stopped and started again afterwards.
+The web UI has the same in its About dialog (the Actions palette: "Check for updates"). Nothing looks for updates by itself: the only
+request to GitHub is the one you ask for.
+
 ## Set it up once per repository
 
 ```bash
@@ -192,6 +206,8 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle candidates` | the branches merged into the integration branch that the release does not have yet |
 | `git shuttle ship [-m MSG] [-- PATH...]` | commit (with `-m`), then everything `merge` does, after **one** question |
 | `git shuttle release --onto NEW [--from BASE] [--push] BRANCH_OR_COMMIT...` | like `pick`, but a branch name stands for the commits it brought: no hashes to look up |
+| `git shuttle release --onto NEW --empty [--push]` | the release branch with no commit yet, cut from the remote release branch |
+| `git shuttle release --onto NAME --append [--push] BRANCH_OR_COMMIT...` | more commits on a release branch that exists (a copy of a remote-only one is made); what is already there is skipped |
 | `git shuttle status` | where you are and what is left to ship; changes nothing |
 | `git shuttle commit -m MSG [-- PATH...]` | checks the branch and the message, then commits; with paths it commits only those files and leaves the rest staged |
 | `git shuttle sync [--onto BRANCH] [--merge]` | fetch, then rebase the branch on the remote integration branch (`--merge`: merge it in instead, for a branch others already have) |
@@ -200,6 +216,7 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle pick --onto NEW [--from BASE] [--strategy-option ours\|theirs] [--push] COMMIT...` | a release branch from the remote release branch, with the commits picked in order |
 | `git shuttle hook install\|uninstall\|status` | a `commit-msg` hook that applies the message rules to every commit |
 | `git shuttle config` | the settings in effect |
+| `git shuttle update [--check] [--to TAG]` | bring git-shuttle to the latest release (a copy made by the installer); `--check` only looks |
 
 Options for every command: `-y/--yes` (do not ask), `-n/--dry-run` (show the commands only), `-h/--help`, `--version`.
 
@@ -247,7 +264,9 @@ It opens on the tab that fits where you are.
 - **Start**: name a task, get a branch cut from the integration branch.
 - **Ship**: your changed files grouped by module, one commit each, in the order you set; the test command to copy; then merge
   directly or open a pull request.
-- **Release**: tick the commits that were merged since the last release, order them, make the release branch.
+- **Release**: the commits that were merged since the last release, with a search, "Hide released" and Select all. Tick the ones to
+  release, order them, and create the release branch (named from the pattern in Settings), or add them to a release branch that exists.
+  With nothing ticked the button makes the branch with no commit yet. "Copy release notes" gives Markdown for the pull request, by module.
 
 Every button first **previews** the exact git commands (`--dry-run`); Run only unlocks for the preview of exactly what is on
 the screen. A conflict shows its files with Continue and Abort. See [docs/ui.md](docs/ui.md) for the design and the security model.

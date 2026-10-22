@@ -12,7 +12,8 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui"))
-from shuttle_ui import cli, http as ui_http  # noqa: E402
+from shuttle_ui import cli, http as ui_http, updates  # noqa: E402
+import shuttle_ui as ui_version  # noqa: E402
 from shuttle_ui.errors import BadRequest  # noqa: E402
 from shuttle_ui.store import Store  # noqa: E402
 
@@ -248,6 +249,24 @@ class TestSecurity(Base):
         # the size is read from the header: the server answers before reading a body that large
         self.assertEqual(self.request("POST", "/api/repos", raw=b"{}", headers={"Content-Type": "application/json", "Content-Length": str(ui_http.MAX_BODY + 10)})[0], 413)
 
+    def test_a_refused_request_does_not_leave_its_body_for_the_next_one(self):
+        """On a kept-alive connection the body of a refused POST would be read as the start of the next request."""
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=30)
+        host = {"Host": "127.0.0.1:%d" % self.port, "Content-Type": "application/json"}
+        body = json.dumps({"path": "/tmp", "padding": "x" * 5000})
+        conn.request("POST", "/api/repos", body=body, headers=host)           # no token: 401, body not needed
+        first = conn.getresponse(); first.read()
+        self.assertEqual(first.status, 401)
+        conn.request("GET", "/api/version", headers=dict(host, **{"X-Shuttle-Token": "test-token-123"}))
+        second = conn.getresponse(); second.read()
+        self.assertEqual(second.status, 200, "the same connection still answers the next request")
+        conn.close()
+
+    def test_a_refused_body_never_resets_the_connection(self):
+        for _ in range(40):
+            status, _, _, _ = self.request("POST", "/api/repos", raw=b'{"path": "/tmp", "x": "%s"}' % (b"y" * 4000), headers={"Content-Type": "text/plain"})
+            self.assertEqual(status, 415)
+
     def test_other_methods_are_refused(self):
         for method in ("PUT", "DELETE", "PATCH"):
             self.assertEqual(self.request(method, "/api/repos")[0], 405, method)
@@ -289,6 +308,11 @@ class TestSecurity(Base):
             ("release", {"onto": "ok", "commits": []}),
             ("release", {"onto": "ok", "commits": ["abcdef1"], "strategy": "wild"}),
             ("release", {"onto": "ok", "commits": ["abcdef1"], "from": "x;y"}),
+            ("release", {"onto": "ok", "empty": True, "commits": ["abcdef1"]}),
+            ("release", {"onto": "ok", "empty": True, "append": True}),
+            ("release", {"onto": "auto", "append": True, "commits": ["abcdef1"]}),
+            ("release", {"onto": "ok", "append": True, "commits": []}),
+            ("release", {"onto": "ok", "commits": "abcdef1"}),
             ("ship", {"commits": [{"message": "m", "paths": ["../etc/passwd"]}]}),
             ("ship", {"commits": [{"message": "m", "paths": ["/etc/passwd"]}]}),
             ("ship", {"commits": [{"message": "m", "paths": ["--all"]}]}),
@@ -639,12 +663,39 @@ class TestActions(Base):
         self.assertTrue(mine["commits"][0]["pending"])
         git(self.world.work, "config", "shuttle.releasePattern", "rel-{date}-v1.{n}")
         job = self.run_job("release", {"onto": "auto", "commits": [mine["commits"][0]["hash"]], "push": True})
+        # the release branch is on its way: its commit says where it is, and can no longer be picked
+        self.api("POST", "repos/%s/fetch" % self.rid(), {})
+        queued = [c for c in self.api("GET", "repos/%s/candidates" % self.rid())[1]["candidates"] if "feat/rel1" in c["subject"]][0]["commits"][0]
+        self.assertTrue(queued["in_release"].startswith("rel-") and queued["in_release"].endswith("-v1.0"), queued)
+        self.assertFalse(queued["pending"])
+        self.assertEqual(mine["commits"][0]["in_release"], "", "a commit that is not in any release branch says nothing")
         git(self.world.work, "config", "--unset", "shuttle.releasePattern")
         self.assertEqual(job["state"], "done", job)
         names = git(self.world.work, "branch", "--list", "rel-*").split()
         self.assertTrue(any(n.endswith("-v1.0") for n in names), names)
         self.assertTrue(any("rel-" in b for b in git(self.world.remote, "branch").split()))
         git(self.world.work, "checkout", "-q", "main")
+
+    def test_an_empty_release_branch_and_commits_added_to_it_later(self):
+        work = self.world.work
+        git(work, "checkout", "-q", "main")
+        job = self.run_job("release", {"onto": "rel-empty", "empty": True, "push": True})
+        self.assertEqual(job["state"], "done", job)
+        self.assertEqual(git(work, "rev-parse", "rel-empty"), git(work, "rev-parse", "origin/release"), "no commit of its own")
+        self.assertIn("rel-empty", git(self.world.remote, "branch").split(), "pushed")
+        self.world.feature("feat/rel-later", {"later.txt": "1\n"})
+        git(work, "add", "-A"); git(work, "commit", "-q", "-m", "[FEAT] later: one")
+        picked = git(work, "rev-parse", "HEAD")
+        git(work, "checkout", "-q", "main")
+        status, preview = self.api("POST", "repos/%s/preview" % self.rid(), {"action": "release", "params": {"onto": "rel-empty", "append": True, "commits": [picked]}})
+        self.assertTrue(preview["ok"], preview)
+        self.assertEqual(git(work, "branch", "--show-current"), "main", "a preview moves nothing")
+        job = self.run_job("release", {"onto": "rel-empty", "append": True, "commits": [picked]})
+        self.assertEqual(job["state"], "done", job)
+        self.assertEqual(git(work, "branch", "--show-current"), "rel-empty")
+        self.assertEqual(git(work, "log", "-1", "--format=%s"), "[FEAT] later: one")
+        git(work, "checkout", "-q", "main")
+        self.assertEqual(self.run_job("release", {"onto": "rel-empty", "empty": True})["state"], "failed", "it exists now")
 
     def test_init_sets_the_configuration(self):
         job = self.run_job("init", {"integration": "develop", "release": "release", "messagePattern": r"^\[[A-Z]+\] .+",
@@ -972,6 +1023,79 @@ class TestBrowse(Base):
             self.assertFalse(os.path.exists(marker))
         finally:
             git(self.lab, "config", "--unset", "diff.external"); git(self.lab, "config", "--unset", "diff.textconv")
+
+
+class TestUpdate(Base):
+    """GET nothing, POST on request: looking for a release and installing it, against a stand-in for the release pages."""
+
+    def start_release_page(self, version, mode="ok"):
+        port_file = os.path.join(self.world.root, "release-port-%d" % time.monotonic_ns())   # one per server: nothing is shared between tests
+        helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "helpers", "fake_github.py")
+        proc = subprocess.Popen([sys.executable, helper, port_file, version, mode])
+        self.addCleanup(proc.wait)
+        self.addCleanup(proc.terminate)
+        for _ in range(200):     # a loaded machine can take a while to start a process
+            if os.path.exists(port_file) and os.path.getsize(port_file):
+                break
+            time.sleep(0.1)
+        self.assertTrue(os.path.exists(port_file), "the stand-in for the release page did not start")
+        old = os.environ.get("GIT_SHUTTLE_REPO")
+        os.environ["GIT_SHUTTLE_REPO"] = "http://127.0.0.1:%s/acme/git-shuttle" % open(port_file).read()
+        self.addCleanup(lambda: os.environ.pop("GIT_SHUTTLE_REPO", None) if old is None else os.environ.update(GIT_SHUTTLE_REPO=old))
+        self.addCleanup(lambda: os.remove(port_file) if os.path.exists(port_file) else None)
+
+    def test_the_routes_need_the_token_and_a_post(self):
+        for route in ("update/check", "update/apply"):
+            self.assertEqual(self.api("POST", route, {}, token=False)[0], 401, route)
+            self.assertEqual(self.api("GET", route)[0], 404, route + " is not a GET")
+
+    def test_check_reports_a_newer_release(self):
+        self.start_release_page("9.9.9")
+        status, data = self.api("POST", "update/check", {})
+        self.assertEqual(status, 200, data)
+        self.assertEqual((data["latest"], data["available"]), ("9.9.9", True))
+        self.assertEqual(data["current"], ui_version.__version__, "the version of the program, as `git shuttle --version` says")
+        self.assertEqual(data["kind"], "checkout", "the tests run from a git checkout")
+        self.assertFalse(data["can_update"])
+        self.assertIn("git pull", data["reason"])
+        self.assertTrue(data["notes"].endswith("/releases/tag/v9.9.9"))
+
+    def test_check_when_it_is_the_latest_release(self):
+        self.start_release_page(ui_version.__version__)
+        data = self.api("POST", "update/check", {})[1]
+        self.assertFalse(data["available"])
+
+    def test_check_when_the_release_page_is_not_there(self):
+        os.environ["GIT_SHUTTLE_REPO"] = "http://127.0.0.1:9/acme/git-shuttle"
+        self.addCleanup(lambda: os.environ.pop("GIT_SHUTTLE_REPO", None))
+        status, data = self.api("POST", "update/check", {})
+        self.assertEqual(status, 502, data)
+        self.assertIn("cannot reach", data["error"])
+        self.assertNotIn("error:", data["error"], "the prefix of the command is not shown")
+
+    def test_the_page_cannot_name_where_to_look(self):
+        self.start_release_page("9.9.9")
+        data = self.api("POST", "update/check", {"repo": "https://evil.example/x/y", "url": "https://evil.example", "to": "v0.0.1"})[1]
+        self.assertEqual(data["latest"], "9.9.9", "what the page sends is ignored")
+
+    def test_apply_is_refused_on_a_checkout_and_the_log_says_so(self):
+        self.start_release_page("9.9.9")
+        before = self.api("GET", "history")[1]["entries"]
+        status, data = self.api("POST", "update/apply", {})
+        self.assertEqual(status, 500, data)
+        self.assertIn("git pull", data["error"])
+        entries = self.api("GET", "history")[1]["entries"]
+        self.assertEqual(len(entries), len(before) + 1)
+        self.assertEqual((entries[0]["action"], entries[0]["state"]), ("update", "failed"))
+
+    def test_one_update_at_a_time(self):
+        self.start_release_page("9.9.9")
+        self.assertTrue(updates.updates_lock().acquire(blocking=False))
+        try:
+            status, data = self.api("POST", "update/apply", {})
+            self.assertEqual(status, 409, data)
+        finally:
+            updates.updates_lock().release()
 
 
 class TestHardening(Base):

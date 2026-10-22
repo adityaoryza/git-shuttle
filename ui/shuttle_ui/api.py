@@ -8,6 +8,7 @@ from . import actions
 from .errors import BadRequest
 from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
+from . import updates
 from .runner import child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_text
 from .validate import HASH_RE, build_commands, display_name, name as branch_name, text
 from .validate_ops import commitish
@@ -85,9 +86,9 @@ def candidates(repo):
         merges.append(item)
         by_merge[merge] = item
     for rec in raw["commit"]:
-        merge, h, mark, subject = (rec.split("\x1f") + ["", "", ""])[:4]
+        merge, h, mark, subject, queued = (rec.split("\x1f") + ["", "", "", ""])[:5]
         if merge in by_merge:
-            by_merge[merge]["commits"].append({"hash": h, "pending": mark == "+", "subject": subject})
+            by_merge[merge]["commits"].append({"hash": h, "pending": mark == "+", "subject": subject, "in_release": queued if mark == "~" else ""})
     return merges
 
 
@@ -199,6 +200,10 @@ def handle(server, method, route, body):
     parts = [p for p in route.split("/") if p]
     if method == "GET" and parts == ["version"]:
         return {"version": __version__, "api": API_LEVEL}
+    if method == "POST" and parts == ["update", "check"]:
+        return updates.check()
+    if method == "POST" and parts == ["update", "apply"]:
+        return updates.apply(store)
     if method == "GET" and parts == ["repos"]:
         return {"repos": [repo_summary(r) for r in store.repos()]}
     if method == "POST" and parts == ["repos"]:

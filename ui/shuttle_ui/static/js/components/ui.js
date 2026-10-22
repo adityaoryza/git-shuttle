@@ -35,6 +35,20 @@ export function Input({ class: klass, inputRef, ...props }) {
   return html`<input class=${cn("input", klass)} spellcheck="false" ref=${inputRef} ...${props} />`;
 }
 
+export const SearchIcon = () => html`<svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>`;
+
+// A search field: a leading icon and a clear button, in the box of the other controls. `class` is for the input, `wrapClass` for the box.
+// onInput gets what an input event would give (e.target.value), also from the clear button.
+export function Search({ class: klass, wrapClass, inputRef, value, onInput, ...props }) {
+  const own = useRef(null);
+  const clear = () => { onInput({ target: { value: "" } }); if (own.current) own.current.focus(); };
+  return html`<span class=${cn("search", wrapClass)}>
+    <${SearchIcon} />
+    <input class=${cn("input", "search-input", klass)} type="search" spellcheck="false" autocomplete="off" ref=${el => { own.current = el; if (inputRef) inputRef.current = el; }} value=${value} onInput=${onInput} ...${props} />
+    ${value ? html`<button type="button" class="search-clear" aria-label="Clear the search" title="Clear" tabindex="-1" onMouseDown=${e => e.preventDefault()} onClick=${clear}>✕</button>` : null}
+  </span>`;
+}
+
 export function Segmented({ value, options, onChange }) {
   return html`<div class="segmented" role="tablist">${options.map(o => html`
     <button type="button" role="tab" aria-selected=${o.value === value} class=${o.value === value ? "on" : ""} onClick=${() => onChange(o.value)}>${o.label}</button>`)}</div>`;

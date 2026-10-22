@@ -176,7 +176,18 @@ def build_commands(action, params):
         if flag(p.get("push")):
             args.append("--push")
         commits = p.get("commits") or []
-        if not commits:
+        empty, append = flag(p.get("empty")), flag(p.get("append"))
+        if empty and append:
+            raise BadRequest("a release branch is either made empty or given commits")
+        if empty:
+            if commits:
+                raise BadRequest("an empty release branch has no commits")
+            return [args + ["--empty"]]
+        if append:
+            if onto == "auto":
+                raise BadRequest("name the release branch to add commits to")
+            args.append("--append")
+        if not commits or not isinstance(commits, list):
             raise BadRequest("choose at least one commit")
         for h in commits:
             if not isinstance(h, str) or not HASH_RE.match(h):
