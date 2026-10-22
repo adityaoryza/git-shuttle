@@ -2,11 +2,15 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
-## [Unreleased]
+## [0.3.2] - 2026-10-22
 
 ### Fixed
 - A page that is closed or reloaded while it waits for an answer no longer makes a traceback in the window of `git shuttle ui`
   (BrokenPipeError, then a second one while the error page was sent): the connection is dropped quietly.
+
+- Two tests that depended on timing now wait for what they need: the one that checks the opening of the browser (fake programs that write
+  in the background), and the Deploy scenarios of the browser tests (an error toast stays until it is dismissed, and the pointer must not be
+  left where the next toast appears). They failed now and then on a slow runner.
 
 ### Changed
 - The repository is set up as an open source project: code of conduct, a feature request template, CODEOWNERS, Dependabot for the actions

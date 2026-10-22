@@ -36,7 +36,14 @@ class FakeBin:
 
     def calls(self):
         """['name|argc|folder|[arg][arg]', ...]"""
-        time.sleep(0.2)     # a Windows launcher is not waited for: give the fake program time to write its line
+        # a Windows launcher is not waited for: wait until the fake programs have stopped writing (a loaded machine is slower than 0.2 s)
+        previous, deadline = -1, time.time() + 5
+        while time.time() < deadline:
+            time.sleep(0.2)
+            size = os.path.getsize(self.log) if os.path.exists(self.log) else 0
+            if size == previous:
+                break
+            previous = size
         try:
             with open(self.log) as f:
                 return f.read().splitlines()
