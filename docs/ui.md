@@ -79,6 +79,25 @@ State kept on your machine, in `~/.config/git-shuttle/` (mode 700): the register
 (`history.jsonl`, rotated at 5 MB into `history.1.jsonl`; each entry has a stable id, the commands and output with credentials replaced,
 the exit status and the duration). The undo journal is in the git directory of each repository.
 
+## Deploy
+
+The Deploy tab updates a server after a push, in as few steps as possible.
+
+1. **Add the server once:** a name, its address, the user you log in with, the command that updates it (`{modules}` is replaced by the
+   modules that changed), and the branch it runs. If the command works in your own login on the server but not here (it is an alias),
+   tick the box: it is run in a login shell (`bash -ic '…'`). The password is not part of the form.
+2. **Deploy:** pick the server, type its password if it asks (for the ssh login and for sudo: used once, never saved; "Keep it until I close
+   this page" keeps it in the page only), and click **Deploy to …**. The card shows the branch and commit, the server and the exact command
+   first; "Show the exact command" is there when you want the dry run too. The Odoo modules that changed since the last deploy are found for
+   you (and can be changed). A server can ask for its name to be typed first (the default for a release branch).
+3. **Test the connection** runs nothing on the server but `true`: it is the way to check the user and the password before a deploy. If a
+   deploy says the server does not find the command, one click ("Run it in a login shell") fixes the target.
+
+The password is sent with the request, typed once at the prompt that asks for it on a pseudo terminal, and dropped. It is not part of the
+job, the history, the log or the answers of the API (a test reads them all), a copy that the terminal echoes is cut out of the output, and a
+wrong password is not sent a second time. The routes are `GET repos/ID/deploy`, `POST repos/ID/deploy/plan` and the actions `deploy`,
+`deploy-check`, `deploy-setup` and `deploy-forget`.
+
 ## About
 
 The logo in the top bar, the line at the bottom and the Actions palette ("About git-shuttle") open a dialog with the version of the

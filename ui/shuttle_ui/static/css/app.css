@@ -511,3 +511,14 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .release-groups .group-head { flex-wrap: wrap; }
 .release-groups .group-head .msg { flex: 1 1 100%; white-space: normal; }
 .pick .msg, .pickrow .msg { min-width: 0; }
+
+/* ---- the Deploy tab */
+.deploy { display: grid; gap: 12px; }
+.deploy h3 { margin: 0; font-size: var(--text-base, 14px); }
+.deploy-pick { display: flex; align-items: flex-end; gap: 6px; flex-wrap: wrap; }
+.deploy-pick .field { flex: 1; min-width: 180px; }
+.deploy-facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; margin: 0; font-size: 13px; }
+.deploy-facts dt { color: var(--muted-foreground); }
+.deploy-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.input[aria-invalid="true"] { border-color: var(--bad); }
+.field-hint:has(+ .input[aria-invalid="true"]), .deploy-why strong { color: var(--foreground); }

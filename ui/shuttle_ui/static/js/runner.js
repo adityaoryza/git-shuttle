@@ -20,10 +20,11 @@ export function useRunner(repoId, { onDone, onError }) {
     setBusy(false);
   }
 
-  async function run(action, params, label) {
+  // secret: the sudo password of a deploy: sent with the request and kept nowhere (not in the preview key, not in the job)
+  async function run(action, params, label, secret) {
     setBusy(true);
     try {
-      const r = await api("POST", "repos/" + repoId + "/run", { action, params });
+      const r = await api("POST", "repos/" + repoId + "/run", { action, params: secret ? { ...params, sudo_password: secret } : params });
       setPreview(null);
       setJob({ id: r.job, label: label || action, action, state: "running", steps: [] });
       poll(r.job, label || action, action);

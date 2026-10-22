@@ -56,8 +56,8 @@ def parse_porcelain(raw):
     return out
 
 
-def shuttle_porcelain(repo_path, command, timeout=60):
-    done = subprocess.run(SHUTTLE_ARGV + [command, "--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
+def shuttle_porcelain(repo_path, command, timeout=60, extra=()):
+    done = subprocess.run(SHUTTLE_ARGV + [command] + list(extra) + ["--porcelain"], cwd=repo_path, env=child_env(), capture_output=True, timeout=timeout)
     if done.returncode != 0:
         raise BadRequest((done.stdout + done.stderr).decode("utf-8", "replace").strip() or "git-shuttle failed", 500)
     return parse_porcelain(done.stdout)

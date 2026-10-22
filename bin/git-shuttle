@@ -42,6 +42,9 @@ Commands:
   branch NAME [COMMIT]          a new local branch at a commit (default: here), and switch to it
   cherry-pick COMMIT...         take commits onto the branch you are on, in order (not for protected branches)
   pr [--base B] [--title T]     push the branch and open a pull request with gh        [--body-file F | --body T] [--draft]
+  deploy [TARGET] [--modules A,B] [--confirm TARGET]
+                                run the update command of a saved server over ssh, after a push, with a preview and the same checks;
+                                deploy --setup NAME | --list | --forget NAME | --plan | --check
   ui [--port N] [--no-open]     the web UI: your repositories and every action above, with a preview before each run (127.0.0.1 only)
   fetch [--prune] [--all]       bring the remote's branches up to date (none of your branches changes)
   pull [--ff-only | --rebase]   bring the current branch up to date with its upstream
@@ -180,6 +183,7 @@ main() {
                        PYTHONPATH="$ROOT/ui" exec "$py" -m shuttle_ui "$@" ;;
         update)        cmd_update "$@" ;;
         pr)            cmd_pr "$@" ;;
+        deploy)        cmd_deploy "$@" ;;
         hook)          cmd_hook "$@" ;;
         config)        cmd_config "$@" ;;
         check-message) cmd_check_message "$@" ;;

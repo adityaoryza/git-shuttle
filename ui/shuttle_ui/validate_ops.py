@@ -1,4 +1,6 @@
 """The actions on branches, commits, the stash and worktrees: what the page may ask for, as git-shuttle argument lists."""
+import re
+
 from .errors import BadRequest
 from .validate import HASH_RE, flag, name, text
 
@@ -32,6 +34,52 @@ def one_of(value, options, field):
     if value not in options:
         raise BadRequest("%s must be one of: %s" % (field, ", ".join(o for o in options if o)))
     return value
+
+
+TARGET_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+MODULES_RE = re.compile(r"^[A-Za-z0-9_]+(,[A-Za-z0-9_]+)*$")
+HOST_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9._-]*@)?[A-Za-z0-9][A-Za-z0-9.:-]*$")
+
+
+def deploy_target(value):
+    if not isinstance(value, str) or not TARGET_RE.match(value):
+        raise BadRequest("the target name is not valid: lowercase letters, digits, - and _")
+    return value
+
+
+def deploy_args(action, p):
+    """deploy TARGET [--modules A,B] [--confirm TARGET], and the setting up and removing of a target. Everything is checked here as well
+    as by the command: nothing from the page reaches ssh, a shell or a config key unchecked."""
+    target = deploy_target(p.get("target"))
+    if action == "deploy-forget":
+        return ["deploy", "--forget", target]
+    if action == "deploy-check":
+        return ["deploy", target, "--check"]
+    if action == "deploy":
+        args = ["deploy", target]
+        if p.get("modules"):
+            if not isinstance(p["modules"], str) or not MODULES_RE.match(p["modules"]) or len(p["modules"]) > 2000:
+                raise BadRequest("the modules are not valid: names separated by commas")
+            args += ["--modules", p["modules"]]
+        if p.get("confirm"):
+            args += ["--confirm", deploy_target(p["confirm"])]
+        return args
+    host = p.get("host")
+    if not isinstance(host, str) or not HOST_RE.match(host) or len(host) > 255:
+        raise BadRequest("the server is not valid: user@host, or an alias of ~/.ssh/config")
+    command = text(p.get("command"), "command", 500, True, True)
+    if command.startswith("-"):
+        raise BadRequest("the command cannot start with a dash")
+    args = ["deploy", "--setup", target, "--host", host, "--command", command, "--branch", name(p.get("branch"), "branch"),
+            "--sudo", one_of(p.get("sudo") or "none", ("none", "ask"), "sudo"),
+            "--detector", one_of(p.get("detector") or "none", ("none", "odoo"), "detector"),
+            "--require-name" if flag(p.get("require_name")) else "--no-require-name"]
+    if p.get("port") not in (None, ""):
+        port = str(p["port"])
+        if not port.isdigit() or not 1 <= int(port) <= 65535:
+            raise BadRequest("the port is not valid")
+        args += ["--port", port]
+    return args
 
 
 def stash_index(value):
@@ -134,5 +182,6 @@ def build(action, p):
             if step == "reword" or item.get("message"):
                 messages += ["--message", "%s=%s" % (sha, text(item.get("message"), "message", 60000, True))]
         return [args + messages + (["--allow-pushed"] if flag(p.get("allow_pushed")) else [])]
+    if action in ("deploy", "deploy-check", "deploy-setup", "deploy-forget"):
+        return [deploy_args(action, p)]
     return None
-

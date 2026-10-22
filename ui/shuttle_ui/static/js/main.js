@@ -9,6 +9,7 @@ import { describeJob, fetchToast, toToast } from "./feedback.js";
 import { GH_MISSING, ghMissing } from "./logic.js";
 import { isPreviewSkipped } from "./skip-preview.js";
 import { GraphView } from "./components/graph-view.js";
+import { DeployTab } from "./components/deploy-tab.js";
 import { OperationBanner, ReleaseTab, ResultCard, ShipTab, StartTab, settings, useGroups } from "./components/panel.js";
 import { BranchPicker } from "./components/branch-picker.js";
 import { ActionConfirm, BranchHereDialog, ContextMenu, DivergedDialog } from "./components/context-menu.js";
@@ -250,7 +251,7 @@ function App() {
       case "fetch": fetchRemote(); return;
       case "push": if (push.kind === "none") { notify({ variant: "info", title: "Nothing to push" }); return; } startPush(); return;
       case "start": setTab("start"); return;
-      case "tab": setTab(id === "release" ? "release" : "ship"); return;
+      case "tab": setTab(id === "release" ? "release" : /^deploy/.test(id) ? "deploy" : "ship"); return;
       case "compare": setModal({ name: "compare", a: args.a || (args.commit && args.commit.sha), b: args.b }); return;
       case "rewrite": { const line = lineFrom(ctx, args.commit.sha); if (line) setModal({ name: "rewrite", line }); return; }
       case "patch": setModal({ name: "patch", commit: args.commit }); return;
@@ -355,9 +356,10 @@ function App() {
           <${ResultCard} runner=${runner} onPullRequest=${releasePullRequest} />
           <${OperationBanner} status=${status} runner=${runner} confirm=${confirm} />
           ${status["config.set"] === "0" ? html`<${Alert} tone="info" title="Using the default settings"><span>Integration <code>${c.integration || "?"}</code>, release <code>${c.release || "?"}</code>.</span> <a href="#" onClick=${e => { e.preventDefault(); setDialog("settings"); }}>Change</a><//>` : null}
-          <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }]} />
+          <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }, { value: "deploy", label: "Deploy" }]} />
           ${tab === "start" ? html`<${StartTab} status=${status} branches=${branches} runner=${runner} onContinue=${() => setTab("ship")} onSwitch=${switchTo} />` : null}
           ${tab === "ship" ? html`<${ShipTab} status=${status} runner=${runner} groups=${groups} setGroups=${setGroups} tested=${!!tested[key]} setTested=${v => setTested({ ...tested, [key]: v })} worktree=${worktree} onOpenFile=${openFile} />` : null}
+          ${tab === "deploy" ? html`<${DeployTab} repoId=${repoId} status=${status} branches=${branches} runner=${runner} onError=${fail} confirm=${confirm} />` : null}
           ${tab === "release" ? html`<${ReleaseTab} repoId=${repoId} status=${status} branches=${branches} runner=${runner} onError=${fail} onLoaded=${() => reload()} onSettings=${() => setDialog("settings")} onCopy=${copy} onPullRequest=${releasePullRequest} />` : null}
 ` : html`<p class="hint">Loading…</p>`}
       </aside></main>`}
