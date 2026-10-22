@@ -2,6 +2,29 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.4.0] - 2026-10-22
+
+A reminder in the web UI when a newer release is out, with the update one click away; and fixes for the Deploy tab and the branch list.
+
+### Added
+- A reminder in the web UI that a newer git-shuttle is out, like the one of other apps: a slim bar under the top bar with what changed,
+  **Update to X** (it updates right there, shows "Updating…", then says to restart `git shuttle ui`) and **Later** (for that release only; a
+  newer one reminds again). A copy that cannot be updated from here (a git clone) gets **How to update**, which opens About. The server looks
+  at most once a day (an hour after a look that failed) for the number of the latest release: one request to github.com, the one the Update
+  button makes, with nothing about you or your repositories; the page never talks to the internet, and the answer is kept in
+  `update-notice.json`. About has "Remind me when a new version is out" to turn it off, and `GIT_SHUTTLE_NO_UPDATE_CHECK=1` turns it off for
+  good. The command line still asks nothing by itself.
+
+### Fixed
+- A fetch that lost a race with another git (an editor, a second window) failed with "cannot lock ref ... is at A but expected B", and the
+  Deploy tab said "Cannot deploy yet". The fetch is now tried once more after a second (every command that fetches), a real failure is
+  still shown with its reason, and the plan error of the Deploy tab has a "Try again" button.
+- The branch list no longer closes when you open the actions menu (the three dots) of a branch: the menu opens over the list. Escape closes
+  the menu first and the list second; choosing an action, or clicking away, closes both; a refused action leaves them open.
+
+### Changed
+- API level 7 (the notice routes): an older server shows the "stop it and run git shuttle ui again" banner.
+
 ## [0.3.3] - 2026-10-22
 
 ### Fixed
