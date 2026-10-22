@@ -31,6 +31,7 @@ const finished = async (page, label) => {
   await quiet(page);
 };
 const press = async (page, name) => { await quiet(page); await page.getByRole("button", { name, exact: true }).click(); };
+const dismissResult = async page => { const close = page.locator(".result").getByRole("button", { name: "Dismiss" }); if (await close.count()) await close.click(); };
 const resultText = page => page.locator(".result").evaluate(el => el.textContent);   // the output may be in a closed <details>
 
 export const scenarios = {
@@ -169,6 +170,36 @@ export const scenarios = {
     await dialog.getByRole("button", { name: "Forget" }).click();
     await page.getByLabel("Password of the server").waitFor();
     t.ok("forgotten: the field is back and the keychain is empty", fs.readdirSync(keyring).length === 0);
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "deploy tab: a saved password that cannot be read asks for the password instead of leaving the page stuck"(t) {
+    const page = await t.page();
+    await tab(page).click();
+    await addServer(page, { name: "stuck", host: "ask@203.0.113.80", command: "staging-update", branch: "staging" });
+    await page.getByRole("button", { name: "Save" }).click();
+    await finished(page, "Save the server");
+    await page.getByLabel("Password of the server").fill("e2e-secret");
+    await page.getByLabel("Remember on this computer").check();
+    await press(page, "Deploy to stuck");
+    await finished(page, "Deploy to stuck");
+    await page.locator(".deploy-saved").waitFor();
+    const keyring = path.join(t.demo.root, "keyring");
+    fs.writeFileSync(path.join(keyring, ".broken"), "");           // the keychain stops answering
+    await dismissResult(page);
+    await press(page, "Deploy to stuck");
+    await finished(page, "Deploy to stuck");
+    await page.getByText("The saved password could not be read").waitFor();
+    t.ok("the page says the saved password could not be read, and does not stay busy", true);
+    t.ok("...the field to type the password is back", (await page.getByLabel("Password of the server").count()) === 1);
+    t.ok("...and the buttons work again", await page.getByRole("button", { name: "Deploy to stuck" }).isEnabled());
+    t.ok("nothing was run on the server for it", (sshLog(t).match(/\[staging-update\]/g) || []).length === 1);
+    fs.rmSync(path.join(keyring, ".broken"));
+    await dismissResult(page);          // the result of the job before has the same label: it must not be taken for the next one
+    await page.getByLabel("Password of the server").fill("e2e-secret");
+    await press(page, "Deploy to stuck");
+    await finished(page, "Deploy to stuck");
+    t.ok("typing the password works", (await resultText(page)).includes("server ran: staging-update"));
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
 

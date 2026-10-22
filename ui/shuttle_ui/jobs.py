@@ -23,7 +23,7 @@ class Jobs:
         self.jobs = {}
         self.busy = {}  # repo id -> job id
 
-    def start(self, repo, action, commands, params=None, label="", secret=None, remember=None):
+    def start(self, repo, action, commands, params=None, label="", secret=None, remember=None, saved_key=None):
         """secret: a bytearray the deploy of a server types at the prompt of sudo; it is never stored with the job, and is wiped when it ends."""
         with self.lock:
             if repo["id"] in self.busy:
@@ -36,13 +36,25 @@ class Jobs:
             self.busy[repo["id"]] = job_id
             self._forget_old()
         log.job(repo["name"], action, "started (%s)" % log.summarize(commands))
-        threading.Thread(target=self._run, args=(repo, job, secret, remember), daemon=True).start()
+        threading.Thread(target=self._run, args=(repo, job, secret, remember, saved_key), daemon=True).start()
         return job_id
 
-    def _run(self, repo, job, secret=None, remember=None):
+    def _run(self, repo, job, secret=None, remember=None, saved_key=None):
         exit_code = 0
         try:
-            for step in job["steps"]:
+            if saved_key and secret is None:
+                # the password kept on this computer is read here, in the job: the page is not left waiting for a slow keychain
+                step = job["steps"][0]
+                step["state"] = "running"
+                try:
+                    secret = vault.get(saved_key)
+                    problem = "" if secret is not None else "the saved password is not there any more: type it (Use another), or save it again"
+                except Exception as error:
+                    problem = str(error)
+                if problem:
+                    step["exit"], step["output"], step["state"] = 1, problem, "stopped"
+                    exit_code = 1
+            for step in job["steps"] if exit_code == 0 else []:
                 step["state"] = "running"
                 if secret is not None and step["argv"][:1] == ["deploy"]:
                     code, output = run_with_secret(repo["path"], step["argv"], secret, timeout=900)

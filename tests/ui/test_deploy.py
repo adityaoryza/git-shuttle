@@ -349,6 +349,19 @@ class TestDeploy(Base):
         self.assertNotIn(PASSWORD, str(d))
         self.assertNotIn("use_saved", str(d), "the way it was asked is not part of the job either")
 
+    def test_a_keychain_that_fails_while_reading_stops_the_job_with_the_reason_and_frees_the_repository(self):
+        from shuttle_ui.errors import BadRequest
+        self.setup_target(sudo="ask")
+        os.environ["FAKE_SSH_SUDO"] = "1"
+        self.run_with_password(PASSWORD, {"remember": True, "modules": "sale_documents"})
+        with mock.patch("shuttle_ui.vault.get", side_effect=BadRequest("the keychain did not answer in time: type the password", 504)):
+            job = self.run_job("deploy", {"target": "staging", "use_saved": True, "modules": "sale_documents"})
+        self.assertEqual(job["state"], "failed")
+        self.assertIn("type the password", job["steps"][0]["output"])
+        self.assertEqual(open(self.ssh_log).read().count("[staging-update"), 1, "nothing ran on the server the second time")
+        job = self.run_job("deploy", {"target": "staging", "use_saved": True, "modules": "sale_documents"})
+        self.assertEqual(job["state"], "done", "the repository is free again, and the password still works")
+
     def test_forgetting_removes_it_and_a_use_of_it_is_refused(self):
         self.setup_target(sudo="ask")
         os.environ["FAKE_SSH_SUDO"] = "1"

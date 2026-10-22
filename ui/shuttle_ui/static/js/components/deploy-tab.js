@@ -66,9 +66,11 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
     handled.current = doneJob.id;
     if (!keep) setPassword("");
     setTyped("");
-    if (doneJob.remembered) setSaveNote({ tone: "ok", text: "The password is saved on this computer (" + vaultInfo.label + "). You will not have to type it again." });
+    const unreadable = doneJob.state !== "done" && (doneJob.steps || []).some(st => /saved password is not there|keychain/.test(st.output || ""));
+    if (unreadable) { setOther(true); setSaveNote({ tone: "warn", text: "The saved password could not be read: type the password of the server below (it can be saved again)." }); }
+    else if (doneJob.remembered) setSaveNote({ tone: "ok", text: "The password is saved on this computer (" + vaultInfo.label + "). You will not have to type it again." });
     else if (doneJob.remember_error) setSaveNote({ tone: "warn", text: "The password was not saved: " + doneJob.remember_error });
-    setRemember(false); setOther(false);
+    setRemember(false); if (!unreadable) setOther(false);
     // a server that was just saved is the one shown; after a removal the first is
     const saved = doneJob.action === "deploy-setup" && doneJob.params ? doneJob.params.target : "";
     loadTargets(doneJob.action === "deploy-forget" ? "" : saved || name);

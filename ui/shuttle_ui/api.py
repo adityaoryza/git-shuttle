@@ -331,14 +331,15 @@ def handle(server, method, route, body):
                     raise BadRequest("the sudo password is not valid")
                 secret = bytearray(given.encode("utf-8"))
                 del given
+            saved_key = None
             if use_saved and secret is None:
-                # the password kept on this computer: read here, never sent to the page, wiped when the job ends
-                secret = vault.get(deploy_key(repo, (params or {}).get("target")))
-                if secret is None:
+                # the password kept on this computer: read by the job (never sent to the page), wiped when it ends
+                saved_key = deploy_key(repo, (params or {}).get("target"))
+                if not vault.saved_at(saved_key):
                     raise BadRequest("no password is saved for this server: type it", 400)
             if remember and secret is not None:
                 remember_key = deploy_key(repo, (params or {}).get("target"))
             commands = build_commands(action, params)
             return {"job": jobs.start(repo, action, commands, params, text(body.get("label"), "label", 120, False, True), secret=secret,
-                                      remember=(remember_key, params.get("target")) if remember_key else None)}
+                                      remember=(remember_key, params.get("target")) if remember_key else None, saved_key=saved_key)}
     raise BadRequest("not found", 404)

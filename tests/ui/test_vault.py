@@ -20,6 +20,32 @@ class TestKeys(unittest.TestCase):
         self.assertRegex(base, r"^[0-9a-f]{40}$")
 
 
+class TestSlowKeychain(unittest.TestCase):
+    """PowerShell of Windows is slow to start now and then: it gets another try, and a clear message when it never answers."""
+
+    def test_a_call_that_times_out_is_tried_once_more(self):
+        import subprocess
+        from unittest import mock
+        done = subprocess.CompletedProcess(["x"], 0, b"ok", b"")
+        with mock.patch("shuttle_ui.vault.subprocess.run", side_effect=[subprocess.TimeoutExpired("x", 1), done]) as run:
+            self.assertEqual(vault._run(["x"]).stdout, b"ok")
+        self.assertEqual(run.call_count, 2)
+
+    def test_a_keychain_that_never_answers_says_what_to_do(self):
+        import subprocess
+        from unittest import mock
+        from shuttle_ui.errors import BadRequest
+        with mock.patch("shuttle_ui.vault.subprocess.run", side_effect=subprocess.TimeoutExpired("x", 1)) as run:
+            with self.assertRaises(BadRequest) as caught:
+                vault._run(["x"])
+        self.assertEqual(run.call_count, vault.TRIES)
+        self.assertIn("type the password", str(caught.exception))
+        self.assertEqual(caught.exception.status, 504)
+
+    def test_the_wait_is_long_enough_for_a_slow_first_start(self):
+        self.assertGreaterEqual(vault.TIMEOUT, 90)
+
+
 @unittest.skipUnless((shutil.which("powershell.exe") and "microsoft" in os.uname().release.lower()), "needs the PowerShell of Windows (WSL)")
 class TestWindowsBackend(unittest.TestCase):
     def setUp(self):
