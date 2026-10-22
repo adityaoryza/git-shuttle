@@ -2,6 +2,13 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.4.2] - 2026-10-22
+
+### Fixed
+- A setting changed just before a reload (a column width, the theme, a filter of the log) was given back as the older value: the copy that
+  goes to the server a moment after a change had not arrived yet, and what the server kept won over the storage of the browser. Changes that
+  have not been sent are now sent when the page is left (a request that still reaches the server when the tab is closed or reloaded).
+
 ## [0.4.1] - 2026-10-22
 
 ### Fixed
