@@ -2,6 +2,17 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.4.1] - 2026-10-22
+
+### Fixed
+- The branches hidden from the graph (the eyes), how the branch list was left, the theme, the widths of the columns and the other settings
+  of the page were forgotten whenever `git shuttle ui` ran on another port: the browser keeps its storage per address and port, and the
+  server takes a free port when 7788 is busy. They are now kept by the server (`~/.config/git-shuttle/prefs.json`, private) and come back
+  whatever the port. What a browser kept before is sent to the server once.
+
+### Changed
+- API level 8 (the settings routes): an older server shows the "stop it and run git shuttle ui again" banner.
+
 ## [0.4.0] - 2026-10-22
 
 A reminder in the web UI when a newer release is out, with the update one click away; and fixes for the Deploy tab and the branch list.

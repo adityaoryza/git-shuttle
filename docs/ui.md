@@ -104,6 +104,15 @@ job, the history, the log or the answers of the API (a test reads them all), a c
 wrong password is not sent a second time. The routes are `GET repos/ID/deploy`, `POST repos/ID/deploy/plan` and the actions `deploy`,
 `deploy-check`, `deploy-setup` and `deploy-forget`.
 
+## What the page remembers
+
+The branches you hide from the graph (per repository), how the branch list was left (its sections and closed folders), the repository you
+were on, the theme, the widths of the columns, the sizes of the panes and the log filters are kept by the **server**, in
+`~/.config/git-shuttle/prefs.json` (private, mode 600), and not only in the browser: a browser keeps its storage per address *and port*, and
+`git shuttle ui` takes another port when 7788 is busy, which made everything look forgotten. The page works as before with its own storage;
+a copy of every `shuttle.*` setting goes to the server a moment after it changes (`POST /api/prefs`, with a fixed list of keys and shapes),
+and comes back into the storage before the page is drawn. Nothing secret is among them (the token is not stored).
+
 ## About
 
 The logo in the top bar, the line at the bottom and the Actions palette ("About git-shuttle") open a dialog with the version of the

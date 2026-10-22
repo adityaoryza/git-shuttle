@@ -1415,5 +1415,113 @@ class TestUpdateNotice(Base):
         self.assertEqual(os.stat(path).st_mode & 0o777, 0o600, "what is kept is private")
 
 
+class TestPrefs(Base):
+    """What the page remembers is kept by the server (the storage of a browser is per address and port): strict keys, strict shapes."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.config_home = tempfile.mkdtemp(prefix="shuttle-prefs-config.")
+        cls.old_config = os.environ.get("XDG_CONFIG_HOME")
+        os.environ["XDG_CONFIG_HOME"] = cls.config_home
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls.old_config is None:
+            os.environ.pop("XDG_CONFIG_HOME", None)
+        else:
+            os.environ["XDG_CONFIG_HOME"] = cls.old_config
+        shutil.rmtree(cls.config_home, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        shutil.rmtree(os.path.join(self.config_home, "git-shuttle"), ignore_errors=True)
+
+    def prefs(self):
+        status, data = self.api("GET", "prefs")
+        self.assertEqual(status, 200, data)
+        return data["prefs"]
+
+    def test_the_routes_need_the_token(self):
+        self.assertEqual(self.api("GET", "prefs", token=False)[0], 401)
+        self.assertEqual(self.api("POST", "prefs", {"key": "repo", "value": "abc"}, token=False)[0], 401)
+
+    def test_nothing_is_kept_at_first(self):
+        self.assertEqual(self.prefs(), {})
+
+    def test_the_hidden_branches_of_a_repository_are_kept_sorted_and_without_repeats(self):
+        status, data = self.api("POST", "prefs", {"key": "hidden:a1b2", "value": ["refs/heads/y", "refs/heads/x", "refs/heads/x"]})
+        self.assertEqual(status, 200, data)
+        self.assertEqual(self.prefs(), {"hidden:a1b2": ["refs/heads/x", "refs/heads/y"]})
+        self.api("POST", "prefs", {"key": "hidden:other", "value": ["refs/heads/z"]})
+        self.assertEqual(set(self.prefs()), {"hidden:a1b2", "hidden:other"}, "one entry per repository")
+
+    def test_an_empty_list_is_kept_as_an_answer_and_null_forgets_it(self):
+        self.api("POST", "prefs", {"key": "hidden:a1b2", "value": []})
+        self.assertEqual(self.prefs(), {"hidden:a1b2": []})
+        self.api("POST", "prefs", {"key": "hidden:a1b2", "value": None})
+        self.assertEqual(self.prefs(), {})
+
+    def test_how_the_branch_list_was_left_and_the_repository_are_kept(self):
+        state = {"sections": {"Local": False, "Remote": True}, "closed": ["Remote:x", "Local:19.0-feature"]}
+        self.assertEqual(self.api("POST", "prefs", {"key": "picker", "value": state})[0], 200)
+        self.assertEqual(self.api("POST", "prefs", {"key": "repo", "value": "342269d792"})[0], 200)
+        kept = self.prefs()
+        self.assertEqual(kept["picker"], {"sections": {"Local": False, "Remote": True}, "closed": ["Local:19.0-feature", "Remote:x"]})
+        self.assertEqual(kept["repo"], "342269d792")
+
+    def test_it_survives_a_new_server(self):
+        self.api("POST", "prefs", {"key": "hidden:a1b2", "value": ["refs/heads/x"]})
+        server = cli.make_server(0, Store(self.world.config), token="other-token-456")
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(lambda: (server.shutdown(), server.server_close()))
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=20)
+        conn.request("GET", "/api/prefs", headers={"Host": "127.0.0.1:%d" % server.server_address[1], "X-Shuttle-Token": "other-token-456"})
+        data = json.loads(conn.getresponse().read().decode())
+        conn.close()
+        self.assertEqual(data["prefs"], {"hidden:a1b2": ["refs/heads/x"]}, "another server, another port: the same settings")
+
+    def test_only_known_keys_and_shapes_are_accepted(self):
+        bad = [
+            {"key": "theme", "value": "dark"}, {"key": "hidden:", "value": []}, {"key": "hidden:../x", "value": []}, {"key": "hidden:a b", "value": []},
+            {"key": "hidden:a1", "value": "refs/heads/x"}, {"key": "hidden:a1", "value": [1, 2]}, {"key": "hidden:a1", "value": [""]},
+            {"key": "hidden:a1", "value": ["a\u0000b"]}, {"key": "hidden:a1", "value": ["x" * 500]}, {"key": "hidden:a1", "value": ["r"] * 5001},
+            {"key": "picker", "value": []}, {"key": "picker", "value": {"other": 1}}, {"key": "picker", "value": {"sections": {"Other": True}}},
+            {"key": "picker", "value": {"sections": {"Local": "yes"}}}, {"key": "picker", "value": {"closed": "x"}},
+            {"key": "repo", "value": "../x"}, {"key": "repo", "value": 5}, {"key": 5, "value": "a"}, {"value": "a"}, {"key": "__proto__", "value": {}},
+        ]
+        for body in bad:
+            status, _ = self.api("POST", "prefs", body)
+            self.assertEqual(status, 400, body if len(json.dumps(body)) < 200 else body["key"])
+        self.assertEqual(self.prefs(), {}, "nothing refused was kept")
+
+    def test_the_other_settings_of_the_page_are_kept_as_the_text_the_page_keeps(self):
+        self.assertEqual(self.api("POST", "prefs", {"key": "ls:shuttle.theme", "value": "light"})[0], 200)
+        self.assertEqual(self.api("POST", "prefs", {"key": "ls:shuttle.table.worktree:v1", "value": '{"widths":[1,2]}'})[0], 200)
+        self.assertEqual(self.prefs(), {"ls:shuttle.theme": "light", "ls:shuttle.table.worktree:v1": '{"widths":[1,2]}'})
+        self.api("POST", "prefs", {"key": "ls:shuttle.theme", "value": None})
+        self.assertNotIn("ls:shuttle.theme", self.prefs(), "null forgets it")
+
+    def test_those_settings_are_validated_and_limited(self):
+        bad = [{"key": "ls:theme", "value": "x"}, {"key": "ls:shuttle.", "value": "x"}, {"key": "ls:shuttle.a b", "value": "x"}, {"key": "ls:shuttle.a/b", "value": "x"},
+               {"key": "ls:shuttle.x", "value": 5}, {"key": "ls:shuttle.x", "value": ["a"]}, {"key": "ls:shuttle.x", "value": "a\u0000b"},
+               {"key": "ls:shuttle.x", "value": "x" * 20001}, {"key": "ls:shuttle." + "k" * 90, "value": "x"}]
+        for body in bad:
+            self.assertEqual(self.api("POST", "prefs", body)[0], 400, body["key"][:30])
+        for i in range(200):
+            self.assertEqual(self.api("POST", "prefs", {"key": "ls:shuttle.k%d" % i, "value": "v"})[0], 200)
+        self.assertEqual(self.api("POST", "prefs", {"key": "ls:shuttle.one_more", "value": "v"})[0], 400, "a limit: the file cannot grow without end")
+        self.assertEqual(self.api("POST", "prefs", {"key": "ls:shuttle.k0", "value": "changed"})[0], 200, "a setting that is kept can still change")
+
+    def test_what_is_kept_is_private_and_a_damaged_file_is_not_fatal(self):
+        self.api("POST", "prefs", {"key": "repo", "value": "abc123"})
+        path = os.path.join(self.config_home, "git-shuttle", "prefs.json")
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+        with open(path, "w") as handle:
+            handle.write("{ not json")
+        self.assertEqual(self.prefs(), {}, "the page works, it only forgets")
+        self.assertEqual(self.api("POST", "prefs", {"key": "repo", "value": "abc123"})[0], 200, "and keeps again")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

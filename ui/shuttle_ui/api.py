@@ -8,7 +8,7 @@ from . import actions
 from .errors import BadRequest
 from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
-from . import updates, vault
+from . import prefs, updates, vault
 from .runner import NO_TERMINAL, child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_text
 from .validate import HASH_RE, build_commands, display_name, name as branch_name, text
 from .validate_ops import commitish
@@ -238,6 +238,10 @@ def handle(server, method, route, body):
     parts = [p for p in route.split("/") if p]
     if method == "GET" and parts == ["version"]:
         return {"version": __version__, "api": API_LEVEL}
+    if method == "GET" and parts == ["prefs"]:
+        return {"prefs": prefs.read()}
+    if method == "POST" and parts == ["prefs"]:
+        return {"prefs": prefs.set_pref(body.get("key"), body.get("value"))}
     if method == "GET" and parts == ["update", "notice"]:
         return updates.notice()
     if method == "POST" and parts == ["update", "notice"]:
