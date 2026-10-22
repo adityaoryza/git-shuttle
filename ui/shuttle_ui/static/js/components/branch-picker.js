@@ -69,8 +69,14 @@ export function BranchPicker({ status, branches, hidden, setHidden, onSwitch, di
   const box = useRef(null);
   useEffect(() => {
     if (!open) return;
-    const away = e => { if (box.current && !box.current.contains(e.target)) setOpen(false); };
-    const key = e => { if (e.key === "Escape") setOpen(false); };
+    const away = e => {
+      // the actions menu of a branch is outside the picker and is shown over it: the list stays behind it. Choosing an action of the menu closes
+      // both; its title, or an action that is refused, leaves the list open
+      const inMenu = e.target.closest && e.target.closest(".ctx");
+      if (inMenu) { if (e.target.closest("button:not(:disabled)")) setOpen(false); return; }
+      if (box.current && !box.current.contains(e.target)) setOpen(false);
+    };
+    const key = e => { if (e.key === "Escape" && !document.querySelector(".ctx")) setOpen(false); };       // the first Escape closes the menu, the second the list
     document.addEventListener("mousedown", away); document.addEventListener("keydown", key);
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", key); };
   }, [open]);
@@ -91,7 +97,7 @@ export function BranchPicker({ status, branches, hidden, setHidden, onSwitch, di
   // a local branch and the remote branch it tracks are one entry: hiding one hides the other, or the graph would still show it
   const remoteRefs = new Set(((branches && branches.remote) || []).map(b => b.ref));
   const refsOf = b => (b.upstream && remoteRefs.has("refs/remotes/" + b.upstream) ? [b.ref, "refs/remotes/" + b.upstream] : [b.ref]);
-  const common = { refsOf, hidden, setRefs, onSwitch: pick, closedFolders, toggleFolder, forceOpen: !!q, onMenu: onMenu && ((x, y, b) => { setOpen(false); onMenu(x, y, b); }), onCompare: onCompare && (b => { setOpen(false); onCompare(b); }) };
+  const common = { refsOf, hidden, setRefs, onSwitch: pick, closedFolders, toggleFolder, forceOpen: !!q, onMenu, onCompare: onCompare && (b => { setOpen(false); onCompare(b); }) };
 
   return html`<div class="picker" ref=${box}>
     <${Button} variant="outline" size="sm" class="branch-btn" onClick=${() => setOpen(!open)} aria-expanded=${open} aria-haspopup="dialog" disabled=${disabled} title="Current branch: switch branch or choose what the graph shows">

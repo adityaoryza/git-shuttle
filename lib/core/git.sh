@@ -46,7 +46,18 @@ remote_ref() { printf 'refs/remotes/%s/%s' "$(cfg_remote)" "$1"; }
 fetch_remote() {
     local remote; remote=$(cfg_remote)
     git remote get-url "$remote" >/dev/null 2>&1 || die "no remote named '$remote' (git config shuttle.remote <name>)"
-    run git fetch --quiet "$remote" || die "cannot fetch from '$remote'"
+    local err; err=$(mktemp)
+    if ! run git fetch --quiet "$remote" 2>"$err"; then
+        # "cannot lock ref ... is at A but expected B": another git (an editor, a second window, a hook) updated the same remote branch at the
+        # same moment; the next try finds it up to date
+        if grep -q "cannot lock ref" "$err"; then
+            sleep 1
+            run git fetch --quiet "$remote" 2>"$err" && { rm -f "$err"; return 0; }
+        fi
+        cat "$err" >&2; rm -f "$err"
+        die "cannot fetch from '$remote'"
+    fi
+    rm -f "$err"
 }
 
 # upstream_of BRANCH — the upstream of a branch (empty when it has none).

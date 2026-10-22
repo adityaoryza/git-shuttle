@@ -22,6 +22,18 @@ export function describeApplied(result) {
   };
 }
 
+// The reminder under the top bar: what it says, or nothing (turned off, nothing newer, or put off for this release).
+export function noticeBanner(notice) {
+  if (!notice || !notice.enabled || !notice.available || notice.snoozed) return null;
+  return {
+    title: "git-shuttle " + notice.latest + " is available",
+    detail: "You have " + notice.current + ".",
+    notes: notice.notes || "",
+    canUpdate: !!notice.can_update,
+    action: notice.can_update ? "Update to " + notice.latest : "How to update",
+  };
+}
+
 // An error of the server or of the connection → one sentence for the dialog.
 export function describeFailure(error) {
   const message = error && error.message ? String(error.message) : "";

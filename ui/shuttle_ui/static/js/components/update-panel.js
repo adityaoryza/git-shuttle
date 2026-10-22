@@ -1,11 +1,11 @@
-/* Updates, in the About dialog: nothing is asked of the internet until the button is clicked. */
+/* Updates, in the About dialog: looking for a release is a click; the reminder that one is out is the server's own look, once a day, and can be turned off here. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { describeApplied, describeCheck, describeFailure } from "../update.js";
 import { ExternalLink } from "./links.js";
 import { Alert, Button } from "./ui.js";
 
-export function UpdatePanel({ auto, notify }) {
+export function UpdatePanel({ auto, notify, notice, onNotice }) {
   const [state, setState] = useState({ step: "idle" });     // idle | checking | checked | applying | applied | failed
   const check = async () => {
     setState({ step: "checking" });
@@ -30,6 +30,11 @@ export function UpdatePanel({ auto, notify }) {
       <${Button} variant="outline" size="sm" busy=${step === "checking"} disabled=${step === "applying"} onClick=${check}>${step === "checking" ? "Looking…" : "Check for updates"}<//>
       ${found && found.canUpdate ? html`<${Button} size="sm" busy=${step === "applying"} onClick=${apply}>${step === "applying" ? "Updating…" : "Update to " + state.info.latest}<//>` : null}
     </div>
+    ${notice ? html`<div class="update-remind">
+      <label class="check"><input type="checkbox" checked=${notice.enabled} disabled=${notice.forced_off}
+        onChange=${e => api("POST", "update/notice", { enabled: e.target.checked }).then(onNotice, e2 => setState(s => ({ ...s, step: "failed", message: describeFailure(e2) })))} /> Remind me when a new version is out</label>
+      <p class="hint">${notice.forced_off ? "Turned off here by GIT_SHUTTLE_NO_UPDATE_CHECK." : "Once a day this server asks github.com for the number of the latest release: nothing about you or your repositories is sent."}</p>
+    </div>` : null}
     <div aria-live="polite">
       ${found ? html`<${Alert} tone=${found.tone === "warn" ? "warn" : "info"} title=${found.title}>
         ${found.detail ? html`<span>${found.detail}</span>` : null}

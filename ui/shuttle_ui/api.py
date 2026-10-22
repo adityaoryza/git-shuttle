@@ -238,6 +238,10 @@ def handle(server, method, route, body):
     parts = [p for p in route.split("/") if p]
     if method == "GET" and parts == ["version"]:
         return {"version": __version__, "api": API_LEVEL}
+    if method == "GET" and parts == ["update", "notice"]:
+        return updates.notice()
+    if method == "POST" and parts == ["update", "notice"]:
+        return updates.set_notice(body)
     if method == "POST" and parts == ["update", "check"]:
         return updates.check()
     if method == "POST" and parts == ["update", "apply"]:

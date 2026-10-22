@@ -99,6 +99,31 @@ assert_status 1 "$RC" "plan refuses modules with a shell character"
 shuttle deploy staging --plan --modules 'sale_order,stock'
 assert_contains "$OUT" "staging-update sale_order,stock" "plan: modules given by hand win"
 
+# --- a fetch that loses a race with another git is tried once more ------------------------------------------------------------------
+REALGIT=$(command -v git)
+mkdir -p "$SB/shim"
+cat >"$SB/shim/git" <<SHIM
+#!/usr/bin/env bash
+if [[ "\$1" == fetch && "\${SHIM_MODE:-}" == race && ! -e "$SB/shim/raced" ]]; then
+    : >"$SB/shim/raced"; echo "error: cannot lock ref 'refs/remotes/origin/x': is at 588bb609 but expected a4fbdd75" >&2; exit 1
+fi
+if [[ "\$1" == fetch && "\${SHIM_MODE:-}" == down ]]; then
+    echo "x" >>"$SB/shim/down.calls"; echo "fatal: unable to access 'https://example.test/': Could not resolve host" >&2; exit 128
+fi
+exec "$REALGIT" "\$@"
+SHIM
+chmod +x "$SB/shim/git"
+rm -f "$SB/shim/raced" "$SB/shim/down.calls"
+SHIM_MODE=race PATH="$SB/shim:$PATH" shuttle deploy staging --plan
+assert_status 0 "$RC" "a fetch that lost the race for a branch (cannot lock ref)"
+assert_contains "$OUT" "modules:" "...is tried once more, and the plan is made"
+assert_eq "yes" "$([[ -e "$SB/shim/raced" ]] && echo yes || echo no)" "...the first try really failed"
+SHIM_MODE=down PATH="$SB/shim:$PATH" shuttle deploy staging --plan
+assert_status 1 "$RC" "a fetch that fails for another reason"
+assert_contains "$OUT" "Could not resolve host" "...shows why"
+assert_contains "$OUT" "cannot fetch from 'origin'" "...and says what failed"
+assert_eq "1" "$(wc -l <"$SB/shim/down.calls" | tr -d ' ')" "...and is not tried again"
+
 # --- deploying ---------------------------------------------------------------------------------------------------------------------------
 reset_log
 shuttle -y deploy staging

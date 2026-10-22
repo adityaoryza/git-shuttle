@@ -162,8 +162,11 @@ It works on a copy made by the one-line installer. The release is downloaded nex
 report the version that was asked for) and only then swapped in; if anything fails, the installed copy is left as it was. A git clone
 is not touched (update it with `git pull`), and neither is a copy somebody put somewhere by hand. `git shuttle update --to v0.1.1`
 installs a named release, a pre-release or an older one. A running `git shuttle ui` has to be stopped and started again afterwards.
-The web UI has the same in its About dialog (the Actions palette: "Check for updates"). Nothing looks for updates by itself: the only
-request to GitHub is the one you ask for.
+The web UI has the same in its About dialog (the Actions palette: "Check for updates"), and it reminds you when a newer release is out: a
+slim bar under the top bar ("git-shuttle 0.5.0 is available", with what changed, **Update…** and **Later**, which is for that release
+only). The command line asks nothing by itself. The web UI server looks at most once a day, for the number of the latest release only (one
+request to github.com, the same one the Update button makes: nothing about you or your repositories is sent, and the page itself never
+talks to the internet). Turn it off in the About dialog ("Remind me when a new version is out"), or with `GIT_SHUTTLE_NO_UPDATE_CHECK=1`.
 
 ## Set it up once per repository
 

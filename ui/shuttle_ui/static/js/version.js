@@ -1,7 +1,7 @@
 /* The page and the server are two programs that can be of different ages (an old `git shuttle ui` left running).
  * The page asks the server for its api level at start. Pure, tested with node. */
 
-export const REQUIRED_API = 6;
+export const REQUIRED_API = 7;
 export const OLD_SERVER = "The server is older than this page: stop it (Ctrl-C) and run git shuttle ui again.";
 
 // A route the server does not have answers 404 "not found" (or something that is not JSON at all).

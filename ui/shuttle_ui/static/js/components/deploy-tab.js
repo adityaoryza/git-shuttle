@@ -40,6 +40,7 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
   // What a deploy would do now. Another server (or command) starts from nothing; the modules being typed only read it again a moment
   // later, and keep what is on screen meanwhile: the field must not disappear under the cursor (the keys would go to the shortcuts of the page).
   const [planning, setPlanning] = useState(false);
+  const [again, setAgain] = useState(0);               // "Try again" reads the plan once more
   useEffect(() => { setPlan(null); setPlanError(""); }, [repoId, name, target && target.command]);
   useEffect(() => {
     if (!target || (edited !== null && modules && !MODULES_RE.test(modules))) return undefined;
@@ -53,7 +54,7 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
       if (alive) setPlanning(false);
     }, edited === null ? 0 : 500);
     return () => { alive = false; clearTimeout(timer); };
-  }, [repoId, name, modules, target && target.command]);
+  }, [repoId, name, modules, target && target.command, again]);
 
   // the typed name and the password belong to one server and one deploy
   useEffect(() => { setTyped(""); setPassword(""); setEdited(null); setKeep(false); setRemember(false); setOther(false); setSaveNote(null); }, [name]);
@@ -166,7 +167,7 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
       <${Button} variant="ghost" size="sm" onClick=${remove} disabled=${!target || runner.busy}>Remove<//>
     </div>
     ${target ? html`<p class="hint">${lastDeployText(target)}${target.confirm === "name" ? " · asks for its name" : ""}</p>` : null}
-    ${planError ? html`<${Alert} tone="bad" title="Cannot deploy yet"><p>${planError}</p><//>` : null}
+    ${planError ? html`<${Alert} tone="bad" title="Cannot deploy yet"><p>${planError}</p><div class="actions"><${Button} size="sm" onClick=${() => { setPlanError(""); setAgain(n => n + 1); }}>Try again<//></div><//>` : null}
     ${target && !plan && !planError ? html`<${Skeleton} />` : null}
     ${plan ? html`<dl class="deploy-facts">
       <dt>Deploys</dt><dd><code>${plan.branch}</code> at <code>${plan.tip.slice(0, 9)}</code> ${plan.subject}</dd>

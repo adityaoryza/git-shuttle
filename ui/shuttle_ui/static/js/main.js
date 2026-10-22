@@ -29,6 +29,7 @@ import { suggestTab } from "./tabs.js";
 import { OLD_SERVER, checkVersion } from "./version.js";
 import { AUTHOR_SHORT, LINKS, versionLine } from "./brand.js";
 import { AboutDialog } from "./components/about-dialog.js";
+import { UpdateBanner } from "./components/update-banner.js";
 import { BrandMark, ExternalLink } from "./components/links.js";
 
 const changeCount = st => (st ? +st.staged + +st.unstaged + +st.untracked : 0);
@@ -59,6 +60,7 @@ function App() {
   const [oldServer, setOldServer] = useState(false);   // the server is older than this page
   const [serverVersion, setServerVersion] = useState("");
   const [aboutAuto, setAboutAuto] = useState(false);   // opened to look for an update
+  const [notice, setNotice] = useState(null);          // is a newer release out (the server looks, at most once a day)
   const [selected, setSelected] = useState(null);   // the commit (or the working tree) whose details are open
   const mainRef = useRef(null), paneRef = useRef(null);
   const mainSize = useSize(mainRef), paneSize = useSize(paneRef);
@@ -112,7 +114,11 @@ function App() {
   });
 
   useEffect(() => {
+    const look = () => api("GET", "update/notice").then(setNotice, () => { /* no answer: no reminder */ });
+    look();
+    const again = setInterval(look, 6 * 3600 * 1000);
     api("GET", "version").then(info => { if (info && info.version) setServerVersion(info.version); if (!checkVersion(info).ok) setOldServer(true); }).catch(e => { if (e.oldServer) setOldServer(true); });
+    return () => clearInterval(again);
   }, []);
   useEffect(() => { loadRepos().then(list => { if (list.length) selectRepo(list.find(r => r.id === localStorage.getItem("shuttle.repo")) || list[0]); }).catch(fail); }, []);
 
@@ -339,6 +345,7 @@ function App() {
       ${repoId ? html`<${Button} variant="ghost" size="sm" onClick=${fetchRemote} busy=${fetching}>${fetching ? "Fetching…" : "Fetch"}<//><${Button} variant="ghost" size="sm" onClick=${() => setDialog("settings")}>Settings<//>` : null}
             <${ThemeToggle} />
     </header>
+    <${UpdateBanner} notice=${notice} notify=${notify} onHowTo=${() => { setAboutAuto(true); setDialog("about"); }} onLater=${() => api("POST", "update/notice", { snooze: notice.latest }).then(setNotice, e => fail(e))} />
     <${ProgressBar} active=${runner.busy || loading || fetching} />
     ${status && repos.length ? html`<${Toolbar} ctx=${ctx} perform=${perform} search=${search} setSearch=${setSearch} searchRef=${searchRef} push=${push} />` : null}
 
@@ -365,7 +372,7 @@ function App() {
       </aside></main>`}
 
     <footer class="credit"><span>${versionLine(serverVersion)}</span><span aria-hidden="true">·</span><span>by <${ExternalLink} href=${LINKS.website.href}>${AUTHOR_SHORT}<//></span><span aria-hidden="true">·</span><button type="button" class="link" onClick=${() => { setAboutAuto(false); setDialog("about"); }}>About</button></footer>
-    ${dialog === "about" ? html`<${AboutDialog} version=${serverVersion} auto=${aboutAuto} notify=${notify} onClose=${() => setDialog(null)} />` : null}
+    ${dialog === "about" ? html`<${AboutDialog} version=${serverVersion} auto=${aboutAuto} notify=${notify} notice=${notice} onNotice=${setNotice} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "add" ? html`<${AddRepoDialog} onAdd=${addRepo} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "settings" && status ? html`<${SettingsDialog} status=${status} branches=${branches} repoName=${repo ? repo.name : ""} onSave=${saveSettings} onRemove=${removeRepo} onClose=${() => setDialog(null)} />` : null}
     ${modalView()}

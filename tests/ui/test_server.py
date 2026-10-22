@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui"))
 from shuttle_ui import cli, http as ui_http, updates  # noqa: E402
@@ -1300,6 +1301,118 @@ class TestHardening(Base):
             else:
                 os.environ["XDG_CONFIG_HOME"] = old
             shutil.rmtree(folder, ignore_errors=True)
+
+
+class TestUpdateNotice(Base):
+    """The reminder that a newer release is out: the server looks at most once a day, keeps the answer, and can be told to stop."""
+    start_release_page = TestUpdate.start_release_page
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.config_home = tempfile.mkdtemp(prefix="shuttle-notice-config.")
+        cls.old_env = {k: os.environ.get(k) for k in ("XDG_CONFIG_HOME", "GIT_SHUTTLE_NO_UPDATE_CHECK")}
+        os.environ["XDG_CONFIG_HOME"] = cls.config_home
+        os.environ.pop("GIT_SHUTTLE_NO_UPDATE_CHECK", None)
+
+    @classmethod
+    def tearDownClass(cls):
+        for key, value in cls.old_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        shutil.rmtree(cls.config_home, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        shutil.rmtree(os.path.join(self.config_home, "git-shuttle"), ignore_errors=True)
+        os.environ.pop("GIT_SHUTTLE_NO_UPDATE_CHECK", None)
+        self.addCleanup(lambda: os.environ.pop("GIT_SHUTTLE_NO_UPDATE_CHECK", None))
+
+    def notice(self):
+        status, data = self.api("GET", "update/notice")
+        self.assertEqual(status, 200, data)
+        return data
+
+    def test_the_routes_need_the_token(self):
+        self.assertEqual(self.api("GET", "update/notice", token=False)[0], 401)
+        self.assertEqual(self.api("POST", "update/notice", {"enabled": False}, token=False)[0], 401)
+
+    def test_a_newer_release_is_reminded_and_looked_for_once_a_day(self):
+        self.start_release_page("9.9.9")
+        with mock.patch("shuttle_ui.updates._run", wraps=updates._run) as run:
+            first = self.notice()
+            second = self.notice()
+        self.assertEqual((first["available"], first["latest"], first["enabled"], first["snoozed"]), (True, "9.9.9", True, False))
+        self.assertEqual(first["current"], ui_version.__version__)
+        self.assertTrue(first["notes"].endswith("/releases/tag/v9.9.9"))
+        self.assertEqual(second["latest"], "9.9.9")
+        self.assertEqual(run.call_count, 1, "the second answer comes from the file: one look in a day")
+
+    def test_with_nothing_newer_there_is_no_reminder(self):
+        self.start_release_page(ui_version.__version__)
+        self.assertFalse(self.notice()["available"])
+
+    def test_later_is_for_that_release_only(self):
+        self.start_release_page("9.9.9")
+        self.notice()
+        status, data = self.api("POST", "update/notice", {"snooze": "9.9.9"})
+        self.assertEqual(status, 200, data)
+        self.assertTrue(data["snoozed"])
+        self.start_release_page("9.9.10")
+        with mock.patch.object(updates, "NOTICE_EVERY", 0):
+            data = self.notice()
+        self.assertEqual(data["latest"], "9.9.10")
+        self.assertFalse(data["snoozed"], "a newer release is reminded again")
+
+    def test_turning_it_off_stops_the_looking_and_turning_it_on_looks_at_once(self):
+        self.start_release_page("9.9.9")
+        with mock.patch("shuttle_ui.updates._run", wraps=updates._run) as run:
+            data = self.api("POST", "update/notice", {"enabled": False})[1]
+            self.assertFalse(data["enabled"])
+            self.assertFalse(self.notice()["enabled"])
+            self.assertEqual(run.call_count, 0, "turned off: nothing is asked of the internet")
+            data = self.api("POST", "update/notice", {"enabled": True})[1]
+            self.assertTrue(data["enabled"] and data["available"])
+            self.assertEqual(run.call_count, 1)
+
+    def test_the_environment_turns_it_off_for_good(self):
+        self.start_release_page("9.9.9")
+        os.environ["GIT_SHUTTLE_NO_UPDATE_CHECK"] = "1"
+        with mock.patch("shuttle_ui.updates._run", wraps=updates._run) as run:
+            data = self.notice()
+            data2 = self.api("POST", "update/notice", {"enabled": True})[1]
+        self.assertEqual((data["enabled"], data["forced_off"], data["available"]), (False, True, False))
+        self.assertEqual((data2["enabled"], data2["forced_off"]), (False, True), "the page cannot turn it on again")
+        self.assertEqual(run.call_count, 0)
+        os.environ["GIT_SHUTTLE_NO_UPDATE_CHECK"] = "0"
+        self.assertFalse(self.notice()["forced_off"], "0 is not off")
+
+    def test_no_network_is_not_an_error_and_it_is_tried_again_in_an_hour_not_at_every_page(self):
+        os.environ["GIT_SHUTTLE_REPO"] = "http://127.0.0.1:9/acme/git-shuttle"
+        self.addCleanup(lambda: os.environ.pop("GIT_SHUTTLE_REPO", None))
+        with mock.patch("shuttle_ui.updates._run", wraps=updates._run) as run:
+            first, second = self.notice(), self.notice()
+        self.assertFalse(first["available"] or second["available"])
+        self.assertEqual(run.call_count, 1, "a failed look is not repeated at every page")
+        with open(os.path.join(self.config_home, "git-shuttle", "update-notice.json")) as handle:
+            checked = json.load(handle)["checked"]
+        self.assertAlmostEqual(time.time() + updates.RETRY_AFTER - updates.NOTICE_EVERY, checked, delta=30)
+
+    def test_what_was_kept_is_judged_against_the_version_that_runs_now(self):
+        folder = os.path.join(self.config_home, "git-shuttle")
+        os.makedirs(folder, exist_ok=True)
+        with open(os.path.join(folder, "update-notice.json"), "w") as handle:
+            json.dump({"latest": "0.0.1", "checked": time.time(), "notes": "x"}, handle)
+        self.assertFalse(self.notice()["available"], "a release that is older than this one is not news")
+
+    def test_the_values_are_validated(self):
+        for body in ({"enabled": "yes"}, {"enabled": 1}, {"snooze": "../x"}, {"snooze": "abc"}, {"snooze": 9}, {"snooze": "1.2.3; rm -rf /"}):
+            self.assertEqual(self.api("POST", "update/notice", body)[0], 400, body)
+        self.api("POST", "update/notice", {"enabled": True})
+        path = os.path.join(self.config_home, "git-shuttle", "update-notice.json")
+        self.assertEqual(os.stat(path).st_mode & 0o777, 0o600, "what is kept is private")
 
 
 if __name__ == "__main__":
