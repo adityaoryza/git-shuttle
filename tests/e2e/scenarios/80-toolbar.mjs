@@ -44,7 +44,7 @@ export const scenarios = {
     await page.keyboard.press("Control+k");
     const palette = page.getByRole("dialog", { name: "Actions" });
     await palette.waitFor();
-    t.ok("Ctrl+K opens it with the search focused", await page.evaluate(() => document.activeElement.classList.contains("palette-input")));
+    t.ok("Ctrl+K opens it with the search focused", await page.waitForFunction(() => document.activeElement.classList.contains("palette-input"), null, { timeout: 1500 }).then(() => true, () => false));
     t.ok("it lists many actions", (await palette.getByRole("option").count()) > 40);
     await page.keyboard.type("stash");
     const labels = await palette.getByRole("option").locator(".pal-label").allInnerTexts();
