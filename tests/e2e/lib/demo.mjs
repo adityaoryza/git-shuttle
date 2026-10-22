@@ -94,6 +94,20 @@ export function createDemo() {
   // a stand-in for the GitHub CLI: prints a link and records the call
   const gh = path.join(root, "gh");
   fs.writeFileSync(gh, '#!/bin/sh\nprintf "%s\\n" "$*" >> "' + path.join(root, "gh.log") + '"\necho https://example.com/acme/acme-shop/pull/42\n', { mode: 0o755 });
+  // a stand-in for ssh: it logs what it was asked to run; a host that starts with "ask@" wants a sudo password first (the password is "e2e-secret")
+  const ssh = path.join(root, "ssh");
+  fs.writeFileSync(ssh, `#!/usr/bin/env bash
+{ printf 'CALL'; printf ' [%s]' "$@"; echo; } >> "${path.join(root, "ssh.log")}"
+for a in "$@"; do [[ "$a" == -O ]] && exit 0; done
+last="\${*: -1}"
+[[ "$last" == true ]] && exit 0
+if [[ "$*" == *" nf@"* ]]; then echo "bash: line 1: staging-update: command not found" >&2; exit 127; fi
+if [[ "$*" == *" ask@"* ]]; then
+  printf '[sudo] password for ask: '; IFS= read -rs pw; echo
+  [[ "$pw" == e2e-secret ]] || { echo "Sorry, try again."; exit 1; }
+fi
+echo "server ran: $last"
+`, { mode: 0o755 });
   // somebody else pushes to the remote: a commit on `branch`, made in a separate clone
   const pushToRemote = (branch, file, text, message, who = "sam") => {
     const other = fs.mkdtempSync(path.join(root, "other-"));
@@ -106,5 +120,5 @@ export function createDemo() {
     git(other, ["push", "-q", "origin", branch], { who });
     return git(other, ["rev-parse", "HEAD"]);
   };
-  return { root, remote, work, gh, pushToRemote, git: (args, opts) => git(work, args, opts), remoteGit: (args, opts) => git(remote, args, opts), at, write, commit, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+  return { root, remote, work, gh, ssh, pushToRemote, git: (args, opts) => git(work, args, opts), remoteGit: (args, opts) => git(remote, args, opts), at, write, commit, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }

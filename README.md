@@ -216,9 +216,31 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle pick --onto NEW [--from BASE] [--strategy-option ours\|theirs] [--push] COMMIT...` | a release branch from the remote release branch, with the commits picked in order |
 | `git shuttle hook install\|uninstall\|status` | a `commit-msg` hook that applies the message rules to every commit |
 | `git shuttle config` | the settings in effect |
+| `git shuttle deploy [TARGET] [--modules A,B]` | run the update command of a saved server over ssh, after a push (`--setup NAME`, `--list`, `--forget NAME`, `--plan`, `--check`) |
 | `git shuttle update [--check] [--to TAG]` | bring git-shuttle to the latest release (a copy made by the installer); `--check` only looks |
 
 Options for every command: `-y/--yes` (do not ask), `-n/--dry-run` (show the commands only), `-h/--help`, `--version`.
+
+### Deploy to a server
+
+After a push, one command updates the server. Save each server once (staging, production…); the settings live in the repository, no
+password or key is stored. On a terminal ssh asks for the login password of the server itself, once, the way odoo-mirror does (the user is
+the part before the `@` of the server: `odooAdmin@203.0.113.10`), or uses your key; without a terminal it never asks:
+
+```bash
+git shuttle deploy --setup staging      # asks: server, command ({modules} = what changed), branch the server runs, sudo, modules
+git shuttle deploy staging              # plan, exact command, one question, then it runs
+git shuttle deploy production --confirm production   # a target that asks for its name: -y alone is not enough
+```
+
+It fetches, refuses commits of the branch that are not on the remote yet, finds the Odoo modules that changed since the last deploy of that
+target (`detector=odoo`: top-level folders with a `__manifest__.py`; or name them with `--modules a,b`), and remembers the commit it deployed.
+`--plan` and `--check` change nothing (`--check` only tests that ssh works).
+
+If the server asks for a `sudo` password (`sudo=ask`), run it in a terminal and type it at the prompt of sudo: git-shuttle never reads it. The
+web UI has the same in its Deploy tab; there the password is typed in the page, written once to the prompt of sudo and never stored or logged.
+When the server can instead allow the command without a password, that is simpler and safer (a `sudoers.d` rule for the commands the
+update script runs: it depends on what the script does, so it is not generated here).
 
 ### A day with it
 

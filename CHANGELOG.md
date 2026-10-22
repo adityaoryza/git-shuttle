@@ -2,6 +2,35 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.3.0] - 2026-10-22
+
+The release with `git shuttle deploy` and the Deploy tab: after a push, one click (or one command) updates a server over ssh.
+
+### Added
+- `git shuttle deploy`: after a push, run the update command of a server over ssh, with the same preview and checks every time. A server
+  (a "target": `staging`, `production`…) is saved once in the repository (`deploy --setup NAME`, a wizard like the other commands; `--list`,
+  `--forget`), then `git shuttle deploy staging` is all there is to type. It fetches, refuses commits of the branch that are not on the remote,
+  finds the Odoo modules that changed since the last deploy of that target (`detector=odoo`; or `--modules a,b`), shows the exact command,
+  and remembers the commit it deployed. A target can ask for its name to be typed before every deploy (`--confirm NAME`; `--yes` alone does
+  not deploy to it), which is the default for a release branch. `--plan [--porcelain]` and `--check` change nothing.
+- The web UI has a Deploy tab with the same: servers, the plan, the modules (editable), the typed name, a preview, and the result.
+- sudo on the server: `sudo=ask` means the server asks for a password. On a terminal, ssh gets a terminal and you type it at the prompt of
+  sudo (git-shuttle never reads it). In the web UI the password is typed in the page, written once to the prompt on a pseudo terminal,
+  and never stored: not in a command line, the environment, the history, the answer of the job or any file; if the terminal echoes it, it is
+  cut out of the output, and a wrong password is not sent again.
+- Connecting works like odoo-mirror: on a terminal ssh asks for the login password of the server itself, once (one shared connection for
+  the check and the deploy, closed at the end), or uses your key or agent; without a terminal it never asks (BatchMode). In the web UI the
+  password field of the tab answers the prompt of ssh and the one of sudo. The user is the one of the server (`odooAdmin@host`). The host and the modules are validated, so nothing from a setting or the
+  page can become an ssh option or a shell command.
+
+- The Deploy tab is made to need few steps: add a server once (name, address, user, command, branch), then one click on "Deploy to …". The
+  password is typed when you deploy (one field for the ssh login and for sudo; "Keep it until I close this page" keeps it in the page only).
+  "Test the connection" checks the user and the password and runs nothing. A command that is an alias of the login shell of the server is
+  run in a login shell (`bash -ic`): a box in the form, or one click when the server did not find the command (exit 127).
+
+### Changed
+- API level 6 (the Deploy routes): an older server shows the "stop it and run git shuttle ui again" banner.
+
 ## [0.2.0] - 2026-10-22
 
 The first release that has `git shuttle update`, the About dialog and the new Release tab. It also holds what the 0.1.2 tag

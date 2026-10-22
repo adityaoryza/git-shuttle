@@ -19,7 +19,7 @@ export function settings(status) {
 }
 
 // ---- the preview and the result of a run
-function PreviewBox({ runner, action }) {
+export function PreviewBox({ runner, action }) {
   const p = runner.shown;
   if (!p || p.action !== action) return null;
   return html`<details class="preview" open>

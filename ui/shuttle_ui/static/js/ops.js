@@ -241,6 +241,10 @@ export const OPS = {
   "ship": { label: "Ship", special: "tab", reason: () => "" },
   "release": { label: "Release", special: "tab", reason: () => "" },
   "pr": { label: "Open a pull request", special: "tab", reason: () => "" },
+  "deploy": { label: "Deploy to a server", special: "tab", reason: () => "" },
+  "deploy-check": { label: "Test the connection to a server", special: "tab", reason: () => "" },
+  "deploy-setup": { label: "Set up a deploy target", special: "tab", reason: () => "" },
+  "deploy-forget": { label: "Remove a deploy target", special: "tab", reason: () => "" },
   "continue": { label: "Continue", reason: ctx => (ctx.status && ctx.status.operation ? (ctx.busy ? "another action is running" : "") : "nothing is waiting"), request: () => ({ action: "continue", params: {}, label: "Continue", verb: "Continue", direct: true }) },
   "abort": { label: "Abort", reason: ctx => (ctx.status && ctx.status.operation ? (ctx.busy ? "another action is running" : "") : "nothing is waiting"), request: () => ({ action: "abort", params: {}, label: "Abort", verb: "Abort", tone: "destructive", direct: true }) },
   "undo": {

@@ -195,6 +195,32 @@ def compare(repo, body):
     return out
 
 
+def deploy_targets(repo):
+    """The saved deploy targets of a repository (the settings of git config, read by the command)."""
+    names = ["target", "host", "port", "command", "branch", "sudo", "detector", "confirm", "last_time", "last_sha", "last_result"]
+    out = []
+    for rec in shuttle_records(repo["path"], ["deploy", "--list"]):
+        fields = [rec[0].partition("=")[2]] + rec[1:] if rec else []
+        fields += [""] * (len(names) - len(fields))
+        out.append(dict(zip(names, fields)))
+    return out
+
+
+def deploy_plan(repo, body):
+    """What a deploy of one target would do now: it fetches, checks the branch, and finds the modules. It connects to nothing."""
+    from .validate_ops import deploy_target, MODULES_RE
+    args = ["deploy", deploy_target(body.get("target")), "--plan"]
+    modules = body.get("modules")
+    if modules:
+        if not isinstance(modules, str) or not MODULES_RE.match(modules):
+            raise BadRequest("the modules are not valid: names separated by commas")
+        args += ["--modules", modules]
+    try:
+        return {"plan": shuttle_porcelain(repo["path"], args[0], extra=args[1:])}
+    except BadRequest as error:
+        raise BadRequest(str(error).replace("error: ", "", 1), 400)
+
+
 def handle(server, method, route, body):
     store, jobs = server.store, server.jobs
     parts = [p for p in route.split("/") if p]
@@ -270,8 +296,22 @@ def handle(server, method, route, body):
             return fetch(repo)
         if method == "POST" and rest == ["preview"]:
             return preview(repo, body)
+        if method == "GET" and rest == ["deploy"]:
+            return {"targets": deploy_targets(repo)}
+        if method == "POST" and rest == ["deploy", "plan"]:
+            return deploy_plan(repo, body)
         if method == "POST" and rest == ["run"]:
             action = text(body.get("action"), "action", 50, True, True)
-            return {"job": jobs.start(repo, action, build_commands(action, body.get("params")), body.get("params") if isinstance(body.get("params"), dict) else None,
-                                      text(body.get("label"), "label", 120, False, True))}
+            params = dict(body["params"]) if isinstance(body.get("params"), dict) else None
+            secret = None
+            if params and "sudo_password" in params:
+                # the password of sudo goes to the deploy and nowhere else: not into the job, the history or the log
+                given = params.pop("sudo_password")
+                if action not in ("deploy", "deploy-check"):
+                    raise BadRequest("a password is only for a deploy")
+                if not isinstance(given, str) or not given or len(given) > 256 or "\n" in given or "\0" in given:
+                    raise BadRequest("the sudo password is not valid")
+                secret = bytearray(given.encode("utf-8"))
+                del given
+            return {"job": jobs.start(repo, action, build_commands(action, params), params, text(body.get("label"), "label", 120, False, True), secret=secret)}
     raise BadRequest("not found", 404)

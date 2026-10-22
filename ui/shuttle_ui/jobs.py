@@ -8,6 +8,7 @@ import shlex
 from . import log
 from .actions import rerunnable
 from .errors import BadRequest
+from .pty_run import run_with_secret, wipe
 from .redact import redact
 from .runner import run_shuttle
 
@@ -21,7 +22,8 @@ class Jobs:
         self.jobs = {}
         self.busy = {}  # repo id -> job id
 
-    def start(self, repo, action, commands, params=None, label=""):
+    def start(self, repo, action, commands, params=None, label="", secret=None):
+        """secret: a bytearray the deploy of a server types at the prompt of sudo; it is never stored with the job, and is wiped when it ends."""
         with self.lock:
             if repo["id"] in self.busy:
                 raise BadRequest("another action is running in this repository", 409)
@@ -33,15 +35,18 @@ class Jobs:
             self.busy[repo["id"]] = job_id
             self._forget_old()
         log.job(repo["name"], action, "started (%s)" % log.summarize(commands))
-        threading.Thread(target=self._run, args=(repo, job), daemon=True).start()
+        threading.Thread(target=self._run, args=(repo, job, secret), daemon=True).start()
         return job_id
 
-    def _run(self, repo, job):
+    def _run(self, repo, job, secret=None):
         exit_code = 0
         try:
             for step in job["steps"]:
                 step["state"] = "running"
-                code, output = run_shuttle(repo["path"], step["argv"], dry_run=False, timeout=900)
+                if secret is not None and step["argv"][:1] == ["deploy"]:
+                    code, output = run_with_secret(repo["path"], step["argv"], secret, timeout=900)
+                else:
+                    code, output = run_shuttle(repo["path"], step["argv"], dry_run=False, timeout=900)
                 step["exit"], step["output"] = code, output
                 step["state"] = "done" if code == 0 else "stopped"
                 if code != 0:
@@ -51,6 +56,7 @@ class Jobs:
             exit_code = 1
             job["steps"][-1]["output"] += "\ninternal error: %s" % error
         finally:
+            wipe(secret)
             job["exit"] = exit_code
             job["finished"] = time.time()
             job["state"] = "done" if exit_code == 0 else "stopped" if exit_code == 2 else "failed"
