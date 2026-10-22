@@ -15,6 +15,31 @@ const dragBy = async (page, loc, dx) => { await still(page, loc); const b = awai
 const widthAfter = async (page, loc, ok) => { for (let i = 0; i < 30; i++) { const w = await width(loc); if (ok(w)) return w; await page.waitForTimeout(100); } return width(loc); };
 
 export const scenarios = {
+  async "settings: the theme and the widths are kept by the server, so another address has them too"(t) {
+    const page = await t.page();
+    await page.getByRole("button", { name: /theme/i }).click();           // dark (the system setting of the test) becomes light
+    t.ok("the theme was changed", (await page.evaluate(() => document.documentElement.getAttribute("data-theme"))) === "light");
+    await openWorktree(page);
+    const name = handle(page, "Name");
+    await page.getByRole("separator", { name: "Resize the file list" }).focus(); await page.keyboard.press("End");
+    await still(page, name);
+    const start = await width(name);
+    await dragBy(page, name, 60);
+    const wide = await widthAfter(page, name, w => w >= start + 50);
+    t.ok("a column was made wider", wide >= start + 50, `${start} → ${wide}`);
+    await page.waitForTimeout(800);                                          // the copy goes to the server a moment after the change
+    await page.evaluate(() => localStorage.clear());                          // what another port is for the browser: nothing of the storage is there
+    await page.reload();
+    await page.waitForSelector(".graph .row");
+    t.ok("the theme is as it was left, not the one of the system", (await page.evaluate(() => document.documentElement.getAttribute("data-theme"))) === "light");
+    await openWorktree(page);
+    await still(page, handle(page, "Name"));
+    t.ok("the width of the column is as it was left", Math.abs((await width(handle(page, "Name"))) - wide) <= 1, `${wide} → ${await width(handle(page, "Name"))}`);
+    const kept = await page.evaluate(async () => { const r = await fetch("/api/prefs", { headers: { "X-Shuttle-Token": sessionStorage.getItem("shuttle.token") } }); return r.json(); });
+    t.ok("the server has them as copies of the settings of the page", Object.keys(kept.prefs).some(k => k === "ls:shuttle.theme") && Object.keys(kept.prefs).filter(k => k.startsWith("ls:")).length >= 2, Object.keys(kept.prefs).join(","));
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
   async "table: the working tree, in sections, with its columns"(t) {
     const page = await t.page();
     await openWorktree(page);

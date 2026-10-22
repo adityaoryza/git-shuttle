@@ -61,11 +61,14 @@ function Section({ title, list, hidden, setRefs, onSwitch, remote, open, setOpen
   </section>`;
 }
 
-export function BranchPicker({ status, branches, hidden, setHidden, onSwitch, disabled, onMenu, onCompare }) {
+export function BranchPicker({ status, branches, hidden, setHidden, saved, onSaved, onSwitch, disabled, onMenu, onCompare }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [sections, setSections] = useState({ Local: true, Remote: false });
-  const [closedFolders, setClosedFolders] = useState(new Set());
+  const [sections, setSectionsState] = useState(() => (saved ? saved.sections : { Local: true, Remote: false }));
+  const [closedFolders, setClosedState] = useState(() => (saved ? saved.closed : new Set()));
+  // how the list was left is remembered (by the server): the sections that are open, and the folders that are closed
+  const setSections = next => { setSectionsState(next); if (onSaved) onSaved(next, closedFolders); };
+  const setClosedFolders = next => { setClosedState(next); if (onSaved) onSaved(sections, next); };
   const box = useRef(null);
   useEffect(() => {
     if (!open) return;

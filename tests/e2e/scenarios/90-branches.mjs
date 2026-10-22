@@ -28,6 +28,33 @@ export const scenarios = {
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
 
+  async "branch list: what is hidden and how the list was left are remembered, whatever the address of the page"(t) {
+    const page = await t.page();
+    await openPicker(page);
+    await page.getByRole("button", { name: "Hide feature/checkout_coupon in the graph" }).click();
+    await page.getByRole("button", { name: "Show feature/checkout_coupon in the graph" }).waitFor();
+    await page.locator(".pick-toggle", { hasText: "feature/" }).first().click();                  // a folder is closed
+    await page.getByRole("button", { name: "Show feature/checkout_coupon in the graph" }).waitFor({ state: "detached" });
+    // what a new address does to the browser: nothing of its storage is there. The server has kept it.
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForSelector(".graph .row");
+    await openPicker(page);
+    t.ok("the list is left as it was: the folder is still closed", (await page.locator(".popover").getByRole("button", { name: /feature\/checkout_coupon in the graph/ }).count()) === 0);
+    await page.locator(".pick-toggle", { hasText: "feature/" }).first().click();
+    t.ok("...opened again, the branch is still hidden", (await page.getByRole("button", { name: "Show feature/checkout_coupon in the graph" }).count()) === 1);
+    await page.getByRole("button", { name: "Show feature/checkout_coupon in the graph" }).click();
+    await page.getByRole("button", { name: "Hide feature/checkout_coupon in the graph" }).waitFor();
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await page.waitForSelector(".graph .row");
+    await openPicker(page);
+    t.ok("showing it again is remembered too", (await page.getByRole("button", { name: "Show feature/checkout_coupon in the graph" }).count()) === 0);
+    const kept = await page.evaluate(async () => { const r = await fetch("/api/prefs", { headers: { "X-Shuttle-Token": sessionStorage.getItem("shuttle.token") } }); return r.json(); });
+    t.ok("the server keeps it, as settings of the repository", Object.keys(kept.prefs).some(k => k.startsWith("hidden:")) && "picker" in kept.prefs && "repo" in kept.prefs, JSON.stringify(Object.keys(kept.prefs)));
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
   async "branch list: it stays open behind the actions menu of a branch"(t) {
     const page = await t.page();
     await openPicker(page);

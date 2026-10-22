@@ -30,6 +30,9 @@ import { OLD_SERVER, checkVersion } from "./version.js";
 import { AUTHOR_SHORT, LINKS, versionLine } from "./brand.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { UpdateBanner } from "./components/update-banner.js";
+import { hiddenFor, pickerFrom, pickerToPref } from "./prefs.js";
+import { loadPrefs, savePref, syncStorage } from "./prefs-store.js";
+import { currentTheme } from "./theme.js";
 import { BrandMark, ExternalLink } from "./components/links.js";
 
 const changeCount = st => (st ? +st.staged + +st.unstaged + +st.untracked : 0);
@@ -76,9 +79,15 @@ function App() {
 
   const loadRepos = async () => { const r = (await api("GET", "repos")).repos; setRepos(r); return r; };
 
-  // the branches hidden from the graph are remembered per repository
-  const hiddenKey = id => "shuttle.hidden." + id;
-  const readHidden = id => { try { return new Set(JSON.parse(localStorage.getItem(hiddenKey(id)) || "[]")); } catch (e) { return new Set(); } };
+  // what is remembered (the branches hidden from the graph per repository, the state of the branch list, the repository you were on) is kept by
+  // the server: the storage of the browser is per address and port, and the server takes another port when 7788 is busy
+  const prefs = useRef({});
+  const readHidden = id => {
+    const { hidden: found, migrate } = hiddenFor(prefs.current, id, localStorage);
+    if (migrate) { prefs.current["hidden:" + id] = [...found]; savePref("hidden:" + id, [...found]); }      // what this browser kept before: sent once
+    return found;
+  };
+  const remember = (key, value) => { prefs.current[key] = value; savePref(key, value); };
   const fetchGraph = (id, hide) => {
     const known = branches ? [...branches.local, ...branches.remote] : null;
     return api("POST", "repos/" + id + "/graph", { refs: hide.size && known ? known.filter(b => !hide.has(b.ref)).map(b => b.ref) : null });
@@ -98,7 +107,7 @@ function App() {
   }, [repoId, hidden]);
   async function setHidden(next) {
     setHiddenState(next);
-    localStorage.setItem(hiddenKey(repoId), JSON.stringify([...next]));
+    remember("hidden:" + repoId, [...next]);
     try { setGraph(await fetchGraph(repoId, next)); } catch (e) { fail(e); }
   }
 
@@ -120,10 +129,13 @@ function App() {
     api("GET", "version").then(info => { if (info && info.version) setServerVersion(info.version); if (!checkVersion(info).ok) setOldServer(true); }).catch(e => { if (e.oldServer) setOldServer(true); });
     return () => clearInterval(again);
   }, []);
-  useEffect(() => { loadRepos().then(list => { if (list.length) selectRepo(list.find(r => r.id === localStorage.getItem("shuttle.repo")) || list[0]); }).catch(fail); }, []);
+  useEffect(() => {
+    loadPrefs().then(p => { prefs.current = p; return loadRepos(); })
+      .then(list => { if (list.length) selectRepo(list.find(r => r.id === (prefs.current.repo || localStorage.getItem("shuttle.repo"))) || list[0]); }).catch(fail);
+  }, []);
 
   async function selectRepo(r) {
-    setRepoId(r.id); localStorage.setItem("shuttle.repo", r.id); setSelected(null); setStatus(null); setGraph(null); setBranches(null); runner.reset();
+    setRepoId(r.id); localStorage.setItem("shuttle.repo", r.id); if (prefs.current.repo !== r.id) remember("repo", r.id); setSelected(null); setStatus(null); setGraph(null); setBranches(null); runner.reset();
     const hide = readHidden(r.id);
     setHiddenState(hide);
     setLoading(true);
@@ -338,7 +350,7 @@ function App() {
       <button type="button" class="brand" onClick=${() => { setAboutAuto(false); setDialog("about"); }} aria-label="About git-shuttle" title="About git-shuttle"><${BrandMark} size=${22} /><span>git-<b>shuttle</b></span></button>
       ${repos.length ? html`<select class="input repo-select" value=${repoId || ""} onChange=${e => selectRepo(repos.find(r => r.id === e.target.value))} aria-label="Repository">${repoLabels(repos).map(l => html`<option value=${l.id} title=${l.title}>${l.label}</option>`)}</select>` : null}
       <${Button} variant="ghost" size="sm" onClick=${() => setDialog("add")}>+ Add<//>
-      ${status ? html`<${BranchPicker} status=${status} branches=${branches} hidden=${hidden} setHidden=${setHidden} onSwitch=${name => runner.run("switch", { name }, "Switch to " + name)} disabled=${runner.busy} onMenu=${openBranchMenu} onCompare=${b => setModal({ name: "compare", a: b.upstream, b: b.name })} />
+      ${status ? html`<${BranchPicker} status=${status} branches=${branches} hidden=${hidden} setHidden=${setHidden} saved=${pickerFrom(prefs.current)} onSaved=${(sections, closed) => remember("picker", pickerToPref(sections, closed))} onSwitch=${name => runner.run("switch", { name }, "Switch to " + name)} disabled=${runner.busy} onMenu=${openBranchMenu} onCompare=${b => setModal({ name: "compare", a: b.upstream, b: b.name })} />
         ${status.protected === "1" ? html`<${Badge} tone="warn">protected<//>` : null}
         ${status["integration.ref"] ? html`<span class="hint">↑${ahead} ↓${behind} vs ${status["integration.ref"]}</span>${behind > 0 && !reasonOf("sync", ctx) ? html`<${Button} variant="outline" size="sm" class="behind-btn" title=${"Rebase this branch on " + status["integration.ref"]} onClick=${() => perform("sync")}>↓${behind} behind ${status["integration.ref"]}: update<//>` : null}` : null}` : null}
       <span class="grow" />
@@ -385,4 +397,8 @@ function App() {
   </div>`;
 }
 
-render(html`<${App} />`, document.getElementById("app"));
+// the settings come back into the storage before anything reads them (a new address, another port, has an empty storage)
+syncStorage().catch(() => {}).finally(() => {
+  try { document.documentElement.setAttribute("data-theme", currentTheme(localStorage, window.matchMedia.bind(window))); } catch (e) { /* the theme of the first paint stays */ }
+  render(html`<${App} />`, document.getElementById("app"));
+});
