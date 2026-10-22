@@ -99,12 +99,69 @@ export const scenarios = {
     const history = await page.evaluate(async () => { const token = sessionStorage.getItem("shuttle.token"); const r = await fetch("/api/history?limit=50", { headers: { "X-Shuttle-Token": token } }); return r.text(); });
     t.ok("...the server's history does not have it", !history.includes("e2e-secret"));
     t.ok("...ssh was not given it as an argument", !sshLog(t).includes("e2e-secret"));
-    // "keep it until I close this page"
+    t.ok("with a keychain the box is 'Remember on this computer' (the page-only 'keep it' is for a computer without one)", (await page.getByLabel("Keep it until I close this page").count()) === 0 && (await page.getByLabel("Remember on this computer").count()) === 1);
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "deploy tab: typing the modules keeps the field, the focus and the page quiet"(t) {
+    const page = await t.page();
+    await tab(page).click();
+    await addServer(page, { name: "mods", host: "deploy@203.0.113.70", command: "staging-update {modules}", branch: "staging" });
+    await page.getByRole("button", { name: "Save" }).click();
+    await finished(page, "Save the server");
+    await page.locator(".deploy-facts").waitFor();
+    const modules = page.getByPlaceholder("sale_documents,custom_technicien");
+    await modules.waitFor();
+    await modules.click();
+    let lostFocus = 0, skeleton = 0;
+    for (const ch of "sale_documents,stock") {
+      await page.keyboard.type(ch);
+      if (!(await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("placeholder") === "sale_documents,custom_technicien"))) lostFocus++;
+      if ((await page.locator(".deploy .skeleton").count()) > 0 || (await page.locator(".deploy-facts").count()) === 0) skeleton++;
+    }
+    t.ok("every key goes to the field: it keeps the focus while the plan is read again", lostFocus === 0, lostFocus);
+    t.ok("...the plan stays on screen meanwhile (no loading blocks)", skeleton === 0, skeleton);
+    t.ok("...so no key reaches the shortcuts of the page (the command log did not open)", (await page.getByRole("dialog").count()) === 0);
+    t.ok("...and the field has what was typed", (await modules.inputValue()) === "sale_documents,stock");
+    await page.waitForFunction(() => /staging-update sale_documents,stock/.test(document.querySelector(".deploy-facts").innerText), null, { timeout: 8000 });
+    t.ok("a moment after the last key the exact command follows what was typed", true);
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "deploy tab: remember the password on this computer, use it without typing, and forget it"(t) {
+    const page = await t.page();
+    await tab(page).click();
+    await addServer(page, { name: "kept", host: "ask@203.0.113.60", command: "staging-update", branch: "staging" });
+    await page.getByRole("button", { name: "Save" }).click();
+    await finished(page, "Save the server");
+    const pw = page.getByLabel("Password of the server");
+    await pw.waitFor();
+    t.ok("the box is offered, and says where it is kept and what never happens", (await page.locator(".deploy").innerText()).includes("Remember on this computer"));
+    await page.getByLabel("Remember on this computer").check();
+    t.ok("...ticking it says how it is kept", (await page.locator(".deploy").innerText()).includes("only after the login worked"));
     await pw.fill("e2e-secret");
-    await page.getByLabel("Keep it until I close this page").check();
-    await press(page, "Deploy to preprod");
-    await finished(page, "Deploy to preprod");
-    t.ok("with 'keep it' the password stays for the next deploy", (await pw.inputValue()) === "e2e-secret");
+    await press(page, "Deploy to kept");
+    await finished(page, "Deploy to kept");
+    await page.getByText("The password is saved on this computer").waitFor();
+    t.ok("after a login that worked it says it is saved", true);
+    t.ok("the field is replaced by 'Password saved', with Forget", (await page.locator(".deploy-saved").innerText()).includes("Password saved") && (await page.getByRole("button", { name: "Forget" }).count()) === 1);
+    t.ok("the password is nowhere in the page", !(await page.locator("body").innerText()).includes("e2e-secret") && !(await page.content()).includes("e2e-secret"));
+    const keyring = path.join(t.demo.root, "keyring");
+    t.ok("the keychain (the stand-in) has it, and no file of the demo repository does", fs.readdirSync(keyring).length === 1 && !fs.readFileSync(path.join(t.demo.work, ".git", "config"), "utf8").includes("e2e-secret"));
+    await press(page, "Test the connection");
+    await finished(page, "Test the connection");
+    t.ok("with it saved, a test runs without typing anything", (await resultText(page)).length > 0 && (await page.locator(".result .badge").innerText()).includes("done"));
+    const history = await page.evaluate(async () => { const token = sessionStorage.getItem("shuttle.token"); const r = await fetch("/api/history?limit=50", { headers: { "X-Shuttle-Token": token } }); return r.text(); });
+    t.ok("the history does not have it", !history.includes("e2e-secret"));
+    await press(page, "Deploy to kept");
+    await finished(page, "Deploy to kept");
+    t.ok("a deploy with it saved works too", (await resultText(page)).includes("server ran: staging-update"));
+    await press(page, "Forget");
+    const dialog = page.getByRole("dialog", { name: /Forget the saved password/ });
+    await dialog.waitFor();
+    await dialog.getByRole("button", { name: "Forget" }).click();
+    await page.getByLabel("Password of the server").waitFor();
+    t.ok("forgotten: the field is back and the keychain is empty", fs.readdirSync(keyring).length === 0);
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
 
@@ -128,6 +185,21 @@ export const scenarios = {
     t.ok("one click saved it with a login shell", (await page.locator(".deploy-facts").innerText()).includes("bash -ic 'staging-update'"));
     await page.locator(".deploy").getByRole("button", { name: "Edit" }).click();
     t.ok("the form shows the command without the wrapper, with the box ticked", (await page.getByPlaceholder("staging-update {modules}").inputValue()) === "staging-update" && await page.getByLabel(/run it in a login shell/).isChecked());
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
+  async "deploy tab: a server that asks for a password says so on the page when none was typed"(t) {
+    const page = await t.page();
+    await tab(page).click();
+    await addServer(page, { name: "locked", host: "pw@203.0.113.50", command: "staging-update", branch: "staging" });
+    await page.getByRole("button", { name: "Save" }).click();
+    await finished(page, "Save the server");
+    await page.locator(".deploy-facts").waitFor();
+    await press(page, "Test the connection");
+    await finished(page, "Test the connection");
+    await page.getByText("The server asks for a password").waitFor();
+    t.ok("without a password the page says the server asks for one (it is not asked anywhere else)", true);
+    t.ok("...and nothing was run on the server", !sshLog(t).includes("[staging-update]"));
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
 

@@ -8,6 +8,7 @@ import shlex
 from . import log
 from .actions import rerunnable
 from .errors import BadRequest
+from . import vault
 from .pty_run import run_with_secret, wipe
 from .redact import redact
 from .runner import run_shuttle
@@ -22,7 +23,7 @@ class Jobs:
         self.jobs = {}
         self.busy = {}  # repo id -> job id
 
-    def start(self, repo, action, commands, params=None, label="", secret=None):
+    def start(self, repo, action, commands, params=None, label="", secret=None, remember=None):
         """secret: a bytearray the deploy of a server types at the prompt of sudo; it is never stored with the job, and is wiped when it ends."""
         with self.lock:
             if repo["id"] in self.busy:
@@ -35,10 +36,10 @@ class Jobs:
             self.busy[repo["id"]] = job_id
             self._forget_old()
         log.job(repo["name"], action, "started (%s)" % log.summarize(commands))
-        threading.Thread(target=self._run, args=(repo, job, secret), daemon=True).start()
+        threading.Thread(target=self._run, args=(repo, job, secret, remember), daemon=True).start()
         return job_id
 
-    def _run(self, repo, job, secret=None):
+    def _run(self, repo, job, secret=None, remember=None):
         exit_code = 0
         try:
             for step in job["steps"]:
@@ -56,6 +57,13 @@ class Jobs:
             exit_code = 1
             job["steps"][-1]["output"] += "\ninternal error: %s" % error
         finally:
+            if remember and secret is not None and exit_code == 0:
+                # the login worked with this password: only now it is kept (a wrong one never is), when the user asked for it
+                try:
+                    vault.put(remember[0], secret, remember[1])
+                    job["remembered"] = True
+                except Exception as error:      # the job itself went well: the reason goes to the page
+                    job["remember_error"] = str(error)[:300]
             wipe(secret)
             job["exit"] = exit_code
             job["finished"] = time.time()

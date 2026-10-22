@@ -12,7 +12,7 @@ from . import log
 from .errors import BadRequest
 from .paths import SHUTTLE_ARGV
 from .redact import redact
-from .runner import child_env, limited, parse_porcelain
+from .runner import NO_TERMINAL, child_env, limited, parse_porcelain
 
 _LOCK = threading.Lock()
 
@@ -30,7 +30,7 @@ def _home():
 
 def _run(args, timeout):
     try:
-        done = subprocess.run(SHUTTLE_ARGV + args, cwd=_home(), env=child_env(), capture_output=True, timeout=timeout)
+        done = subprocess.run(SHUTTLE_ARGV + args, cwd=_home(), env=child_env(), capture_output=True, **NO_TERMINAL, timeout=timeout)
     except subprocess.TimeoutExpired:
         raise BadRequest("The release page did not answer in time: try again later.", 504)
     return done.returncode, done.stdout, done.stderr

@@ -8,8 +8,8 @@ from . import actions
 from .errors import BadRequest
 from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
-from . import updates
-from .runner import child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_text
+from . import updates, vault
+from .runner import NO_TERMINAL, child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_text
 from .validate import HASH_RE, build_commands, display_name, name as branch_name, text
 from .validate_ops import commitish
 
@@ -31,7 +31,7 @@ def register(store, path, name=None):
     real = os.path.realpath(path)
     if not os.path.isdir(real):
         raise BadRequest("that folder does not exist")
-    done = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=real, env=child_env(), capture_output=True)
+    done = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=real, env=child_env(), capture_output=True, **NO_TERMINAL)
     if done.returncode != 0:
         raise BadRequest("that folder is not a git repository")
     return store.add_repo(os.path.realpath(done.stdout.decode("utf-8", "replace").strip()), display_name(name) if name else None)
@@ -66,10 +66,10 @@ def fetch_summary(repo_path, before, after):
 
 
 def fetch(repo):
-    remote = subprocess.run(["git", "config", "--get", "shuttle.remote"], cwd=repo["path"], env=child_env(), capture_output=True)
+    remote = subprocess.run(["git", "config", "--get", "shuttle.remote"], cwd=repo["path"], env=child_env(), capture_output=True, **NO_TERMINAL)
     name = branch_name(remote.stdout.decode().strip() or "origin", "shuttle.remote")
     before = remote_refs(repo["path"], name)
-    done = subprocess.run(["git", "fetch", "--quiet", "--prune", "--", name], cwd=repo["path"], env=child_env(), capture_output=True, timeout=120)
+    done = subprocess.run(["git", "fetch", "--quiet", "--prune", "--", name], cwd=repo["path"], env=child_env(), capture_output=True, **NO_TERMINAL, timeout=120)
     ok = done.returncode == 0
     return {
         "ok": ok, "remote": name, "output": limited(done.stdout + done.stderr),
@@ -202,8 +202,20 @@ def deploy_targets(repo):
     for rec in shuttle_records(repo["path"], ["deploy", "--list"]):
         fields = [rec[0].partition("=")[2]] + rec[1:] if rec else []
         fields += [""] * (len(names) - len(fields))
-        out.append(dict(zip(names, fields)))
+        item = dict(zip(names, fields))
+        item["saved"] = vault.saved_at(vault.key_of(repo["path"], item["target"], item["host"], item["port"]))     # when a password was saved for it
+        out.append(item)
     return out
+
+
+def deploy_key(repo, target):
+    """The key of the saved password of a target of this repository (it changes with the address: another server, another key)."""
+    from .validate_ops import deploy_target
+    name = deploy_target(target)
+    for item in deploy_targets(repo):
+        if item["target"] == name:
+            return vault.key_of(repo["path"], name, item["host"], item["port"])
+    raise BadRequest("no such server", 404)
 
 
 def deploy_plan(repo, body):
@@ -297,13 +309,19 @@ def handle(server, method, route, body):
         if method == "POST" and rest == ["preview"]:
             return preview(repo, body)
         if method == "GET" and rest == ["deploy"]:
-            return {"targets": deploy_targets(repo)}
+            return {"targets": deploy_targets(repo), "vault": vault.info()}
+        if method == "POST" and rest == ["deploy", "forget-password"]:
+            vault.forget(deploy_key(repo, body.get("target")))
+            return {"ok": True}
         if method == "POST" and rest == ["deploy", "plan"]:
             return deploy_plan(repo, body)
         if method == "POST" and rest == ["run"]:
             action = text(body.get("action"), "action", 50, True, True)
             params = dict(body["params"]) if isinstance(body.get("params"), dict) else None
-            secret = None
+            secret, remember_key = None, None
+            use_saved, remember = bool(params.pop("use_saved", False)) if params else False, bool(params.pop("remember", False)) if params else False
+            if (use_saved or remember) and action not in ("deploy", "deploy-check"):
+                raise BadRequest("a saved password is only for a deploy")
             if params and "sudo_password" in params:
                 # the password of sudo goes to the deploy and nowhere else: not into the job, the history or the log
                 given = params.pop("sudo_password")
@@ -313,5 +331,14 @@ def handle(server, method, route, body):
                     raise BadRequest("the sudo password is not valid")
                 secret = bytearray(given.encode("utf-8"))
                 del given
-            return {"job": jobs.start(repo, action, build_commands(action, params), params, text(body.get("label"), "label", 120, False, True), secret=secret)}
+            if use_saved and secret is None:
+                # the password kept on this computer: read here, never sent to the page, wiped when the job ends
+                secret = vault.get(deploy_key(repo, (params or {}).get("target")))
+                if secret is None:
+                    raise BadRequest("no password is saved for this server: type it", 400)
+            if remember and secret is not None:
+                remember_key = deploy_key(repo, (params or {}).get("target"))
+            commands = build_commands(action, params)
+            return {"job": jobs.start(repo, action, commands, params, text(body.get("label"), "label", 120, False, True), secret=secret,
+                                      remember=(remember_key, params.get("target")) if remember_key else None)}
     raise BadRequest("not found", 404)

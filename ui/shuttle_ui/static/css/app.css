@@ -522,3 +522,5 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .deploy-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .input[aria-invalid="true"] { border-color: var(--bad); }
 .field-hint:has(+ .input[aria-invalid="true"]), .deploy-why strong { color: var(--foreground); }
+.deploy-saved { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-control); font-size: 13px; }
+.deploy-saved-actions { display: flex; gap: 4px; }

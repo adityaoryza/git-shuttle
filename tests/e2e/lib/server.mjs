@@ -11,7 +11,7 @@ const UI_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", 
 export async function startServer(demo, extraArgs = []) {
   const config = fs.mkdtempSync(path.join(os.tmpdir(), "shuttle-e2e-cfg-"));
   const proc = spawn("python3", ["-m", "shuttle_ui", "--port", "0", "--no-open", "--repo", demo.work, ...extraArgs], {
-    env: { ...gitEnv(), PYTHONPATH: UI_DIR, XDG_CONFIG_HOME: config, GIT_SHUTTLE_GH: demo.gh, GIT_SHUTTLE_SSH: demo.ssh, PYTHONUNBUFFERED: "1" },
+    env: { ...gitEnv(), PYTHONPATH: UI_DIR, XDG_CONFIG_HOME: config, GIT_SHUTTLE_GH: demo.gh, GIT_SHUTTLE_SSH: demo.ssh, GIT_SHUTTLE_SECRET_TOOL: demo.secretTool, PYTHONUNBUFFERED: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "", err = "";

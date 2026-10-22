@@ -100,6 +100,7 @@ export function createDemo() {
 { printf 'CALL'; printf ' [%s]' "$@"; echo; } >> "${path.join(root, "ssh.log")}"
 for a in "$@"; do [[ "$a" == -O ]] && exit 0; done
 last="\${*: -1}"
+if [[ "$*" == *" pw@"* && " $* " == *"BatchMode=yes"* ]]; then echo "pw@host: Permission denied (publickey,password)." >&2; exit 255; fi
 [[ "$last" == true ]] && exit 0
 if [[ "$*" == *" nf@"* ]]; then echo "bash: line 1: staging-update: command not found" >&2; exit 127; fi
 if [[ "$*" == *" ask@"* ]]; then
@@ -107,6 +108,16 @@ if [[ "$*" == *" ask@"* ]]; then
   [[ "$pw" == e2e-secret ]] || { echo "Sorry, try again."; exit 1; }
 fi
 echo "server ran: $last"
+`, { mode: 0o755 });
+  // a stand-in for `secret-tool` (the keyring): a file per key, in the folder of the demo (not in the repository)
+  const secretTool = path.join(root, "secret-tool");
+  fs.writeFileSync(secretTool, `#!/usr/bin/env bash
+dir="${path.join(root, "keyring")}"; mkdir -p "$dir"; key="\${*: -1}"
+case "$1" in
+  store) cat > "$dir/$key" ;;
+  lookup) [[ -f "$dir/$key" ]] && cat "$dir/$key" || exit 1 ;;
+  clear) rm -f "$dir/$key" ;;
+esac
 `, { mode: 0o755 });
   // somebody else pushes to the remote: a commit on `branch`, made in a separate clone
   const pushToRemote = (branch, file, text, message, who = "sam") => {
@@ -120,5 +131,5 @@ echo "server ran: $last"
     git(other, ["push", "-q", "origin", branch], { who });
     return git(other, ["rev-parse", "HEAD"]);
   };
-  return { root, remote, work, gh, ssh, pushToRemote, git: (args, opts) => git(work, args, opts), remoteGit: (args, opts) => git(remote, args, opts), at, write, commit, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+  return { root, remote, work, gh, ssh, secretTool, pushToRemote, git: (args, opts) => git(work, args, opts), remoteGit: (args, opts) => git(remote, args, opts), at, write, commit, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }
