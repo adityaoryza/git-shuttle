@@ -48,14 +48,15 @@ export function Output({ children }) {
   return html`<pre class="output">${children}</pre>`;
 }
 
-export function Modal({ title, onClose, children, footer, wide, className }) {
+export function Modal({ title, onClose, children, footer, wide, className, initialFocus }) {
   const ref = useRef(null);
   // the first field gets the focus as soon as the dialog is in the page (the autofocus attribute does not work on what is added later)
-  const place = el => {
-    ref.current = el;
-    if (el && !el.contains(document.activeElement)) { const first = el.querySelector("[autofocus], input:not([type=checkbox]):not([type=radio]), textarea, select"); if (first) first.focus(); }
+  const focusFirst = el => {
+    if (el && el.isConnected && !el.contains(document.activeElement)) { const first = el.querySelector(initialFocus || "[autofocus], input:not([type=checkbox]):not([type=radio]), textarea, select"); if (first) first.focus(); }
   };
+  const place = el => { ref.current = el; focusFirst(el); };
   useEffect(() => {
+    focusFirst(ref.current);   // the element may not have been in the page yet when the ref was set
     const key = e => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);

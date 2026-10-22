@@ -26,6 +26,8 @@ import { ThemeToggle } from "./components/theme-toggle.js";
 import { repoLabels } from "./repos.js";
 import { suggestTab } from "./tabs.js";
 import { OLD_SERVER, checkVersion } from "./version.js";
+import { AUTHOR_SHORT, LINKS, versionLine } from "./brand.js";
+import { AboutDialog, BrandMark, ExternalLink } from "./components/about-dialog.js";
 
 const changeCount = st => (st ? +st.staged + +st.unstaged + +st.untracked : 0);
 
@@ -53,6 +55,7 @@ function App() {
   const [hidden, setHiddenState] = useState(new Set());
   const [worktree, setWorktree] = useState(null);   // the changed files, for the Ship tab
   const [oldServer, setOldServer] = useState(false);   // the server is older than this page
+  const [serverVersion, setServerVersion] = useState("");
   const [selected, setSelected] = useState(null);   // the commit (or the working tree) whose details are open
   const mainRef = useRef(null), paneRef = useRef(null);
   const mainSize = useSize(mainRef), paneSize = useSize(paneRef);
@@ -106,7 +109,7 @@ function App() {
   });
 
   useEffect(() => {
-    api("GET", "version").then(info => { if (!checkVersion(info).ok) setOldServer(true); }).catch(e => { if (e.oldServer) setOldServer(true); });
+    api("GET", "version").then(info => { if (info && info.version) setServerVersion(info.version); if (!checkVersion(info).ok) setOldServer(true); }).catch(e => { if (e.oldServer) setOldServer(true); });
   }, []);
   useEffect(() => { loadRepos().then(list => { if (list.length) selectRepo(list.find(r => r.id === localStorage.getItem("shuttle.repo")) || list[0]); }).catch(fail); }, []);
 
@@ -257,6 +260,7 @@ function App() {
       case "settings": setDialog("settings"); return;
       case "add": setDialog("add"); return;
       case "shortcuts": setModal({ name: "shortcuts" }); return;
+      case "about": setDialog("about"); return;
       case "files": return;
       default:
     }
@@ -322,7 +326,7 @@ function App() {
   return html`<div class="app">
     ${oldServer ? html`<div class="banner" role="alert"><strong>${OLD_SERVER}</strong></div>` : null}
     <header class="topbar">
-      <span class="brand">git-<b>shuttle</b></span>
+      <button type="button" class="brand" onClick=${() => setDialog("about")} aria-label="About git-shuttle" title="About git-shuttle"><${BrandMark} size=${22} /><span>git-<b>shuttle</b></span></button>
       ${repos.length ? html`<select class="input repo-select" value=${repoId || ""} onChange=${e => selectRepo(repos.find(r => r.id === e.target.value))} aria-label="Repository">${repoLabels(repos).map(l => html`<option value=${l.id} title=${l.title}>${l.label}</option>`)}</select>` : null}
       <${Button} variant="ghost" size="sm" onClick=${() => setDialog("add")}>+ Add<//>
       ${status ? html`<${BranchPicker} status=${status} branches=${branches} hidden=${hidden} setHidden=${setHidden} onSwitch=${name => runner.run("switch", { name }, "Switch to " + name)} disabled=${runner.busy} onMenu=${openBranchMenu} onCompare=${b => setModal({ name: "compare", a: b.upstream, b: b.name })} />
@@ -335,7 +339,7 @@ function App() {
     <${ProgressBar} active=${runner.busy || loading || fetching} />
     ${status && repos.length ? html`<${Toolbar} ctx=${ctx} perform=${perform} search=${search} setSearch=${setSearch} searchRef=${searchRef} push=${push} />` : null}
 
-    ${!repos.length ? html`<main class="onboarding"><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
+    ${!repos.length ? html`<main class="onboarding"><${BrandMark} size=${56} class="onboarding-mark" /><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
       <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split" ref=${mainRef} style=${{ "--panel-w": panelSplit.size + "px" }}>
       <section class="graph-pane" aria-label="Commit graph" ref=${paneRef}>
         <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} /></div>
@@ -356,6 +360,8 @@ function App() {
 ` : html`<p class="hint">Loading…</p>`}
       </aside></main>`}
 
+    <footer class="credit"><span>${versionLine(serverVersion)}</span><span aria-hidden="true">·</span><span>by <${ExternalLink} href=${LINKS.website.href}>${AUTHOR_SHORT}<//></span><span aria-hidden="true">·</span><button type="button" class="link" onClick=${() => setDialog("about")}>About</button></footer>
+    ${dialog === "about" ? html`<${AboutDialog} version=${serverVersion} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "add" ? html`<${AddRepoDialog} onAdd=${addRepo} onClose=${() => setDialog(null)} />` : null}
     ${dialog === "settings" && status ? html`<${SettingsDialog} status=${status} branches=${branches} repoName=${repo ? repo.name : ""} onSave=${saveSettings} onRemove=${removeRepo} onClose=${() => setDialog(null)} />` : null}
     ${modalView()}

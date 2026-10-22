@@ -79,6 +79,12 @@ State kept on your machine, in `~/.config/git-shuttle/` (mode 700): the register
 (`history.jsonl`, rotated at 5 MB into `history.1.jsonl`; each entry has a stable id, the commands and output with credentials replaced,
 the exit status and the duration). The undo journal is in the git directory of each repository.
 
+## About
+
+The logo in the top bar, the line at the bottom and the Actions palette ("About git-shuttle") open a dialog with the version of the
+server, the author's links and the project links. The addresses are in one file, `static/js/brand.js`, and a test checks that no other
+address appears in the page: it makes no request to the internet, and a link opens in a new tab (`noopener noreferrer`) only when clicked.
+
 ## API
 
 `GET /api/version`, `repos`, `repos/<id>/status|branches|graph|worktree|stashes|stashes/<n>|worktrees|journal`, `commits/<sha>` (and
