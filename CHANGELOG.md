@@ -2,14 +2,30 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
-## [Unreleased]
+## [0.2.0] - 2026-10-22
+
+The first release that has `git shuttle update`, the About dialog and the new Release tab. It also holds what the 0.1.2 tag
+was made of (the installer, the GitHub CLI warning, "Don't show this preview again", the Windows work), which `main` had not got.
 
 ### Added
+- Release: `git shuttle release --onto NEW --empty` makes the release branch with no commit yet, and `--onto NAME --append COMMIT...`
+  adds commits to one that exists (both with `--push`). The Release tab of the web UI has a search, "Hide released", Select all (also per
+  merge), the next branch name from the pattern in Settings (with a link to change it), a choice between a new branch and one that exists,
+  removing a pick, and "Copy release notes" (Markdown by module, for the pull request). The four steps are said at the top. After a release
+  the tab clears the picks and says what comes next. `candidates` marks a commit that is in a release branch on its way (made with the
+  pattern, not in the release branch yet) with `~` and the branch, and the tab shows "in <branch>" instead of leaving it pickable.
+- `git shuttle update [--check] [--to TAG]`: look for a newer release and install it. The release is downloaded next to the installed copy,
+  checked (it has to run and say the version asked for) and swapped in only then; a failure leaves the installed copy as it was. A git
+  checkout or a copy put somewhere by hand is not touched. The About dialog of the web UI has a "Check for updates" button (also in the
+  Actions palette); nothing asks GitHub until it is clicked. The web UI API is now level 5.
 - Web UI: the logo and name in the top bar, a credit line at the bottom (version, author) and an About dialog (author links,
   project links, licence, the version of the server). It is also in the Actions palette, and the first-run screen shows the logo.
   The page still loads nothing from the internet: a link opens in a new tab only when it is clicked.
 
 ### Fixed
+- Web UI server: the body of a refused POST (no token, wrong content type) is read and dropped. Left unread it could be taken for the
+  start of the next request on a kept-alive connection, and a connection closed with unread data could be reset before the browser had
+  read the answer.
 - Web UI: a dialog without a field (About, for one) now moves the focus to its first button when it opens, even when the page does not
   render again afterwards.
 
