@@ -192,6 +192,18 @@ class TestSecurity(Base):
         page = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui", "shuttle_ui", "static", "js", "version.js")).read()
         self.assertEqual(int(re.search(r"REQUIRED_API = (\d+)", page).group(1)), API_LEVEL, "bump both together")
 
+    def test_a_page_that_went_away_before_the_answer_is_not_an_error(self):
+        """A closed or reloaded tab made a BrokenPipeError, then a second one while the 500 was sent: a traceback in the window of the server."""
+        import types
+        for error in (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            def refuse(*a, _error=error, **k):
+                raise _error()
+            fake = types.SimpleNamespace(send_response=lambda *a: None, send_header=lambda *a: None, end_headers=refuse,
+                                         wfile=types.SimpleNamespace(write=refuse), close_connection=False, status=None)
+            ui_http.Handler._send(fake, 200, {"ok": True})        # must not raise
+            self.assertTrue(fake.close_connection, "the connection is dropped, not reused")
+            self.assertEqual(fake.status, 200)
+
     def test_a_missing_route_answers_exactly_not_found_so_that_the_page_can_tell_an_old_server(self):
         status, data = self.api("GET", "no/such/route")
         self.assertEqual((status, data), (404, {"error": "not found"}))

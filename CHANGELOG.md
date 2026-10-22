@@ -2,6 +2,16 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [Unreleased]
+
+### Fixed
+- A page that is closed or reloaded while it waits for an answer no longer makes a traceback in the window of `git shuttle ui`
+  (BrokenPipeError, then a second one while the error page was sent): the connection is dropped quietly.
+
+### Changed
+- The repository is set up as an open source project: code of conduct, a feature request template, CODEOWNERS, Dependabot for the actions
+  of the CI, badges in the README, and the supported versions in SECURITY.md.
+
 ## [0.3.1] - 2026-10-22
 
 ### Added

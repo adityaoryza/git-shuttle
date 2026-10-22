@@ -55,8 +55,12 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Content-Security-Policy", CSP)
         self.send_header("Referrer-Policy", "no-referrer")
-        self.end_headers()
-        self.wfile.write(data)
+        try:
+            self.end_headers()
+            self.wfile.write(data)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # the page went away while it waited for the answer (a closed or reloaded tab): nobody is left to answer
+            self.close_connection = True
 
     def _allowed_hosts(self):
         port = self.server.server_address[1]
