@@ -4,6 +4,19 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-23
+
+### Added
+- The **Customer report** (add-on hook `report`, opt-in for each repository): after `git shuttle pr`, the add-on of the task can add the pull request and
+  the commits to the task (odoo-task: the field `x_customer_report`), for the PM to check on GitHub. It shows the text first and asks, it only adds
+  (what is there is kept, an entry for the same pull request is not added twice, the old value is put back if Odoo changed it), and a failure never
+  undoes the pull request. `git shuttle addon report NAME on|off`, `git shuttle trace report` (for a pull request that is already open), the button
+  *Customer report* in the Add-ons dialog and *Report* in Tasks, Branches.
+- A command of git-shuttle looks for a newer release by itself, in the background (at most once an hour, never waited for, off with
+  `GIT_SHUTTLE_NO_UPDATE_CHECK=1` or the switch of the About dialog), so the page shows the reminder as soon as it is opened, and says
+  "git-shuttle X is out" once per release on a terminal. The page asks the server again every ten minutes and when the tab comes back. The look is
+  still only the number of the latest release; before, only the web UI server made it, at most once a day.
+
 ## [0.7.0] - 2026-10-23
 
 ### Added
