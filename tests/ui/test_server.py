@@ -1112,6 +1112,34 @@ class TestUpdate(Base):
             updates.updates_lock().release()
 
 
+class TestNoticeLooksAtStart(unittest.TestCase):
+    def test_a_start_looks_at_once_even_when_the_last_look_is_fresh(self):
+        config = tempfile.mkdtemp(prefix="shuttle-notice.")
+        calls = []
+
+        def fake_run(args, timeout):
+            calls.append(args)
+            return 0, b"latest=9.9.9\0notes=https://example.test/n\0can-update=1\0kind=installed\0", b""
+
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config}), mock.patch.object(updates, "_run", side_effect=fake_run):
+            os.environ.pop("GIT_SHUTTLE_NO_UPDATE_CHECK", None)
+            first = updates.notice()                    # nothing was looked at yet: a look
+            updates.notice()                            # fresh: no look
+            forced = updates.notice(force=True)         # the start of the page: a look
+        self.assertEqual(len(calls), 2)
+        self.assertEqual((first["latest"], forced["latest"], forced["available"]), ("9.9.9", "9.9.9", True))
+
+    def test_a_forced_look_still_obeys_the_switch(self):
+        config = tempfile.mkdtemp(prefix="shuttle-notice.")
+        with mock.patch.dict(os.environ, {"XDG_CONFIG_HOME": config, "GIT_SHUTTLE_NO_UPDATE_CHECK": "1"}), mock.patch.object(updates, "_run") as run:
+            news = updates.notice(force=True)
+        run.assert_not_called()
+        self.assertFalse(news["enabled"])
+
+    def test_the_look_is_made_every_ten_minutes_at_most(self):
+        self.assertEqual(updates.NOTICE_EVERY, 600)
+
+
 class TestHardening(Base):
     """Things a hostile page, repository or client could try: each one has a test."""
 

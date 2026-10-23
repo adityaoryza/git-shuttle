@@ -4,6 +4,7 @@
  * ctx:  { status, branches, busy, pushed (Set of commit ids that a remote has), headSha, commits (id -> commit) }
  * args: what the action is about: { commit, branch, name, ... }
  */
+import { branchTemplates } from "./logic.js";
 const num = value => +value || 0;
 const short = sha => (sha || "").slice(0, 7);
 
@@ -117,7 +118,7 @@ export const OPS = {
     label: (ctx, a) => (a && a.commit ? "Create a branch here…" : "New branch"),
     reason: busy,
     form: (ctx, a) => [
-      { name: "name", label: "Branch name", type: "text", mono: true, required: true, branchName: true, placeholder: "feature/my_task", autofocus: true, hint: a && a.commit ? "At " + short(a.commit.sha) + " " + a.commit.subject : "At the commit you are on" },
+      { name: "name", label: "Branch name", type: "text", mono: true, required: true, branchName: true, placeholder: ((ctx.status && ctx.status["config.branchPrefix"]) || "feature/") + "my_task", templates: branchTemplates(ctx.status, ctx.branches, new Date()), autofocus: true, hint: a && a.commit ? "At " + short(a.commit.sha) + " " + a.commit.subject : "At the commit you are on" },
       { name: "push", label: "Push to the remote and set the upstream", type: "checkbox", remember: "pushNewBranch" },
     ],
     request: (ctx, a, v) => ({ action: "branch", params: { name: v.name.trim(), ...(a && a.commit ? { commit: a.commit.sha } : {}), push: !!v.push }, label: "Create branch " + v.name.trim(), verb: v.push ? "Create and push" : "Create branch" }),
@@ -257,6 +258,7 @@ export const OPS = {
   "deploy-forget": { label: "Remove a deploy target", special: "tab", reason: () => "" },
   "continue": { label: "Continue", reason: ctx => (ctx.status && ctx.status.operation ? (ctx.busy ? "another action is running" : "") : "nothing is waiting"), request: () => ({ action: "continue", params: {}, label: "Continue", verb: "Continue", direct: true }) },
   "abort": { label: "Abort", reason: ctx => (ctx.status && ctx.status.operation ? (ctx.busy ? "another action is running" : "") : "nothing is waiting"), request: () => ({ action: "abort", params: {}, label: "Abort", verb: "Abort", tone: "destructive", direct: true }) },
+  "resolve": { label: "Keep one side of a conflict", special: "conflict", reason: ctx => (ctx.status && ctx.status.operation ? "" : "nothing is waiting") },
   "undo": {
     label: ctx => "Undo" + (ctx.status && ctx.status["journal.undo"] ? " " + ctx.status["journal.undo"] : ""),
     reason: first(busy, ctx => (ctx.status && ctx.status["journal.undo"] ? "" : "nothing to undo")),

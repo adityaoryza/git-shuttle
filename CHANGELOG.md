@@ -4,6 +4,36 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-23
+
+### Added
+- **Keep one side of a conflict**: `git shuttle resolve --ours|--theirs -- PATH...`, and two buttons next to every file in the banner of a
+  stopped rebase, merge, cherry-pick, revert or patch. It says which branch each side is, and in a rebase it names them the right way round
+  (git's "ours" is what you rebase onto, "theirs" is your own work). The preview says which branch is kept and which is dropped. A side that
+  deleted the file keeps it deleted. `git checkout --merge -- FILE` brings the conflict back. `status --porcelain` reports `conflict.ours`,
+  `conflict.theirs` and their roles.
+- **A release that conflicts is finished from where it stopped**: `pick`, `cherry-pick` and `release` keep a plan in the git folder (the commits, in
+  order, and where it stands). The page says *Commit 3 of 7*, with the commits done and the ones to come. `git shuttle continue` finishes the commit
+  that stopped (one that has nothing left after the resolution is skipped), goes on with the rest by itself and, with `--push`, pushes at the end;
+  before, the rest was forgotten and the push never happened. `abort` forgets the plan. When it is over, `status --porcelain` reports
+  `release.ready`, and the release tab offers the pull request to the release branch. `cherry-pick` takes `--push` too.
+- **Resolve place by place**: `git shuttle conflicts FILE` lists the places where a file is in conflict (both sides, what both started from, and who
+  last changed the lines of your side, with the commit of the release it was) and `git shuttle resolve --hunk N=ours|theirs|both|both-reverse|base
+  -- FILE` chooses. The page shows it as *Choose place by place*, with a choice for each place and a preview before anything is written.
+- **New branch** offers templates of the name: the prefix of task branches, the prefixes in use and the next release name.
+- **The look for a newer release is made at every start of the page** (a line on the terminal when one is out), and then every ten minutes (it was once
+  an hour, and never at the start). A command of git-shuttle looks at most every ten minutes too. What the page itself runs does not look at every
+  command: the server does, once.
+- **An update made from the page restarts the server by itself**: the same process, port and link start again with the new code, and the page reloads
+  when it is back. No more Ctrl-C and `git shuttle ui` again (where the server cannot restart by itself, Windows, the page says so).
+
+### Changed
+- `git shuttle continue` after a `pick`, `cherry-pick` or `release` that stopped goes on with the commits that are left; it used to finish only the one that
+  stopped. The message of a pick that stops says `git shuttle continue` (not `git cherry-pick --continue`) and `abort` gives up the whole pick.
+
+### Fixed
+- The buttons of the Add-ons dialog (Customer report, Set up, Disable, Update, Remove) looked like plain text; they are buttons now.
+
 ## [0.8.1] - 2026-10-23
 
 ### Changed

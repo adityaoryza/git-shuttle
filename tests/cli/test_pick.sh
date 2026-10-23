@@ -88,7 +88,7 @@ git checkout -q release; echo "release version" > clash.txt; git add clash.txt; 
 git checkout -q main
 shuttle -y pick --onto rel/9 "$CL" "$D"
 assert_status 2 "$RC" "a conflict while picking"
-assert_contains "$OUT" "git cherry-pick --continue" "...says how to go on"
+assert_contains "$OUT" "git shuttle continue" "...says how to go on"
 assert_contains "$OUT" "$D" "...and lists the commits still to pick"
 assert_eq "rel/9" "$(git branch --show-current)" "...you are on the new branch"
 git cherry-pick --abort

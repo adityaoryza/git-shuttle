@@ -8,8 +8,11 @@ It listens on a free port of 127.0.0.1 and writes the port to PORT_FILE once it 
   /releases/tag/vX                      a page
   /archive/refs/tags/vX.tar.gz          a release: bin/git-shuttle that prints its version, and lib/
 MODE changes what is wrong with it: ok (default), wrong-version, corrupt, missing, no-release, not-git-shuttle.
+With FAKE_GITHUB_TREE=DIR the release (mode ok) is the files of that folder, with the version replaced: a whole git-shuttle, to update to.
 """
 import io
+import os
+import re
 import sys
 import tarfile
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -17,7 +20,32 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 BASE = "/acme/git-shuttle"
 
 
+def tree_release(version, root):
+    """The files of a folder as a release, saying VERSION: a whole git-shuttle that can start again after an update."""
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+        for folder, dirs, names in os.walk(root):
+            dirs[:] = [d for d in dirs if d not in (".git", "node_modules", "__pycache__")]
+            for name in names:
+                path = os.path.join(folder, name)
+                rel = os.path.relpath(path, root).replace(os.sep, "/")
+                if os.path.islink(path) or not os.path.isfile(path):
+                    continue
+                with open(path, "rb") as handle:
+                    data = handle.read()
+                if rel == "lib/core/output.sh":
+                    data = re.sub(rb'readonly SHUTTLE_VERSION="[^"]*"', b'readonly SHUTTLE_VERSION="' + version.encode() + b'"', data)
+                if rel == "ui/shuttle_ui/__init__.py":
+                    data = re.sub(rb'__version__ = "[^"]*"', b'__version__ = "' + version.encode() + b'"', data)
+                info = tarfile.TarInfo("git-shuttle-%s/%s" % (version, rel))
+                info.size, info.mode = len(data), os.stat(path).st_mode & 0o777
+                tar.addfile(info, io.BytesIO(data))
+    return buf.getvalue()
+
+
 def release(version, mode):
+    if mode == "ok" and os.environ.get("FAKE_GITHUB_TREE"):
+        return tree_release(version, os.environ["FAKE_GITHUB_TREE"])
     said = "9.9.9-not-this" if mode == "wrong-version" else version
     script = '#!/usr/bin/env bash\ncase "${1:-}" in --version) echo "git-shuttle %s" ;; *) echo "new copy" ;; esac\n' % said
     buf = io.BytesIO()

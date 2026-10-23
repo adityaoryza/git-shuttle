@@ -1,4 +1,4 @@
-/* Updates, in the About dialog: looking for a release is a click; the reminder that one is out is the look that the server or a command makes, at most once an hour, and can be turned off here. */
+/* Updates, in the About dialog: looking for a release is a click; the reminder that one is out is the look that the server (at every start, and every ten minutes) or a command makes, and can be turned off here. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { describeApplied, describeCheck, describeFailure } from "../update.js";
@@ -6,11 +6,24 @@ import { ExternalLink } from "./links.js";
 import { Alert, Button } from "./ui.js";
 
 export function UpdatePanel({ auto, notify, notice, onNotice }) {
-  const [state, setState] = useState({ step: "idle" });     // idle | checking | checked | applying | applied | failed
+  const [state, setState] = useState({ step: "idle" });     // idle | checking | checked | applying | applied | restarting | failed
   const check = async () => {
     setState({ step: "checking" });
     try { setState({ step: "checked", info: await api("POST", "update/check", {}) }); }
     catch (e) { setState({ step: "failed", message: describeFailure(e) }); }
+  };
+  // the server starts again by itself: when it answers again (it was down, or it already says the new version) the page is loaded anew
+  const comeBack = async result => {
+    setState({ step: "restarting", result });
+    let wasDown = false;
+    for (let i = 0; i < 60; i++) {
+      await new Promise(resolve => setTimeout(resolve, 700));
+      try {
+        const info = await api("GET", "version");
+        if (wasDown || (info && info.version === result.version)) { location.reload(); return; }
+      } catch (e) { wasDown = true; }
+    }
+    setState({ step: "applied", result, stuck: true });
   };
   const apply = async () => {
     setState(s => ({ ...s, step: "applying" }));
@@ -18,6 +31,7 @@ export function UpdatePanel({ auto, notify, notice, onNotice }) {
       const result = await api("POST", "update/apply", {});
       setState({ step: "applied", result });
       if (notify) notify({ variant: "success", title: describeApplied(result).title, detail: describeApplied(result).detail });
+      if (result.restart) await comeBack(result);
     } catch (e) { setState(s => ({ step: "failed", message: describeFailure(e), info: s.info })); }
   };
   useEffect(() => { if (auto) check(); }, []);
@@ -33,14 +47,15 @@ export function UpdatePanel({ auto, notify, notice, onNotice }) {
     ${notice ? html`<div class="update-remind">
       <label class="check"><input type="checkbox" checked=${notice.enabled} disabled=${notice.forced_off}
         onChange=${e => api("POST", "update/notice", { enabled: e.target.checked }).then(onNotice, e2 => setState(s => ({ ...s, step: "failed", message: describeFailure(e2) })))} /> Remind me when a new version is out</label>
-      <p class="hint">${notice.forced_off ? "Turned off here by GIT_SHUTTLE_NO_UPDATE_CHECK." : "At most once an hour, this server (or a git-shuttle command) asks github.com for the number of the latest release: nothing about you or your repositories is sent."}</p>
+      <p class="hint">${notice.forced_off ? "Turned off here by GIT_SHUTTLE_NO_UPDATE_CHECK." : "At every start, and then at most every ten minutes, this server (or a git-shuttle command) asks github.com for the number of the latest release: nothing about you or your repositories is sent."}</p>
     </div>` : null}
     <div aria-live="polite">
       ${found ? html`<${Alert} tone=${found.tone === "warn" ? "warn" : "info"} title=${found.title}>
         ${found.detail ? html`<span>${found.detail}</span>` : null}
         ${found.notes && state.info.available ? html`<span><${ExternalLink} href=${found.notes}>What changed<//></span>` : null}
       <//>` : null}
-      ${step === "applied" ? html`<${Alert} tone="info" title=${describeApplied(state.result).title}><span>${describeApplied(state.result).detail}</span><//>` : null}
+      ${step === "restarting" ? html`<${Alert} tone="info" title=${"Updated to " + (state.result.version || "the new version") + ": restarting…"}><span>${describeApplied(state.result).detail}</span><//>` : null}
+      ${step === "applied" ? html`<${Alert} tone="info" title=${describeApplied(state.result).title}><span>${state.stuck ? "The server did not come back by itself: start it again with  git shuttle ui." : describeApplied(state.result).detail}</span><//>` : null}
       ${step === "failed" ? html`<${Alert} tone="bad" title="Could not update"><span>${state.message}</span><//>` : null}
     </div>
   </section>`;

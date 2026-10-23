@@ -56,7 +56,16 @@ git shuttle ui [--port N] [--no-open] [--repo PATH]...
   open a pull request.
 - **Release**: the branches merged since the last release with their commits; tick, reorder, name, run. Then open the pull
   request to the release branch.
-- A **conflict** replaces the tabs' result with the conflicting files and Continue / Abort.
+- A **conflict** replaces the tabs' result with the conflicting files and Continue / Abort. Next to every file two buttons keep one whole side of it
+  (*Keep branch-name*): the preview says which branch is kept and which one is dropped, and in a rebase it names them the right way round (there,
+  "ours" is what you rebase onto and "theirs" is your own work). To merge the two texts yourself, use your editor, then Continue.
+  *Choose place by place* (for a file written on both sides) shows each place in conflict: the lines before it, what each side has next to the other,
+  who last changed the lines of your side on this branch (in a release: which commit of it), what both started from, and a choice for each place
+  (keep one side, both in either order, or what it was). The choices are previewed before anything is written.
+- A **pick that stopped** (Release, cherry-pick) says which commit it is (*Commit 3 of 7*), shows the ones that are done and the ones to come,
+  and Continue goes on with the rest by itself. When the last one is in, the release tab offers the pull request.
+- **New branch** offers templates: the prefix of task branches from the settings, the other prefixes in use, and the next release name from the
+  pattern. A click fills the name; typing by hand works as before.
 
 Every button is **Preview, then Run**. A preview is valid for exactly the values on screen; change one and it has to be made
 again. Settings (the `shuttle.*` values: base, integration and release branch, prefix, rules, test command) are edited in a dialog and saved with `git shuttle init`; the branch fields suggest the branches that exist.

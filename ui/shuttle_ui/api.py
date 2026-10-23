@@ -11,7 +11,7 @@ from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
 from . import prefs, updates, vault
 from .runner import NO_TERMINAL, child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_stdin, shuttle_text
-from .validate import HASH_RE, build_commands, display_name, name as branch_name, text
+from .validate import HASH_RE, build_commands, display_name, name as branch_name, relative_path, text
 from .validate_ops import commitish
 
 MAX_NEW_COMMITS = 300
@@ -235,6 +235,31 @@ def addon_setup(repo, name, body):
         raise BadRequest("the add-on gave no usable answer", 500)
 
 
+def conflict_hunks(repo, path):
+    """The places where one file is in conflict (git shuttle conflicts FILE --porcelain): both sides, and who last changed the lines of ours."""
+    path = relative_path(path)
+    try:
+        parsed = shuttle_porcelain(repo["path"], "conflicts", extra=[path])
+    except BadRequest as error:
+        raise BadRequest(str(error), 400)       # the command refuses (nothing waits, the file is not in conflict): a refusal, not a failure
+    hunks = {}
+    for entry in parsed.get("hunk", []):
+        n, start, end, first, last = (entry.split("\x1f") + [""] * 5)[:5]
+        hunks[int(n)] = {"n": int(n), "start": int(start), "end": int(end), "from": int(first) if first else None, "to": int(last) if last else None,
+                         "before": "", "ours": "", "base": None, "theirs": "", "after": "", "blame": []}
+    for key in ("before", "ours", "base", "theirs", "after"):
+        for entry in parsed.get(key, []):
+            n, _, content = entry.partition("\x1f")
+            if int(n) in hunks:
+                hunks[int(n)][key] = content
+    for entry in parsed.get("blame", []):
+        n, sha, subject, author, when, picked, count = (entry.split("\x1f") + [""] * 7)[:7]
+        if int(n) in hunks:
+            hunks[int(n)]["blame"].append({"sha": sha, "subject": subject, "author": author, "when": when,
+                                           "picked": int(picked) if picked else None, "lines": int(count or 0)})
+    return {"file": path, "hunks": [hunks[k] for k in sorted(hunks)]}
+
+
 def trace_json(repo, args):
     try:
         return json.loads(shuttle_text(repo["path"], ["trace"] + args + ["--porcelain"]))
@@ -375,6 +400,8 @@ def handle(server, method, route, body):
             source = text(body.get("source"), "source", 64, True, True)
             old = body.get("old_path")
             return file_diff(repo["path"], source, text(body.get("path"), "path", 500, True, True), old if isinstance(old, str) and old else None, body.get("context"))
+        if method == "POST" and rest == ["conflicts"]:
+            return conflict_hunks(repo, body.get("path"))
         if method == "GET" and rest == ["candidates"]:
             return {"candidates": candidates(repo)}
         if method == "POST" and rest == ["fetch"]:

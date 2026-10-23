@@ -2,7 +2,7 @@
 import re
 
 from .errors import BadRequest
-from .validate import HASH_RE, flag, name, text
+from .validate import HASH_RE, MAX_PATHS, flag, name, paths_of, relative_path, text
 
 PLAN_ACTIONS = ("pick", "reword", "squash", "fixup", "drop")
 MAX_PLAN = 200
@@ -94,6 +94,25 @@ def stash_index(value):
 
 def build(action, p):
     """The argument lists for one of these actions, or None when the action is not one of them."""
+    if action == "resolve":
+        # keep one whole side of the files in conflict: the command checks that they are in conflict
+        if p.get("hunks") is not None:
+            # place by place, in one file: {"1": "ours", "2": "theirs", ...}
+            file = relative_path(p.get("file"))
+            hunks = p.get("hunks")
+            if not isinstance(hunks, dict) or not hunks or len(hunks) > 500:
+                raise BadRequest("choose what each place keeps")
+            args = ["resolve"]
+            for key in sorted(hunks, key=lambda k: int(k) if isinstance(k, str) and k.isdigit() else 0):
+                if not (isinstance(key, str) and key.isdigit() and 1 <= int(key) <= 9999):
+                    raise BadRequest("a place is a number")
+                args += ["--hunk", "%d=%s" % (int(key), one_of(hunks[key], ("ours", "theirs", "both", "both-reverse", "base"), "the choice for place " + key))]
+            return [args + ["--", file]]
+        side = one_of(p.get("side"), ("ours", "theirs"), "side")
+        paths = [relative_path(x) for x in paths_of(p.get("paths"))]
+        if not paths or len(paths) > MAX_PATHS:
+            raise BadRequest("name the files to resolve")
+        return [["resolve", "--" + side, "--"] + paths]
     if action == "pull":
         args = ["pull"]
         mode = one_of(p.get("mode") or "ff", ("ff", "rebase", "merge"), "mode")

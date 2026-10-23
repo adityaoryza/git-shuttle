@@ -251,8 +251,8 @@ class Terminal(unittest.TestCase):
     def setUp(self):
         self.config = tempfile.mkdtemp(prefix="shuttle-cfg.")
 
-    def start(self, *flags):
-        env = {**os.environ, "PYTHONPATH": os.path.abspath(UI_DIR), "XDG_CONFIG_HOME": self.config, "NO_COLOR": "1", "PYTHONUNBUFFERED": "1"}
+    def start(self, *flags, ui_dir=None, extra_env=None):
+        env = {**os.environ, "PYTHONPATH": os.path.abspath(ui_dir or UI_DIR), "XDG_CONFIG_HOME": self.config, "NO_COLOR": "1", "PYTHONUNBUFFERED": "1", **(extra_env or {})}
         self.proc = subprocess.Popen([sys.executable, "-m", "shuttle_ui", "--port", "0", "--no-open", "--repo", self.world.work, *flags],
                                      env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         self.lines = queue.Queue()
@@ -303,6 +303,76 @@ class Terminal(unittest.TestCase):
                 return job
             time.sleep(0.2)
         self.fail("the job did not finish")
+
+
+class TestRestartAfterAnUpdate(Terminal):
+    """An update made from the page: the release is installed and the server starts again by itself: the same process, port and link, the new code."""
+
+    def test_the_server_comes_back_with_the_new_version(self):
+        from shutil import copytree, ignore_patterns, rmtree
+        root = tempfile.mkdtemp(prefix="shuttle-restart.")
+        self.addCleanup(rmtree, root, True)
+        installed = os.path.join(root, "share", "git-shuttle")      # where install.sh puts it: the kind that can be updated
+        copytree(os.path.dirname(os.path.abspath(UI_DIR)), installed, ignore=ignore_patterns(".git", "node_modules", "__pycache__", "*.pyc"))
+        port_file = os.path.join(root, "release-port")
+        helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "helpers", "fake_github.py")
+        release = subprocess.Popen([sys.executable, helper, port_file, "9.9.9"], env={**os.environ, "FAKE_GITHUB_TREE": installed})
+        self.addCleanup(release.wait)
+        self.addCleanup(release.terminate)
+        for _ in range(100):
+            if os.path.exists(port_file) and os.path.getsize(port_file):
+                break
+            time.sleep(0.1)
+        self.start(ui_dir=os.path.join(installed, "ui"), extra_env={
+            "GIT_SHUTTLE_REPO": "http://127.0.0.1:%s/acme/git-shuttle" % open(port_file).read(), "GIT_SHUTTLE_NO_UPDATE_CHECK": "1"})
+        try:
+            pid = self.proc.pid
+            status, data = self.call("POST", "/api/update/apply", {})
+            self.assertEqual(status, 200, data)
+            self.assertEqual((data["version"], data["restart"]), ("9.9.9", True))
+            info = None
+            for _ in range(100):
+                time.sleep(0.3)
+                try:
+                    status, info = self.call("GET", "/api/version")
+                except OSError:
+                    continue            # it is down for a moment
+                if status == 200 and info["version"] == "9.9.9":
+                    break
+            else:
+                self.fail("the server did not come back with the new version: %r" % (info,))
+            self.assertEqual(self.proc.pid, pid, "the same process starts again")
+            self.assertIsNone(self.proc.poll())
+        finally:
+            self.proc.send_signal(signal.SIGINT)
+            self.proc.wait(timeout=15)
+
+
+class TestRestartHook(unittest.TestCase):
+    def test_a_restart_stops_the_server_a_moment_after_the_answer(self):
+        from unittest import mock
+        server, restarting = mock.Mock(), threading.Event()
+        with mock.patch("shuttle_ui.cli.threading.Timer") as timer:
+            self.assertTrue(cli.request_restart(server, restarting))
+        self.assertTrue(restarting.is_set())
+        timer.assert_called_once_with(1.0, server.shutdown)
+        timer.return_value.start.assert_called_once_with()
+
+    def test_the_link_of_the_open_page_survives_a_restart(self):
+        from unittest import mock
+        from shuttle_ui import updates
+        self.addCleanup(setattr, updates, "RESTART_HOOK", None)         # main() sets it for the server it makes
+        config = tempfile.mkdtemp(prefix="shuttle-cfg.")
+        with mock.patch.dict(os.environ, {"GIT_SHUTTLE_RESTART_TOKEN": "abc_DEF-123", "XDG_CONFIG_HOME": config}),                 mock.patch.object(cli, "make_server") as made, mock.patch.object(cli, "stop_on_signal"), mock.patch.object(cli, "announce_update"):
+            made.return_value.server_address = ("127.0.0.1", 1)
+            made.return_value.token = "abc_DEF-123"
+            made.return_value.serve_forever.side_effect = KeyboardInterrupt
+            try:
+                cli.main(["--no-open"])
+            except KeyboardInterrupt:
+                pass
+            self.assertNotIn("GIT_SHUTTLE_RESTART_TOKEN", os.environ, "the token is read once, and forgotten")
+        self.assertEqual(made.call_args.kwargs["token"], "abc_DEF-123", "the token comes from the restart")
 
 
 class TestTerminalOutput(Terminal):

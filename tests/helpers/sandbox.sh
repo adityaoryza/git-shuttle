@@ -110,7 +110,7 @@ out = {}
 for rec in sys.stdin.buffer.read().split(b"\0"):
     if not rec: continue
     k, _, v = rec.decode(errors="replace").partition("=")
-    if k in ("file", "conflict", "blocker", "candidate", "commit"): out.setdefault(k, []).append(v)
+    if k in ("file", "conflict", "blocker", "candidate", "commit", "pick.step", "hunk", "before", "ours", "base", "theirs", "after", "blame"): out.setdefault(k, []).append(v)
     else: out[k] = v
 print(json.dumps(out))'
 }

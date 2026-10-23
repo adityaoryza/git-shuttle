@@ -32,7 +32,7 @@ before=$(stat -c %Y "$NOTICE")
 sleep 1.2
 shuttle status
 sleep 1
-assert_eq "$before" "$(stat -c %Y "$NOTICE")" "within the hour the next command makes no look"
+assert_eq "$before" "$(stat -c %Y "$NOTICE")" "within ten minutes the next command makes no look"
 
 # a newer release is known: one line on a terminal, once
 echo '{"latest": "99.0.0", "checked": 1}' >"$NOTICE"
