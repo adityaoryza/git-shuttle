@@ -8,8 +8,9 @@
 # the conflict back). The files are staged as resolved; then  git shuttle continue.
 #
 # --hunk N=ours|theirs|both|both-reverse|base takes, for place number N of ONE file: what "ours" has, what "theirs" has, both (ours first),
-# both (theirs first), or what both started from (only for a file written in the diff3 style). The places not named keep their markers,
-# and the file is staged only when none is left.
+# both (theirs first), or what both started from (only for a file written in the diff3 style). N=pick:o1+t2+o3 takes lines one by one: the lines
+# of ours (o), of theirs (t) or of what both started from (b), numbered from 1, written in the order given (pick: alone takes the place out of the
+# file). The places not named keep their markers, and the file is staged only when none is left.
 # PATH is as `git shuttle status` lists the conflicts (from the top of the repository).
 
 # conflict_sides — what git calls "ours" and "theirs" in the operation that waits, in words. Sets SIDE_OURS, SIDE_OURS_ROLE, SIDE_THEIRS
@@ -59,10 +60,11 @@ conflict_ref_label() {
 
 # resolve_hunks FILE SPEC... — place by place: SPEC is N=ours|theirs|both|both-reverse|base.
 resolve_hunks() {
-    local file=$1 spec n choice choices="" total left ours_tmp out_tmp
+    local file=$1 spec n choice choices="" total left ours_tmp out_tmp picked po pt pb msg
+    local shape='^([1-9][0-9]{0,3})=(ours|theirs|both|both-reverse|base|pick:([otb][1-9][0-9]{0,3}(\+[otb][1-9][0-9]{0,3})*)?)$'
     shift
     for spec in "$@"; do
-        [[ "$spec" =~ ^([1-9][0-9]{0,3})=(ours|theirs|both|both-reverse|base)$ ]] || die "resolve: '$spec' is not  N=ours|theirs|both|both-reverse|base"
+        (( ${#spec} <= 20000 )) && [[ "$spec" =~ $shape ]] || die "resolve: '${spec:0:60}' is not  N=ours|theirs|both|both-reverse|base|pick:o1+t2"
         n=${BASH_REMATCH[1]}
         [[ ",$choices," != *",$n="* ]] || die "resolve: place $n is given twice"
         choices+="${choices:+,}$n=${BASH_REMATCH[2]}"
@@ -79,6 +81,11 @@ resolve_hunks() {
         if (( n > total )); then rm -f "$ours_tmp" "$out_tmp"; die "'$file' has $total place(s) in conflict: there is no place $n"; fi
     done
 
+    # the choices are tried on a copy first, also in a dry run: a line that does not exist is refused here, before anything is written
+    if ! msg=$(awk -v mode=apply -v choices="$choices" "$CONFLICT_AWK" "$ours_tmp" "$file" 2>&1 >"$out_tmp"); then
+        rm -f "$ours_tmp" "$out_tmp"; die "${msg:-cannot write the choices}: nothing was changed"
+    fi
+
     conflict_sides
     show_where "$(git symbolic-ref -q --short HEAD || echo '(detached)')"
     info "operation:  $(operation_in_progress)"
@@ -91,15 +98,14 @@ resolve_hunks() {
             both)         info "  place $n: keep both, $SIDE_OURS first" ;;
             both-reverse) info "  place $n: keep both, $SIDE_THEIRS first" ;;
             base)         info "  place $n: go back to what both started from" ;;
+            pick:*)       picked=${choice#pick:}; po=${picked//[^o]/}; pt=${picked//[^t]/}; pb=${picked//[^b]/}
+                          info "  place $n: line by line: ${#po} line(s) of $SIDE_OURS, ${#pt} of $SIDE_THEIRS${pb:+, ${#pb} of what both started from}$(if [[ -n $picked ]]; then echo " (in this order: $picked)"; else echo ": nothing, the place is taken out"; fi)" ;;
         esac
     done
     if (( $# < total )); then info "  the other $(( total - $# )) place(s) keep their markers: the file is not marked as resolved yet"; fi
     confirm "Write this into $file?"
     if (( DRY_RUN )); then rm -f "$ours_tmp" "$out_tmp"; info "(dry run) nothing was changed"; return 0; fi
 
-    if ! awk -v mode=apply -v choices="$choices" "$CONFLICT_AWK" "$ours_tmp" "$file" > "$out_tmp"; then
-        rm -f "$ours_tmp" "$out_tmp"; die "cannot write the choices: nothing was changed"
-    fi
     cat "$out_tmp" > "$file"
     left=$(awk -v mode=count "$CONFLICT_AWK" "$ours_tmp" "$file")
     rm -f "$ours_tmp" "$out_tmp"

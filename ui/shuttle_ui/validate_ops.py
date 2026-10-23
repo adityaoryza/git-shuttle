@@ -92,6 +92,15 @@ def stash_index(value):
     return str(value)
 
 
+def hunk_choice(value, key):
+    """What one place keeps: a whole side, or lines one by one (pick:o1+t2+o3: the lines of ours (o), theirs (t), base (b), in that order)."""
+    if isinstance(value, str) and value.startswith("pick:"):
+        if len(value) > 20000 or not re.fullmatch(r"pick:([otb][1-9][0-9]{0,3}(\+[otb][1-9][0-9]{0,3})*)?", value):
+            raise BadRequest("the lines chosen for place " + key + " are not valid")
+        return value
+    return one_of(value, ("ours", "theirs", "both", "both-reverse", "base"), "the choice for place " + key)
+
+
 def build(action, p):
     """The argument lists for one of these actions, or None when the action is not one of them."""
     if action == "resolve":
@@ -106,7 +115,7 @@ def build(action, p):
             for key in sorted(hunks, key=lambda k: int(k) if isinstance(k, str) and k.isdigit() else 0):
                 if not (isinstance(key, str) and key.isdigit() and 1 <= int(key) <= 9999):
                     raise BadRequest("a place is a number")
-                args += ["--hunk", "%d=%s" % (int(key), one_of(hunks[key], ("ours", "theirs", "both", "both-reverse", "base"), "the choice for place " + key))]
+                args += ["--hunk", "%d=%s" % (int(key), hunk_choice(hunks[key], key))]
             return [args + ["--", file]]
         side = one_of(p.get("side"), ("ours", "theirs"), "side")
         paths = [relative_path(x) for x in paths_of(p.get("paths"))]

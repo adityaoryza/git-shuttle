@@ -208,4 +208,52 @@ t("shortName: a long name is cut for a button, a short one stays", () => {
   assert.ok(L.hunkChoices(sides, false).every(c => c.label.length <= 40), "no label is longer than a button can hold");
   assert.ok(L.hunkChoices(sides, false)[0].title.includes("b".repeat(60)), "the whole name is in the tooltip");
 });
+t("conflictKindNote: a file with no places says why, in the words of the sides", () => {
+  const sides = { ours: { name: "19.0-release/x", role: "" }, theirs: { name: "174697a [FEAT] cogilog", role: "" } };
+  assert.match(L.conflictKindNote("DU", sides), /19\.0-release\/x does not have this file; 174697a \[FEAT\] cogilog changes it/);
+  assert.match(L.conflictKindNote("DU", sides), /Keeping 174697a \[FEAT\] cogilog brings the file in/);
+  assert.match(L.conflictKindNote("UD", sides), /deletes this file/);
+  assert.match(L.conflictKindNote("UA", sides), /adds this file/);
+  assert.match(L.conflictKindNote("AU", sides), /has this file/);
+  assert.match(L.conflictKindNote("DD", sides), /Both sides deleted/);
+  for (const code of ["UU", "AA", "", "XX"]) assert.strictEqual(L.conflictKindNote(code, sides), "", code);
+  assert.strictEqual(L.conflictKindNote("DU", null), "", "without the names of the sides there is nothing to say");
+});
+t("line by line: lines are kept or left out, a side or both is one click, what is written is shown", () => {
+  const h = { n: 1, ours: "o-a\no-b\no-c", n_ours: 3, theirs: "t-a\nt-b", n_theirs: 2, base: "b-a", n_base: 1 };
+  const lines = L.hunkLines(h);
+  assert.deepStrictEqual([lines.o.length, lines.t.length, lines.b.length], [3, 2, 1]);
+  assert.deepStrictEqual(L.hunkLines({ ours: "", n_ours: 0, theirs: "x", n_theirs: 1, base: null }).o, [], "no line is not one empty line");
+  assert.deepStrictEqual(L.hunkLines({ ours: "", n_ours: 1, theirs: "", n_theirs: 0, base: null }).o, [""], "one empty line is not no line");
+  assert.strictEqual(L.hunkLines({ ours: "a", n_ours: 1, theirs: "b", n_theirs: 1, base: null }).b, null);
+  // presets
+  assert.deepStrictEqual(L.pickResult(h, L.presetPick(h, "ours")).map(l => l.text), ["o-a", "o-b", "o-c"]);
+  assert.deepStrictEqual(L.pickResult(h, L.presetPick(h, "theirs")).map(l => l.text), ["t-a", "t-b"]);
+  assert.deepStrictEqual(L.pickResult(h, L.presetPick(h, "both")).map(l => l.text), ["o-a", "o-b", "o-c", "t-a", "t-b"]);
+  assert.deepStrictEqual(L.pickResult(h, L.presetPick(h, "both-reverse")).map(l => l.text), ["t-a", "t-b", "o-a", "o-b", "o-c"]);
+  assert.deepStrictEqual(L.pickResult(h, L.presetPick(h, "base")).map(l => l.text), ["b-a"]);
+  for (const id of ["ours", "theirs", "both", "both-reverse", "base"]) assert.strictEqual(L.pickChoice(h, L.presetPick(h, id)), id, id);
+  // a click on a line: from nothing; again to leave it out; a click after a preset changes that preset
+  let pick = L.togglePick(h, null, "o", 0);
+  assert.deepStrictEqual(L.pickResult(h, pick).map(l => l.text), ["o-a"]);
+  pick = L.togglePick(h, pick, "t", 1);
+  assert.strictEqual(L.pickChoice(h, pick), "pick:o1+t2", "lines one by one, left first");
+  pick = L.setOrder(pick, "theirs");
+  assert.strictEqual(L.pickChoice(h, pick), "pick:t2+o1", "...or right first");
+  pick = L.togglePick(h, pick, "o", 0);
+  assert.strictEqual(L.pickChoice(h, pick), "pick:t2");
+  pick = L.togglePick(h, pick, "t", 1);
+  assert.strictEqual(L.pickChoice(h, pick), "pick:", "nothing kept takes the place out of the file");
+  assert.deepStrictEqual(L.pickResult(h, pick), []);
+  const afterBoth = L.togglePick(h, L.presetPick(h, "both"), "o", 1);
+  assert.strictEqual(L.pickChoice(h, afterBoth), "pick:o1+o3+t1+t2", "a line left out of 'both'");
+  assert.strictEqual(L.pickChoice(h, L.togglePick(h, L.presetPick(h, "base"), "t", 0)), "pick:t1", "a click after 'what it was before' starts from nothing");
+  // the same text never changes the original pick
+  const keep = L.presetPick(h, "both"); L.togglePick(h, keep, "o", 0);
+  assert.strictEqual(L.pickChoice(h, keep), "both", "a click makes a new pick");
+  // a side with no line, taken whole
+  const lonely = { n: 2, ours: "", n_ours: 0, theirs: "x", n_theirs: 1, base: null };
+  assert.strictEqual(L.pickChoice(lonely, L.presetPick(lonely, "theirs")), "theirs");
+  assert.strictEqual(L.pickChoice(lonely, L.presetPick(lonely, "both")), "theirs", "both of nothing and one line is the one line: the first name that fits");
+});
 console.log("  " + n + " passed, 0 failed");

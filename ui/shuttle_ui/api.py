@@ -244,9 +244,10 @@ def conflict_hunks(repo, path):
         raise BadRequest(str(error), 400)       # the command refuses (nothing waits, the file is not in conflict): a refusal, not a failure
     hunks = {}
     for entry in parsed.get("hunk", []):
-        n, start, end, first, last = (entry.split("\x1f") + [""] * 5)[:5]
+        n, start, end, first, last, count_ours, count_base, count_theirs = (entry.split("\x1f") + [""] * 8)[:8]
         hunks[int(n)] = {"n": int(n), "start": int(start), "end": int(end), "from": int(first) if first else None, "to": int(last) if last else None,
-                         "before": "", "ours": "", "base": None, "theirs": "", "after": "", "blame": []}
+                         "before": "", "ours": "", "base": None, "theirs": "", "after": "", "blame": [],
+                         "n_ours": int(count_ours or 0), "n_base": int(count_base or 0), "n_theirs": int(count_theirs or 0)}
     for key in ("before", "ours", "base", "theirs", "after"):
         for entry in parsed.get(key, []):
             n, _, content = entry.partition("\x1f")

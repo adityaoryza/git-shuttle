@@ -22,6 +22,7 @@ setline 4 "line 4 dev2"; setline 7 "line 7 dev2"; git commit -q -am "D2 second r
 git checkout -q main
 unmerged() { git diff --name-only --diff-filter=U; }
 conflict_text() { grep -c '^<<<<<<< ' price.txt || true; }
+conflict_text_in() { grep -c '^<<<<<<< ' "$1" || true; }
 
 # --- the first revision: one place in conflict ---------------------------------------------------------------------------------------------
 shuttle -y pick --onto rel/h "$D1" "$D2"
@@ -132,6 +133,52 @@ places=$(conflict_text)   # (without the diff3 style git joins two conflicts tha
 shuttle -y resolve --hunk 1=base -- price.txt
 assert_status 1 "$RC" "base in a file that was not written in the diff3 style"
 assert_eq "$places" "$(conflict_text)" "...nothing was changed"
+shuttle -y abort
+
+# --- line by line: any lines of either side, one by one, in the order given -----------------------------------------------------------------------
+git config merge.conflictStyle diff3
+git checkout -q release; printf '%s\n' a b c d e > multi.txt; git add multi.txt; git commit -q -m "multi on release"
+printf '%s\n' a b-rel c-rel d-rel e > multi.txt; git commit -q -am "release changes b, c, d"; git push -q origin release
+git checkout -q develop; printf '%s\n' a b c d e > multi.txt; git add multi.txt; git commit -q -m "multi on develop"
+printf '%s\n' a b-dev c-dev d-dev e > multi.txt; git commit -q -am "develop changes b, c, d"; M=$(git rev-parse HEAD)
+git checkout -q -b cm origin/release
+shuttle -y cherry-pick "$M"
+assert_status 2 "$RC" "a place of three lines on each side"
+PJ=$(porcelain_json conflicts multi.txt --porcelain)
+assert_eq "3" "$(pj hunk | tr '\037' '\n' | sed -n 6p)" "the facts carry the number of lines of ours"
+assert_eq "3" "$(pj hunk | tr '\037' '\n' | sed -n 7p)" "...of what both started from"
+assert_eq "3" "$(pj hunk | tr '\037' '\n' | sed -n 8p)" "...and of theirs"
+cp multi.txt "$SB/multi.conflict"
+shuttle -n resolve --hunk 1=pick:o1+t2+o3 -- multi.txt
+assert_status 0 "$RC" "a dry run of lines one by one"
+assert_contains "$OUT" "line by line: 2 line(s) of cm, 1 of" "...says how many lines come from each side"
+assert_contains "$OUT" "in this order: o1+t2+o3)" "...and in which order"
+assert_not_contains "$OUT" "o3)o1" "...said once"
+assert_eq "$(cat "$SB/multi.conflict")" "$(cat multi.txt)" "...and writes nothing"
+shuttle -n resolve --hunk 1=pick:o4 -- multi.txt
+assert_status 1 "$RC" "a line that does not exist, in a dry run"
+assert_contains "$OUT" "no line o4" "...is refused before anything is written"
+shuttle -y resolve --hunk 1=pick:b1+b2+b3 -- multi.txt
+assert_status 0 "$RC" "a line of what both started from"
+assert_eq "a b c d e" "$(paste -sd' ' multi.txt)" "...goes back to it"
+git checkout --merge -- multi.txt
+shuttle -y resolve --hunk 1=pick:t1+o2+t3 -- multi.txt
+assert_status 0 "$RC" "lines of both sides, interleaved"
+assert_eq "a b-dev c-rel d-dev e" "$(paste -sd' ' multi.txt)" "...are written one by one, in the order given"
+assert_eq "" "$(unmerged)" "...and the file is marked as resolved"
+git checkout --merge -- multi.txt
+shuttle -y resolve --hunk 1=pick:t3+t1 -- multi.txt
+assert_eq "a d-dev b-dev e" "$(paste -sd' ' multi.txt)" "lines in any order, a side's lines too"
+git checkout --merge -- multi.txt
+shuttle -y resolve --hunk 1=pick: -- multi.txt
+assert_status 0 "$RC" "no line at all"
+assert_eq "a e" "$(paste -sd' ' multi.txt)" "...takes the place out of the file"
+git checkout --merge -- multi.txt
+shuttle -y resolve --hunk "1=pick:o1+x2" -- multi.txt
+assert_status 1 "$RC" "a line that is not o, t or b"
+shuttle -y resolve --hunk "1=pick:o0" -- multi.txt
+assert_status 1 "$RC" "a line number that starts at 0"
+assert_eq "1" "$(conflict_text_in multi.txt)" "...nothing was changed by the refusals"
 shuttle -y abort
 
 finish

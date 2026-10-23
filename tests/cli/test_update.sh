@@ -76,6 +76,34 @@ inst -y update
 assert_status 0 "$RC" "update when this is the latest release"
 assert_contains "$OUT" "is the latest release" "...it is up to date"
 
+# --- the add-ons live in the program folder: an update keeps them, as they were -----------------------------------------------------
+keep_addons() {   # an add-on as install puts it: addons/NAME/TAG/program, and the link in addons/bin
+    ADD="$T/prefix/share/git-shuttle/addons"
+    mkdir -p "$ADD/acme/v1" "$ADD/bin"
+    echo "the program" > "$ADD/acme/v1/git-shuttle-acme"; chmod +x "$ADD/acme/v1/git-shuttle-acme"
+    ln -s "../acme/v1/git-shuttle-acme" "$ADD/bin/git-shuttle-acme"
+    PIN=$(sha256sum "$ADD/acme/v1/git-shuttle-acme" | cut -d' ' -f1)
+}
+install_copy; fake 9.9.9; keep_addons
+inst -y update
+assert_status 0 "$RC" "update with an add-on installed"
+assert_eq "git-shuttle 9.9.9" "$(installed_version)" "...the copy is the new release"
+assert_eq "$PIN" "$(sha256sum "$ADD/acme/v1/git-shuttle-acme" 2>/dev/null | cut -d' ' -f1)" "...the add-on is the same file (an enabled add-on stays enabled: its pin is that checksum)"
+assert_eq "the program" "$(cat "$ADD/bin/git-shuttle-acme" 2>/dev/null)" "...and its link in addons/bin still leads to it"
+assert_eq "0" "$(leftovers)" "...and no leftover of the swap"
+install_copy; fake 9.9.9 corrupt; keep_addons
+inst -y update
+assert_status 1 "$RC" "a failed update with an add-on installed"
+assert_eq "$PIN" "$(sha256sum "$ADD/acme/v1/git-shuttle-acme" 2>/dev/null | cut -d' ' -f1)" "...leaves the add-on where it was"
+
+# install.sh run again keeps them too
+rel="$T/git-shuttle-9.9.8"; mkdir -p "$rel"; cp -r "$SRC/bin" "$SRC/lib" "$rel/"; tar czf "$T/rel.tar.gz" -C "$T" git-shuttle-9.9.8
+PREFIX="$T/again" GIT_SHUTTLE_URL="file://$T/rel.tar.gz" bash "$SRC/install.sh" >/dev/null 2>&1
+mkdir -p "$T/again/share/git-shuttle/addons/acme"; echo kept > "$T/again/share/git-shuttle/addons/acme/f"
+PREFIX="$T/again" GIT_SHUTTLE_URL="file://$T/rel.tar.gz" bash "$SRC/install.sh" >/dev/null 2>&1
+assert_eq "kept" "$(cat "$T/again/share/git-shuttle/addons/acme/f" 2>/dev/null)" "install.sh run again keeps the add-ons that are installed"
+assert_eq "yes" "$([[ -x "$T/again/bin/git-shuttle" ]] && echo yes || echo no)" "...and the launcher works"
+
 # --- what goes wrong leaves the old copy where it was -----------------------------------------------------------------------------
 for mode in wrong-version corrupt missing not-git-shuttle; do
     install_copy; fake 9.9.9 "$mode"

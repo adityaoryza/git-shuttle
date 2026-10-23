@@ -13,7 +13,8 @@ CONFLICT_MAX_BYTES=2000000
 # the file with the markers.
 #   -v mode=count                       prints the number of hunks
 #   -v mode=list                        prints the facts about each hunk, each ended by a GS (\035), their parts separated by US (\037)
-#   -v mode=apply -v choices=1=ours,2=theirs   prints the file with those hunks resolved (the others keep their markers)
+#   -v mode=apply -v choices=1=ours,2=theirs   prints the file with those hunks resolved (the others keep their markers); a choice is ours, theirs,
+#                                       both, both-reverse, base, or pick:o1+t2+o3 (the lines of ours (o), theirs (t) or base (b), one by one, in that order)
 # shellcheck disable=SC2016  # an awk program
 CONFLICT_AWK='
 function unmark(s) { sub(/\r$/, "", s); return s }
@@ -56,7 +57,7 @@ END {
                     if (ok) { rs = k; re = k + CNT["o", h] - 1; last_found = re; break }
                 }
             }
-            printf "hunk=%d\037%d\037%d\037%s\037%s\035", h, HS[h], HE[h], rs, re
+            printf "hunk=%d\037%d\037%d\037%s\037%s\037%d\037%d\037%d\035", h, HS[h], HE[h], rs, re, CNT["o", h], CNT["b", h], CNT["t", h]
             from = HS[h] - 3; if (h > 1 && from <= HE[h - 1]) from = HE[h - 1] + 1; if (from < 1) from = 1
             s = ""; for (k = from; k < HS[h]; k++) s = s (k > from ? "\n" : "") unmark(L[k])
             printf "before=%d\037%s\035", h, s
@@ -81,6 +82,15 @@ END {
             else if (c == "both") { put("o", h); put("t", h) }
             else if (c == "both-reverse") { put("t", h); put("o", h) }
             else if (c == "base") { if (!HB[h]) { print "hunk " h " has no base: the file was not written in the diff3 style" > "/dev/stderr"; exit 3 } put("b", h) }
+            else if (c ~ /^pick:/) {
+                spec = substr(c, 6); np = (spec == "") ? 0 : split(spec, tok, "+")
+                for (k = 1; k <= np; k++) {
+                    kind = substr(tok[k], 1, 1); idx = substr(tok[k], 2) + 0
+                    if (kind == "b" && !HB[h]) { print "place " h " has no base: the file was not written in the diff3 style" > "/dev/stderr"; exit 3 }
+                    if (idx < 1 || idx > CNT[kind, h]) { print "place " h " has no line " tok[k] > "/dev/stderr"; exit 3 }
+                    print TXT[kind, h, idx]
+                }
+            }
             else { for (k = HS[h]; k <= HE[h]; k++) print L[k] }
             i = HE[h] + 1; h++
         } else { print L[i]; i++ }
@@ -122,7 +132,7 @@ conflict_listing() {
     printf '%s' "$out"
     while IFS= read -r -d $'\035' rec; do
         [[ "$rec" == hunk=* ]] || continue
-        IFS=$'\037' read -r n _ _ rs re <<<"${rec#hunk=}"
+        IFS=$'\037' read -r n _ _ rs re _ _ _ <<<"${rec#hunk=}"
         [[ -n "$rs" ]] && blame+=$(conflict_blame "$n" "$file" "$rs" "$re")
     done <<<"$out"
     printf '%s' "$blame"

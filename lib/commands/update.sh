@@ -130,6 +130,15 @@ cmd_update() {
     info "If git shuttle ui is running, stop it (Ctrl-C) and start it again."
 }
 
+# update_carry OLD NEW — what lives inside the program folder but is not part of a release: the add-ons that were installed (addons/). It is moved,
+# not copied, so that an add-on that was enabled stays enabled: the pin is the checksum of its program, and the program is the same file.
+update_carry() {
+    local old=$1 new=$2
+    [[ -d "$old/addons" ]] || return 0
+    rm -rf "${new:?}/addons"
+    mv "$old/addons" "$new/addons"
+}
+
 # update_install REPO TAG — download, check, swap; the old copy stays where it was unless everything went well.
 update_install() {
     local repo=$1 tag=$2 stage old said
@@ -157,6 +166,10 @@ update_install() {
     if ! "$ROOT/bin/git-shuttle" --version >/dev/null 2>&1; then
         rm -rf "$ROOT"; mv "$old" "$ROOT"
         die "the new copy does not run: the old one is back"
+    fi
+    if ! update_carry "$old" "$ROOT"; then
+        rm -rf "$ROOT"; mv "$old" "$ROOT"
+        die "cannot carry the add-ons that are installed into the new copy: the old one is back, with them"
     fi
     rm -rf "$old"
 }
