@@ -4,6 +4,18 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-23
+
+### Changed
+- The look of the web page: one accent colour, petrol (`--brand`), over slightly cooler neutrals, in the dark and in the light theme. It marks
+  what you can act on (the main button, links, the selection, focus, the current branch). `--info` stays blue and only means information, next to
+  `--ok`, `--warn` and `--bad`. Every text keeps a contrast of at least 4.5:1.
+
+### Fixed
+- *Add a repository* no longer stays empty ("that folder does not exist", "Loading...") when the folder the browser remembers is not one this
+  server has: the browser keeps it for the address (`127.0.0.1:7788`), whichever server answers there (WSL, Windows, another machine). It is
+  forgotten and the list starts at the home folder.
+
 ## [0.8.0] - 2026-10-23
 
 ### Added
