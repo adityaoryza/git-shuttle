@@ -124,8 +124,9 @@ esac
   fs.mkdirSync(addons);
   fs.writeFileSync(path.join(addons, "git-shuttle-task"), `#!/usr/bin/env bash
 case "\${1:-}" in
-  --shuttle-manifest) echo '{"protocol":1,"name":"task","version":"0.1.0","description":"Tasks of a tracker","hooks":["start","status","setup","tasks"],"flags":{"start":["--task"]}}' ;;
+  --shuttle-manifest) echo '{"protocol":1,"name":"task","version":"0.1.0","description":"Tasks of a tracker","hooks":["start","status","setup","tasks","report"],"flags":{"start":["--task"]}}' ;;
   hook) input=$(cat)
+        if [[ "$2" == report ]]; then echo '{"ok":true,"message":"x_customer_report (html) is empty: the entry is the first text","text":"git-shuttle - branch x","field":"x_customer_report"}'; exit 0; fi
         if [[ "$2" == tasks ]]; then
           open='{"id":"15607","title":"Keep manual Order Date","subtitle":"Running","fields":[{"label":"Project","value":"Confort et eau"},{"label":"Fetched","value":"yes"}]},{"id":"15490","title":"Update doc on SO printout","subtitle":"To Validate","fields":[{"label":"Project","value":"Preaucess"},{"label":"Fetched","value":"no"}]}'
           old='{"id":"15001","title":"An old one","subtitle":"Done","fields":[{"label":"Project","value":"Preaucess"},{"label":"Fetched","value":"no"}]}'

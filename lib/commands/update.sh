@@ -25,6 +25,34 @@ update_kind() {
     fi
 }
 
+# update_remind COMMAND [ARGS] — runs before a command: a look for a newer release in the background (at most once an hour, never waited for, never
+# printed), and, when one is out, a line on the terminal, once for each release. The web UI reads the same answer (ui/shuttle_ui/updates.py), so
+# it shows the news at once. Off with GIT_SHUTTLE_NO_UPDATE_CHECK=1, or with the switch of the UI; it never runs for `update`, `ui` or the hooks.
+update_remind() {
+    local command=${1:-} arg file py latest told
+    shift || true
+    case "$command" in ""|update|ui|help|-h|--help|version|--version|hook|check-message) return 0 ;; esac
+    [[ -z "${GIT_SHUTTLE_NO_UPDATE_CHECK:-}" || "$GIT_SHUTTLE_NO_UPDATE_CHECK" == 0 ]] || return 0
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/git-shuttle/update-notice.json"
+    if [[ ! -f "$file" || -z "$(find "$file" -mmin -60 2>/dev/null)" ]]; then
+        py=python3; "$py" -c '' >/dev/null 2>&1 || py=python
+        if "$py" -c '' >/dev/null 2>&1; then
+            ( "$py" -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from shuttle_ui import updates; updates.notice()' "$ROOT/ui" >/dev/null 2>&1 </dev/null & ) 2>/dev/null
+        fi
+    fi
+    [[ -t 2 && -f "$file" ]] || return 0
+    for arg in "$@"; do [[ "$arg" == --porcelain || "$arg" == --json ]] && return 0; done
+    grep -q '"enabled": false' "$file" 2>/dev/null && return 0
+    latest=$(sed -n 's/.*"latest": "\([0-9][0-9.]*\)".*/\1/p' "$file" 2>/dev/null | head -n1)
+    [[ -n "$latest" ]] && update_newer "$SHUTTLE_VERSION" "$latest" || return 0
+    grep -q "\"snoozed\": \"$latest\"" "$file" 2>/dev/null && return 0
+    told="$(dirname "$file")/update-told"
+    [[ "$(cat "$told" 2>/dev/null)" == "$latest" ]] && return 0
+    printf '%s\n' "$latest" >"$told" 2>/dev/null || true
+    printf 'git-shuttle %s is out (this is %s): git shuttle update --check\n' "$latest" "$SHUTTLE_VERSION" >&2
+    return 0
+}
+
 # update_newer A B — true when version B is newer than version A (leading "v" ignored).
 update_newer() {
     local a=${1#v} b=${2#v}

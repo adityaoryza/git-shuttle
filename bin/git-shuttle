@@ -139,6 +139,7 @@ main() {
 
     local command=${1:-help}
     shift || true
+    update_remind "$command" "$@"
     case "$command" in
         status)        cmd_status "$@" ;;
         commit)        journaled cmd_commit "$@" ;;

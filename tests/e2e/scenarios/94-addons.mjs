@@ -180,7 +180,17 @@ export const scenarios = {
     t.ok("Set up fits a phone", await (async () => { await page.setViewportSize({ width: 390, height: 800 }); const ok = !(await overflowsHorizontally(page)); await page.setViewportSize({ width: 1280, height: 800 }); return ok; })());
     await page.keyboard.press("Escape");
     await openAddons(page);
-    await enabled.getByRole("button", { name: "Disable" }).click();
+    await enabled.getByRole("button", { name: /^Customer report/ }).waitFor({ timeout: 8000 }).catch(() => {});
+    t.ok("an add-on that can report offers the Customer report, off at first", (await enabled.getByRole("button", { name: "Customer report: off" }).count()) === 1, await enabled.innerText());
+    await enabled.getByRole("button", { name: "Customer report: off" }).click();
+    await confirmWith(page, "Apply");
+    await page.waitForFunction(() => document.querySelector(".progress").getAttribute("aria-busy") === "false");
+    t.ok("turning it on is kept for this repository only", t.demo.git(["config", "shuttle.addon.task.report"]) === "on");
+    await openAddons(page);
+    const reporting = page.getByRole("dialog", { name: "Add-ons" }).locator("li", { hasText: "task" }).first();
+    await reporting.getByRole("button", { name: /^Customer report/ }).waitFor({ timeout: 8000 }).catch(() => {});
+    t.ok("...and the dialog says it is on", (await reporting.getByRole("button", { name: "Customer report: on" }).count()) === 1, await reporting.innerText());
+    await reporting.getByRole("button", { name: "Disable" }).click();
     await confirmWith(page, "Disable");
     await page.waitForFunction(() => document.querySelector(".progress").getAttribute("aria-busy") === "false");
     await page.getByRole("tab", { name: "Ship" }).click();

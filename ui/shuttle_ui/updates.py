@@ -1,7 +1,7 @@
 """Looking for a newer release, and installing it: `git shuttle update`, run when the page asks for it.
 
 check and apply run when the user clicks. The notice (a reminder that a newer release is out) is the one thing that looks by itself: at most
-once a day, from this server (the page never talks to the internet), one request for the number of the latest release (what the Update button
+once an hour, from this server or from any command of git-shuttle (the page never talks to the internet), one request for the number of the latest release (what the Update button
 asks, and no more: nothing about you or your repositories is sent). It can be turned off in the About dialog, or with
 GIT_SHUTTLE_NO_UPDATE_CHECK=1. The address that is asked is fixed in the command (the repository of git-shuttle); the page sends no
 parameter, so it cannot point the command anywhere else.
@@ -36,7 +36,7 @@ def _home():
 
 # -- the reminder that a newer release is out ----------------------------------------------------------------------------------
 
-NOTICE_EVERY = 24 * 3600        # a look at most once a day
+NOTICE_EVERY = 3600             # a look at most once an hour (the commands of git-shuttle make it too: update_remind in lib/commands/update.sh)
 RETRY_AFTER = 3600              # when the look failed (no network): again in an hour
 NOTICE_TIMEOUT = 15
 _NOTICE_LOCK = threading.Lock()
@@ -83,7 +83,7 @@ def _forced_off():
 def notice():
     """What the page shows: is a newer release out, and has the user turned the reminder off or put it off for this release.
 
-    The look itself (a request to the release page) is made here when the last one is older than a day, with a short wait, and its
+    The look itself (a request to the release page) is made here when the last one is older than an hour, with a short wait, and its
     answer is kept: the page asks once, and the next answers come from the file."""
     with _NOTICE_LOCK:
         data = _read_notice()

@@ -16,7 +16,7 @@ import re
 import sys
 
 PROTOCOL = 1
-HOOKS = ("start", "pr", "status", "tasks", "setup")
+HOOKS = ("start", "pr", "status", "tasks", "setup", "report")
 SETUP_KEY_RE = re.compile(r"^[a-z][a-z0-9_]{0,30}$")
 SETUP_KINDS = ("text", "secret", "path", "url")
 NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}$")
@@ -274,6 +274,14 @@ def setup_save(raw):
                        ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
 
 
+def report(raw):
+    """What an add-on says after it wrote (or would write) the pull request and the commits somewhere: whether it could, in words, and the text."""
+    data = load(raw)
+    return (json.dumps({"ok": data.get("ok") is True, "message": text(data.get("message"), "message", 300),
+                        "text": text(data.get("text"), "text", 6000, single_line=False), "field": text(data.get("field"), "field", 60),
+                        "skipped": data.get("skipped") is True}, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+
+
 def setup_input(action, raw):
     """The JSON of the setup hook. The values come on standard input (never on a command line, where a key could be read by others)."""
     doc = {"protocol": PROTOCOL, "hook": "setup", "repo": {}, "args": {}, "action": action}
@@ -303,8 +311,9 @@ def main(argv):
     try:
         if len(argv) >= 3 and argv[1] == "validate" and argv[2] == "manifest" and len(argv) == 4:
             sys.stdout.buffer.write(manifest(sys.stdin.buffer.read(), argv[3]))
-        elif len(argv) == 3 and argv[1] == "validate" and argv[2] in ("start", "pr", "status", "tasks", "setup", "setup-save"):
-            sys.stdout.buffer.write({"start": start, "pr": pr, "status": status, "tasks": tasks, "setup": setup_status, "setup-save": setup_save}[argv[2]](sys.stdin.buffer.read()))
+        elif len(argv) == 3 and argv[1] == "validate" and argv[2] in ("start", "pr", "status", "tasks", "setup", "setup-save", "report"):
+            sys.stdout.buffer.write({"start": start, "pr": pr, "status": status, "tasks": tasks, "setup": setup_status, "setup-save": setup_save,
+                                     "report": report}[argv[2]](sys.stdin.buffer.read()))
         elif len(argv) == 4 and argv[1] == "input-setup" and argv[2] in ("status", "save"):
             sys.stdout.buffer.write(setup_input(argv[2], sys.stdin.buffer.read() if argv[3] == "-" else b"{}"))
         elif len(argv) == 3 and argv[1] == "registry":

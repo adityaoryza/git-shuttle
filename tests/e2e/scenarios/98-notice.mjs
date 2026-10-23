@@ -73,7 +73,7 @@ export const scenarios = {
     await dialog(page).waitFor();
     const remind = dialog(page).getByLabel("Remind me when a new version is out");
     t.ok("the switch is on", await remind.isChecked());
-    t.ok("...and says what is asked, once a day, and that nothing about you is sent", (await dialog(page).innerText()).includes("Once a day this server asks github.com for the number of the latest release"));
+    t.ok("...and says what is asked, once an hour, and that nothing about you is sent", (await dialog(page).innerText()).includes("At most once an hour, this server (or a git-shuttle command) asks github.com for the number of the latest release"));
     await remind.uncheck();
     await page.waitForFunction(() => !document.querySelector(".update-banner"));
     t.ok("turning it off tells the server, and the reminder goes", posted.some(b => b.enabled === false) && (await banner(page).count()) === 0, JSON.stringify(posted));
