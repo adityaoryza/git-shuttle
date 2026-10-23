@@ -51,7 +51,8 @@ export function ResultCard({ runner, onPullRequest }) {
     <header>${j.state === "done" ? check : null}<strong>${j.label}</strong><${Badge} tone=${tone}>${j.state}<//><span class="grow" /><${Button} variant="ghost" size="icon" onClick=${runner.closeJob} aria-label="Dismiss">✕<//></header>
     <ol class="steps">${(j.steps || []).map(s => html`<li class=${"step-" + s.state}><code>${stepLabel(s.argv)}</code></li>`)}</ol>
     ${(j.steps || []).some(s => s.output) ? html`<details open=${j.state !== "done"}><summary class="hint">Output</summary>
-      ${(j.steps || []).filter(s => s.output).map(s => html`<${Output}>${s.output}<//>`)}</details>` : null}
+      ${(j.steps || []).filter(s => s.output).map(s => html`<${Output} follow=${s.state === "running"}>${s.output}<//>`)}</details>` : null}
+    ${j.state === "running" && !(j.steps || []).some(s => s.output) ? html`<p class="hint">Started: waiting for the first lines of output…</p>` : null}
     ${j.state === "stopped" ? html`<p class="hint">The repository was left mid-operation. Resolve it in the banner above.</p>` : null}
     ${j.state === "done" && j.action === "release" ? html`<${Button} variant="secondary" onClick=${onPullRequest}>Open a pull request<//>` : null}
   </section>`;

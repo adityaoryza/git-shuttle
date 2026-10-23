@@ -296,6 +296,22 @@ class TestDeploy(Base):
         self.assertTrue(seen, "ssh was called")
         self.assertEqual(set(seen), {"stdin-none", "dev-none"}, "no input and no controlling terminal to open")
 
+    def test_the_output_of_a_running_deploy_is_seen_while_it_runs(self):
+        """The page has to show the lines of the server as they come: a deploy of minutes with only a spinner left the user without a clue."""
+        import time
+        from shuttle_ui.runner import run_shuttle
+        slow = os.path.join(self.world.root, "slow-ssh")
+        write(slow, '#!/usr/bin/env bash\nfor a in "$@"; do [[ "$a" == -O ]] && exit 0; done\n[[ "${*: -1}" == true ]] && exit 0\necho first-line; sleep 2; echo last-line\nexit 0\n')
+        os.chmod(slow, 0o755)
+        os.environ["GIT_SHUTTLE_SSH"] = slow
+        self.addCleanup(lambda: os.environ.update({"GIT_SHUTTLE_SSH": self.ssh}))
+        seen = []
+        started = time.time()
+        code, out = run_shuttle(self.world.work, ["deploy", "staging"], timeout=60, on_output=lambda text: seen.append((time.time() - started, text)))
+        early = [text for at, text in seen if "first-line" in text and "last-line" not in text]
+        self.assertTrue(early, "the first line was reported before the command ended: %r" % seen)
+        self.assertIn("last-line", out)
+
     # -- "Remember on this computer"
     def targets(self):
         return self.api("GET", "repos/%s/deploy" % self.rid())[1]

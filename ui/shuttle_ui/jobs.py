@@ -56,10 +56,11 @@ class Jobs:
                     exit_code = 1
             for step in job["steps"] if exit_code == 0 else []:
                 step["state"] = "running"
+                follow = lambda text, step=step: step.__setitem__("output", text)      # the page reads it while the command runs
                 if secret is not None and step["argv"][:1] == ["deploy"]:
-                    code, output = run_with_secret(repo["path"], step["argv"], secret, timeout=900)
+                    code, output = run_with_secret(repo["path"], step["argv"], secret, timeout=900, on_output=follow)
                 else:
-                    code, output = run_shuttle(repo["path"], step["argv"], dry_run=False, timeout=900)
+                    code, output = run_shuttle(repo["path"], step["argv"], dry_run=False, timeout=900, on_output=follow)
                 step["exit"], step["output"] = code, output
                 step["state"] = "done" if code == 0 else "stopped"
                 if code != 0:

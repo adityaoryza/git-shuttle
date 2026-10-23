@@ -58,8 +58,16 @@ export function Alert({ tone = "neutral", title, children }) {
   return html`<div class=${"alert alert-" + tone}>${title ? html`<strong>${title}</strong>` : null}${children}</div>`;
 }
 
-export function Output({ children }) {
-  return html`<pre class="output">${children}</pre>`;
+// follow: a command that is still running; the view stays at the last line, unless the reader scrolled up to read
+export function Output({ children, follow }) {
+  const ref = useRef(null);
+  const atEnd = useRef(true);
+  useEffect(() => {
+    const el = ref.current;
+    if (follow && el && atEnd.current) el.scrollTop = el.scrollHeight;
+  });
+  const onScroll = e => { atEnd.current = e.target.scrollHeight - e.target.scrollTop - e.target.clientHeight < 24; };
+  return html`<pre class="output" ref=${ref} onScroll=${onScroll}>${children}</pre>`;
 }
 
 export function Modal({ title, onClose, children, footer, wide, className, initialFocus }) {
