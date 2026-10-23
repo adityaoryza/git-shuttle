@@ -2,6 +2,29 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [Unreleased]
+
+## [0.6.0] - 2026-10-23
+
+### Added
+- Add-ons: programs named `git-shuttle-NAME` that tell git-shuttle more, with a documented protocol (`docs/addons.md`, protocol 1). `git shuttle
+  addon list | info | enable | disable | check | cards`. An add-on does nothing until it is enabled, and enabling pins the program (its
+  checksum): if it changes, it must be enabled again. It runs alone (no terminal, only the JSON as input, 20 s, 256 KiB, a short environment plus
+  the variables it declared) and everything it says is checked before it is used. Hooks: `start` (a name for the branch, and what the branch
+  is for: a task, kept in the settings of the branch), `pr` (the title and the description), `status` (cards for the web UI); an add-on
+  can add flags (`git shuttle start --task 15607`) and its own command (`git shuttle NAME ...`). What is typed always wins over what an add-on
+  proposes. `git shuttle addon check NAME` tells an author whether the add-on follows the protocol.
+  In the web UI: the dialog **Add-ons** (Ctrl+K) lists them with Enable and Disable (after a preview that shows what the add-on asks for),
+  the Start tab gets a field **Start from a task** for each flag that an enabled add-on adds to `start`, and the Start and Ship tabs show the
+  cards of the add-ons (an answer that is refused shows nothing but its reason).
+- Add-ons can be installed from a list that ships with git-shuttle (`git shuttle addon available | install | uninstall`): the release of its
+  repository over https, checked against its checksums, never run until you enable it. A `tasks` hook lists the tasks to pick from in the Start tab.
+- Add-ons can ask for their credentials: a `setup` hook, the dialog **Set up** in the Add-ons dialog (a key is typed in a hidden field, goes to
+  the add-on on standard input and is never kept, logged or shown back) and `git shuttle addon setup NAME [--save]`.
+- A trace of every task (`git shuttle trace list | show`, and **Tasks** in the web UI): start (with the details the add-on knew), commit, push, pull
+  request, merge, release and the deploys that carried it. It stays in the `.git` folder of the repository and is never pushed.
+  In the web UI, an icon in the top bar opens the Add-ons dialog (installed and available).
+
 ## [0.5.0] - 2026-10-23
 
 ### Changed
