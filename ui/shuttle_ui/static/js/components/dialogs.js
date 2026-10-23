@@ -17,9 +17,20 @@ export function AddRepoDialog({ onAdd, onClose }) {
       const d = await api("GET", "browse" + (target ? "?path=" + encodeURIComponent(target) : ""));
       setListing(d); setPath(d.path); setError("");
       try { localStorage.setItem("shuttle.lastFolder", d.path); } catch (e) { /* not remembered */ }
-    } catch (e) { setError(e.message); }
+      return true;
+    } catch (e) { setError(e.message); return false; }
   };
-  useEffect(() => { let last = ""; try { last = localStorage.getItem("shuttle.lastFolder") || ""; } catch (e) { /* none */ } go(last).then(() => {}); }, []);
+  // The last folder is remembered by the browser for this address, but the server behind it may be another one (another machine, WSL or
+  // Windows, a folder that is gone): when it cannot be opened it is forgotten and the list starts at the home folder.
+  useEffect(() => {
+    let last = "";
+    try { last = localStorage.getItem("shuttle.lastFolder") || ""; } catch (e) { /* none */ }
+    go(last).then(ok => {
+      if (ok || !last) return;
+      try { localStorage.removeItem("shuttle.lastFolder"); } catch (e) { /* nothing to forget */ }
+      go("");
+    });
+  }, []);
   // outside your home folder nothing is listed, but a path you type can still be added (the server checks that it is a repository)
   const typed = !!error && path.trim().startsWith("/");
   const canAdd = !!(listing && listing.repo) || typed;
