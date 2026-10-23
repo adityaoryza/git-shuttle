@@ -138,7 +138,12 @@ def start(raw):
     out = []
     branch = text(data.get("branch"), "branch", 120)
     if branch:
-        if not BRANCH_RE.match(branch) or ".." in branch or not any(c.isalnum() for c in branch):
+        # a task title has quotes, question marks, dollar signs...: what is not simple text is dropped (the name is turned into a branch name by
+        # git-shuttle anyway); a path ("..") or nothing left is refused
+        if ".." in branch:
+            raise Refused("branch has characters that are not allowed")
+        branch = re.sub(r"\s+", " ", re.sub(r"[^\w\[\]() .,:#'&/-]", " ", branch)).strip()
+        if not BRANCH_RE.match(branch) or not any(c.isalnum() for c in branch):
             raise Refused("branch has characters that are not allowed")
         out.append(("branch", branch))
     out += reference(data)

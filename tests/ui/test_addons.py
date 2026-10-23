@@ -158,6 +158,17 @@ class TestAddons(Base):
         status, _ = self.api("GET", "repos/%s/addons/..%%2Fx/setup" % self.rid())
         self.assertIn(status, (400, 404))
 
+    def test_the_link_of_a_branch_to_a_task_is_validated(self):
+        self.assertEqual(build_commands("task-bind", {"task": "15607", "addon": "tracker", "branch": "feature/x"}),
+                         [["trace", "bind", "15607", "--addon", "tracker", "--branch", "feature/x"]])
+        self.assertEqual(build_commands("task-bind", {"task": "15607"}), [["trace", "bind", "15607"]])
+        self.assertEqual(build_commands("task-unbind", {"branch": "feature/x"}), [["trace", "unbind", "--branch", "feature/x"]])
+        with self.assertRaises(BadRequest):
+            build_commands("task-unbind", {"branch": "--evil"})
+        for bad in ({}, {"task": "-x"}, {"task": "1\n2"}, {"task": "1", "addon": "../x"}, {"task": "1", "branch": "--evil"}, {"task": "1", "branch": "a..b"}):
+            with self.assertRaises(BadRequest):
+                build_commands("task-bind", bad)
+
     def test_the_install_actions_validate_the_name_and_the_version(self):
         self.assertEqual(build_commands("addon-install", {"name": "odoo-task", "version": "v0.2.0"}), [["addon", "install", "odoo-task", "--version", "v0.2.0"]])
         self.assertEqual(build_commands("addon-uninstall", {"name": "odoo-task"}), [["addon", "uninstall", "odoo-task"]])
@@ -175,6 +186,62 @@ class TestAddons(Base):
         for body in ({"addon": "../x", "task": "1"}, {"addon": "tracker", "task": "1; rm"}, {}):
             status, _ = self.api("POST", "repos/%s/trace/show" % self.rid(), body)
             self.assertEqual(status, 400, body)
+
+
+class TestTraceBackfill(unittest.TestCase):
+    """What a branch already did, written when it is linked to a task (lib/addons/trace.py): the dates are the real ones, and it is written once."""
+
+    def test_the_pull_request_and_its_merge_come_with_their_dates_and_only_once(self):
+        import tempfile
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("shuttle_trace", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib", "addons", "trace.py"))
+        tr = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tr)
+        with tempfile.TemporaryDirectory() as tmp:
+            path, prfile = os.path.join(tmp, "t", "events.jsonl"), os.path.join(tmp, "pr.json")
+            with open(prfile, "w") as handle:
+                json.dump({"url": "https://example.test/pr/9", "state": "MERGED", "title": "T", "baseRefName": "develop", "createdAt": "2026-02-01T09:00:00Z",
+                           "mergedAt": "2026-02-03T10:30:00Z", "mergeCommit": {"oid": "a" * 40},
+                           "commits": [{"oid": "b" * 40, "committedDate": "2026-02-01T08:00:00Z", "messageHeadline": "first"}]}, handle)
+            who = {"addon": "tracker", "task": "15607", "title": "Title", "link": "", "branch": "feature/x"}
+            os.environ["TRACE_BASE"], os.environ["TRACE_PR"] = "HEAD", prfile
+            try:
+                first = tr.backfill(path, who, tmp, "HEAD", prfile)
+                again = tr.backfill(path, who, tmp, "HEAD", prfile)
+            finally:
+                os.environ.pop("TRACE_BASE", None)
+                os.environ.pop("TRACE_PR", None)
+            events = tr.events(path)
+            self.assertEqual((first["commits"], first["pr"], first["merged"]), (1, True, True))
+            self.assertEqual(sorted(e["type"] for e in events), ["commit", "merge", "pr", "start"])
+            self.assertEqual({e["type"]: e["time"] for e in events}["merge"], "2026-02-03T10:30:00Z")
+            self.assertEqual(len(events), len(tr.events(path)), "a second run adds nothing")
+            self.assertEqual(again["commits"], 1)
+
+
+class TestTraceBackfillMerged(unittest.TestCase):
+    def test_a_branch_that_points_at_its_own_merge_gets_the_commits_that_the_merge_brought(self):
+        import importlib.util
+        import subprocess
+        import tempfile
+        spec = importlib.util.spec_from_file_location("shuttle_trace2", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "lib", "addons", "trace.py"))
+        tr = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tr)
+        env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL="a@a")
+        with tempfile.TemporaryDirectory() as tmp:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True)
+            git("init", "-q", "-b", "staging")
+            write(os.path.join(tmp, "a"), "1"); git("add", "a"); git("commit", "-qm", "base")
+            git("checkout", "-qb", "feat")
+            for name in ("b", "c"):
+                write(os.path.join(tmp, name), name); git("add", name); git("commit", "-qm", "work " + name)
+            git("checkout", "-q", "staging"); git("merge", "-q", "--no-ff", "-m", "Merge feat", "feat")
+            git("branch", "-f", "feat", "staging")          # the branch points at the merge itself
+            who = {"addon": "x", "task": "1", "title": "T", "link": "", "branch": "feat"}
+            done = tr.backfill(os.path.join(tmp, "t", "e.jsonl"), who, tmp, "staging", None)
+            self.assertEqual(done["commits"], 2)
+            self.assertEqual(sorted(e["type"] for e in tr.events(os.path.join(tmp, "t", "e.jsonl"))), ["commit", "commit", "merge", "start"])
 
 
 if __name__ == "__main__":

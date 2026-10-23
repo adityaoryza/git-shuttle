@@ -32,6 +32,7 @@ case "${1:-}" in
         [[ -t 0 ]] && echo stdin-tty >"$log.tty" || echo stdin-none >"$log.tty"
         case "$2:$mode" in
             start:ok) echo '{"branch":"Keep manual Order Date","reference":{"id":"15607","title":"Keep manual Order Date on confirmation","link":"https://odoo.example/web#id=15607"},"note":"task found"}' ;;
+            start:quotes) echo '{"branch":"Copy \"Export to Cigolog\" to Accounting ($5?)","reference":{"id":"1"}}' ;;
             start:evil) echo '{"branch":"../../etc passwd; rm -rf x","reference":{"id":"1"}}' ;;
             start:badlink) echo '{"branch":"x","reference":{"id":"1","link":"javascript:alert(1)"}}' ;;
             start:badid) echo '{"branch":"x","reference":{"id":"1; rm -rf /"}}' ;;
@@ -100,6 +101,11 @@ assert_eq "64" "$(git config shuttle.addon.task.sha256 | tr -d '\n' | wc -c | tr
 shuttle addon list
 assert_contains "$OUT" "enabled" "list: enabled"
 
+# a title with quotes and other signs: they are dropped from the name, the answer is not refused
+FAKE_MODE=quotes shuttle -n start --task 1
+assert_status 0 "$RC" "a task title with quotes is not refused"
+assert_contains "$OUT" "feature/copy_export_to_cigolog_to_accounting_5" "...and gives a clean branch name"
+
 # --- start --task -------------------------------------------------------------------------------------------------------------------------------
 git checkout -q develop
 FAKE_MODE=ok shuttle -y start --task 15607
@@ -143,6 +149,48 @@ echo plain >plain.txt; git add plain.txt
 before=$(wc -l <"$TRACE")
 shuttle -y commit -m "[FEAT] root: plain" -- plain.txt
 assert_eq "$before" "$(wc -l <"$TRACE")" "a branch that is not for a task traces nothing"
+# a branch that already has work is linked to a task afterwards: its past is written with the dates it had
+echo old >old.txt; git add old.txt
+GIT_AUTHOR_DATE="2026-01-05T10:00:00+02:00" GIT_COMMITTER_DATE="2026-01-05T10:00:00+02:00" git commit -q -m "an old commit"
+FAKE_MODE=ok shuttle -n trace bind 15607
+assert_status 0 "$RC" "trace bind --dry-run"
+assert_contains "$OUT" "2 commit(s)" "...says how many commits the branch has"
+assert_eq "" "$(git config branch.plain-branch.shuttle-ref-id)" "...and links nothing"
+assert_eq "$before" "$(wc -l <"$TRACE")" "...and writes nothing"
+FAKE_MODE=ok shuttle -y trace bind 15607
+assert_status 0 "$RC" "trace bind"
+assert_eq "15607" "$(git config branch.plain-branch.shuttle-ref-id)" "...the branch remembers the task"
+assert_contains "$(cat "$TRACE")" '"time": "2026-01-05T08:00:00Z"' "...the old commit is in the trace with its own date (in UTC)"
+assert_contains "$(cat "$TRACE")" '"subject": "an old commit"' "...with its subject"
+assert_contains "$(cat "$TRACE")" '"type": "bind"' "...and the link itself is a step"
+after=$(wc -l <"$TRACE")
+FAKE_MODE=ok shuttle -y trace bind 15607
+assert_eq "$after" "$(wc -l <"$TRACE")" "linking again adds nothing that is already there"
+shuttle trace show 15607 --addon task
+assert_contains "$OUT" "an old commit" "trace show lists what was added afterwards"
+shuttle trace map
+assert_status 0 "$RC" "trace map (for the graph of the web UI)"
+assert_contains "$OUT" '"plain-branch"' "...has the branches that are for a task"
+assert_contains "$OUT" "$(git rev-parse HEAD)" "...and the commits of those branches, also the ones that were not made by git-shuttle"
+assert_not_contains "$OUT" "\"$(git rev-parse develop)\"" "...but not the commits of the integration branch"
+shuttle -n trace unbind --branch plain-branch
+assert_status 0 "$RC" "trace unbind --dry-run"
+assert_eq "15607" "$(git config branch.plain-branch.shuttle-ref-id)" "...changes nothing"
+shuttle -y trace unbind --branch plain-branch
+assert_status 0 "$RC" "trace unbind"
+assert_eq "" "$(git config branch.plain-branch.shuttle-ref-id)" "...the branch forgets the task"
+assert_not_contains "$(cat "$TRACE")" '"branch": "plain-branch"' "...and its steps leave the trace"
+assert_contains "$(cat "$TRACE")" '"branch": "feature/keep_manual_order_date"' "...but not the steps of the other branches"
+shuttle -y trace unbind --branch plain-branch
+assert_status 1 "$RC" "unlinking a branch that is not linked"
+git checkout -q develop
+FAKE_MODE=ok shuttle -y trace bind 15607
+assert_status 1 "$RC" "a shared branch cannot be linked to a task"
+assert_contains "$OUT" "shared branch" "...and says why"
+git checkout -q main
+FAKE_MODE=ok shuttle -y trace bind 15607
+assert_status 1 "$RC" "the base branch cannot be linked either"
+git checkout -q develop
 git checkout -q feature/keep_manual_order_date
 
 git checkout -q develop

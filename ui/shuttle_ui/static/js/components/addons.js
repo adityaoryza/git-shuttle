@@ -3,7 +3,8 @@
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { ExternalLink } from "./links.js";
-import { Alert, Badge, Button, Field, Input, Modal } from "./ui.js";
+import { Alert, Badge, Button, Field, Input, Modal, Segmented, Skeleton } from "./ui.js";
+import { Combobox } from "./combobox.js";
 
 const webAddress = link => (typeof link === "string" && /^https?:\/\//.test(link) ? link : "");
 
@@ -150,39 +151,101 @@ export function TaskPicker({ repoId, version, onPick, picked }) {
     ${state.problems.map(p => html`<p class="hint addon-problem">The add-on <strong>${p.addon}</strong> lists no task: ${p.problem}</p>`)}
     ${state.groups.filter(g => g.note).map(g => html`<p class="hint">${g.note}</p>`)}
     ${shown.length ? html`<ul class="task-list">${shown.map(t => html`<li class=${(picked && picked.id === t.id && picked.addon === t.addon ? "picked " : "") + (newest.has(t.addon + ":" + t.id) ? "is-new" : "")}>
-      <button type="button" class="task-row" onClick=${() => onPick(t.addon, t)}>
-        <span class="mono">${t.id}</span><strong>${t.title}</strong>${newest.has(t.addon + ":" + t.id) ? html`<${Badge} tone="info">new<//>` : null}${t.subtitle ? html`<${Badge}>${t.subtitle}<//>` : null}
+      <button type="button" class="task-row" aria-pressed=${!!(picked && picked.id === t.id && picked.addon === t.addon)} onClick=${() => onPick(t.addon, t)}>
+        <span class="task-check" aria-hidden="true">${picked && picked.id === t.id && picked.addon === t.addon ? "✓" : ""}</span><span class="mono">${t.id}</span><strong>${t.title}</strong>${newest.has(t.addon + ":" + t.id) ? html`<${Badge} tone="info">new<//>` : null}${t.subtitle ? html`<${Badge}>${t.subtitle}<//>` : null}
         ${(t.fields || []).length ? html`<span class="hint">${t.fields.map(x => x.label + ": " + x.value).join(" · ")}</span>` : null}
       </button></li>`)}</ul>` : null}
     ${!state.loading && !state.problems.length && !shown.length ? html`<p class="hint">${all.length ? "No task matches the filters." : "No task listed."}</p>` : null}
   </div>`;
 }
 
-const EVENT_SAY = { start: "Started", commit: "Commit", push: "Pushed", pr: "Pull request", merge: "Merged", release: "Released", deploy: "Deployed" };
-const eventText = e => [e.branch && "branch " + e.branch, e.sha && e.sha.slice(0, 10), e.title || e.subject, e.url, e.target && "to " + e.target, e.tag && "tag " + e.tag, e.base && "into " + e.base, e.into && "into " + e.into, e.release_branch && "onto " + e.release_branch].filter(Boolean).join(" · ");
+const EVENT_SAY = { bind: "Linked to the task", start: "Started", commit: "Commit", push: "Pushed", pr: "Pull request", merge: "Merged", release: "Released", deploy: "Deployed" };
+const eventText = e => [e.branch && "branch " + e.branch, e.sha && e.sha.slice(0, 10), e.title || e.subject, e.url, e.target && "to " + e.target, e.tag && "tag " + e.tag, e.base && "into " + e.base, e.into && "into " + e.into, e.release_branch && "onto " + e.release_branch, e.linked && "added afterwards, with its real date"].filter(Boolean).join(" · ");
 
 // every step that git-shuttle took for the tasks, in order: start, commit, push, pull request, merge, release, deploy
-export function TasksDialog({ repoId, onClose, notify }) {
+// a date of the trace (UTC, with a Z) in the time zone of this browser
+const localTime = iso => { const d = new Date(iso); return isNaN(d) ? String(iso || "") : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); };
+const LAST_SAY = { start: "started", commit: "committed", push: "pushed", pr: "pull request", merge: "merged", release: "released", deploy: "deployed", bind: "linked" };
+
+function Timeline({ events }) {
+  const [all, setAll] = useState(false);
+  const commits = events.filter(e => e.type === "commit");
+  const hidden = !all && commits.length > 6 ? new Set(commits.slice(2, -2)) : new Set();     // a long list of commits is folded: the first two and the last two
+  const rows = [];
+  events.forEach(e => {
+    if (hidden.has(e)) { if (!rows.length || rows[rows.length - 1].fold === undefined) rows.push({ fold: 0 }); rows[rows.length - 1].fold++; } else rows.push({ e });
+  });
+  return html`<ol class="timeline">${rows.map(r => (r.fold !== undefined
+    ? html`<li class="ev-fold"><button type="button" class="link" onClick=${() => setAll(true)}>Show ${r.fold} more commits</button></li>`
+    : html`<li class=${"ev-" + r.e.type}>
+      <strong>${EVENT_SAY[r.e.type] || r.e.type}</strong><span class="hint">${localTime(r.e.time)}</span>
+      <span class="msg">${eventText(r.e)}</span>
+      ${webAddress(r.e.url) ? html`<${ExternalLink} href=${r.e.url} class="addon-link">${r.e.url.replace(/^https?:\/\//, "")}<//>` : null}
+      ${r.e.derived ? html`<span class="hint">${r.e.derived}</span>` : null}
+      ${r.e.details ? html`<dl class="addon-fields">${Object.entries(r.e.details).map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}</dl>` : null}
+    </li>`))}</ol>`;
+}
+
+// every step that git-shuttle took for the tasks, in order: start, commit, push, pull request, merge, release, deploy.
+// A branch that had work before can be linked to a task: its past (commits, pull request, merge) is written with the dates it had.
+export function TasksDialog({ repoId, branches, current, onRun, onClose, notify }) {
+  const [tab, setTab] = useState("tasks");
   const [tasks, setTasks] = useState(null);
-  const [open, setOpen] = useState(null);
+  const [open, setOpen] = useState(null);          // "addon:id" of the task whose timeline is shown
   const [trace, setTrace] = useState(null);
-  useEffect(() => { api("GET", "repos/" + repoId + "/trace/tasks").then(d => setTasks(d.tasks || []), e => { setTasks([]); notify({ variant: "error", title: "Cannot read the tasks", detail: e.message }); }); }, []);
-  const show = t => {
-    setOpen(t); setTrace(null);
+  const [linked, setLinked] = useState(null);
+  const [linking, setLinking] = useState(false);
+  const [branch, setBranch] = useState(current || "");
+  const [pick, setPick] = useState(null);
+  const [typed, setTyped] = useState("");
+  const local = ((branches && branches.local) || []).map(b => b.name);
+  const names = current && local.includes(current) ? [current, ...local.filter(n => n !== current)] : local;
+  useEffect(() => {
+    api("GET", "repos/" + repoId + "/trace/tasks").then(d => setTasks(d.tasks || []), e => { setTasks([]); notify({ variant: "error", title: "Cannot read the tasks", detail: e.message }); });
+    api("GET", "repos/" + repoId + "/trace/map").then(d => setLinked(Object.entries(d.branches || {}).map(([name, b]) => ({ name, ...b }))), () => setLinked([]));
+  }, []);
+  const toggle = t => {
+    const key = t.addon + ":" + t.id;
+    if (open === key) { setOpen(null); return; }
+    setOpen(key); setTrace(null);
     api("POST", "repos/" + repoId + "/trace/show", { addon: t.addon, task: t.id }).then(setTrace, e => notify({ variant: "error", title: "Cannot read the trace", detail: e.message }));
   };
-  return html`<${Modal} title="Tasks" wide onClose=${onClose}>
-    <p class="hint">What happened to each task you started from an add-on, from the first commit to the deploy. It is kept in this repository only, never pushed.</p>
-    ${tasks === null ? html`<p class="hint">Loading…</p>` : tasks.length === 0 ? html`<p class="hint">No task yet: start one from the Start tab.</p>` : html`<ul class="stash-list addon-rows">${tasks.map(t => html`<li>
-      <strong class="mono">${t.id}</strong><span class="msg">${t.title}</span><span class="hint">${t.last ? t.last.replace("T", " ").replace("Z", "") : ""}</span>
-      <span class="row-actions"><${Button} size="sm" variant=${open && open.id === t.id ? "secondary" : "ghost"} onClick=${() => show(t)}>Timeline<//></span></li>`)}</ul>`}
-    ${open ? html`<h3 class="sub">${open.id} ${open.title}</h3>
-      ${webAddress(open.link) ? html`<${ExternalLink} href=${open.link} class="addon-link">${open.link.replace(/^https?:\/\//, "")}<//>` : null}
-      ${trace === null ? html`<p class="hint">Loading…</p>` : html`<ol class="timeline">${trace.events.map(e => html`<li>
-        <strong>${EVENT_SAY[e.type] || e.type}</strong><span class="hint">${(e.time || "").replace("T", " ").replace("Z", "")}</span>
-        <span class="msg">${eventText(e)}</span>
-        ${e.derived ? html`<span class="hint">${e.derived}</span>` : null}
-        ${e.details ? html`<dl class="addon-fields">${Object.entries(e.details).map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}</dl>` : null}
-      </li>`)}</ol>`}` : null}
+  const task = typed.trim() || (pick && pick.task.id) || "";
+  const addon = typed.trim() ? "" : pick ? pick.addon : "";
+  const goLink = () => { setTab("branches"); setLinking(true); };
+  return html`<${Modal} title="Tasks" wide onClose=${onClose} initialFocus=".segmented button.on">
+    <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "tasks", label: "Tasks" + (tasks ? " (" + tasks.length + ")" : "") }, { value: "branches", label: "Branches" + (linked ? " (" + linked.length + ")" : "") }]} />
+    ${tab === "tasks" ? html`
+      <p class="hint">What happened to each task you started from an add-on, from the first commit to the deploy. Click a task to see it. Times are in your time zone; nothing leaves this repository.</p>
+      ${tasks === null ? html`<${Skeleton} rows=${3} />` : tasks.length === 0 ? html`<div class="empty-note"><strong>No task yet</strong><span class="hint">Start one from the Start tab, or link a branch that already has work.</span></div>` : html`<ul class="task-accordion">${tasks.map(t => {
+        const key = t.addon + ":" + t.id, isOpen = open === key;
+        return html`<li class=${isOpen ? "open" : ""}>
+          <button type="button" class="task-head" aria-expanded=${isOpen} onClick=${() => toggle(t)}>
+            <span class="chev" aria-hidden="true">${isOpen ? "▾" : "▸"}</span><span class="mono">${t.id}</span><strong class="msg">${t.title || "(no title)"}</strong>
+            <span class="hint">${LAST_SAY[t.last_type] || t.last_type} · ${localTime(t.last)}</span><span class="row-actions">Timeline</span>
+          </button>
+          ${t.branches.length ? html`<div class="task-branches">${t.branches.map(b => html`<span class="ref" title=${b}>${b}</span>`)}</div>` : null}
+          ${isOpen ? html`<div class="task-body">
+            ${webAddress(t.link) ? html`<${ExternalLink} href=${t.link} class="addon-link">${t.link.replace(/^https?:\/\//, "")}<//>` : null}
+            ${trace === null ? html`<${Skeleton} rows=${3} />` : html`<${Timeline} events=${trace.events} />`}</div>` : null}
+        </li>`;
+      })}</ul>`}
+      <div class="actions"><span class="hint">A branch that already has work?</span><${Button} variant="secondary" size="sm" onClick=${goLink}>Link a branch<//></div>`
+    : html`
+      <h3 class="sub">Linked branches</h3>
+      ${linked === null ? html`<${Skeleton} rows=${2} />` : linked.length === 0 ? html`<p class="hint">No branch is linked to a task yet.</p>` : html`<ul class="stash-list addon-rows">${linked.map(b => html`<li>
+        <strong class="mono">#${b.id}</strong><span class="msg mono" title=${b.name}>${b.name}</span>${b.title ? html`<span class="hint" title=${b.title}>${b.title}</span>` : null}
+        <span class="row-actions"><${Button} size="sm" variant="ghost" title="The branch forgets the task and its steps leave the trace; the commits are not touched" onClick=${() => onRun("task-unbind", { branch: b.name }, "Unlink " + b.name + " from task " + b.id)}>Unlink<//></span></li>`)}</ul>`}
+      <h3 class="sub">Link a branch to a task</h3>
+      <p class="hint">For a branch that already has commits (or a pull request). The branch remembers the task, and what it already did (start, commits, pull request, merge) is added to the trace with its real dates. Run again, it adds only what is missing. Shared branches (the base, the integration and the release branch) cannot be linked.</p>
+      ${linking ? html`
+        <${Field} label="1. The branch" hint=${branch === current ? "the one you are on: type to search another" : !branch ? "type to search the branches" : local.includes(branch) ? "" : "there is no such branch here"}><${Combobox} label="Branch" exactOnly options=${names.map(n => ({ name: n }))} value=${branch} onChange=${setBranch} placeholder="Type to search the branches" /><//>
+        <span class="field-label">2. The task</span>
+        <${TaskPicker} repoId=${repoId} picked=${pick && !typed.trim() ? { addon: pick.addon, id: pick.task.id } : null} onPick=${(a, t) => { setPick({ addon: a, task: t }); setTyped(""); }} />
+        <${Field} label="Or type it" hint="the number or the link of the task"><${Input} value=${typed} placeholder="e.g. 15530" onInput=${e => setTyped(e.target.value)} /><//>
+        ${task ? html`<${Alert} tone="info" title="Ready to link"><span>Branch <code>${branch || "?"}</code> will be linked to task <strong>#${task}</strong>${pick && !typed.trim() ? " " + pick.task.title : ""}. The next step is a preview: nothing changes before you confirm.</span>
+          ${pick && !typed.trim() ? html`<div class="actions"><${Button} size="sm" variant="ghost" onClick=${() => setPick(null)}>Clear the choice<//></div>` : null}<//>` : html`<p class="hint">Pick a task in the list, or type its number.</p>`}
+        <div class="actions"><${Button} disabled=${!branch || !task || !local.includes(branch)} title=${!task ? "Pick a task or type it" : ""} onClick=${() => onRun("task-bind", { task, ...(addon ? { addon } : {}), branch }, "Link " + branch + " to task " + task)}>Preview and link<//><${Button} variant="ghost" onClick=${() => setLinking(false)}>Cancel<//></div>`
+        : html`<div class="actions"><${Button} variant="secondary" onClick=${() => setLinking(true)}>Link a branch<//></div>`}`}
   <//>`;
 }

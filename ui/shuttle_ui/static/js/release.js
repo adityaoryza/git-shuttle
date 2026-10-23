@@ -7,13 +7,20 @@ const lower = text => String(text || "").toLowerCase();
 
 // The commits that match the search (in the message, the hash, or the title of the merge they came with), and not the released
 // ones when asked; a merge with nothing left is not listed.
-export function filterMerges(merges, query, hideReleased) {
+// tasks (optional): GET /trace/map ({commits: {sha: [addon, id]}, tasks: {"addon:id": {title}}}); task: "" for any, "none" for the commits of no task,
+// or "addon:id" for the commits of that task (a commit is for a task when the trace says so, else when the merge it came with is).
+export const taskOf = (tasks, merge, commit) => (tasks && tasks.commits && (tasks.commits[commit.hash] || (merge.merge && tasks.commits[merge.merge]))) || null;
+
+export function filterMerges(merges, query, hideReleased, tasks, task) {
   const words = lower(query).split(/\s+/).filter(Boolean);
   const out = [];
   for (const merge of merges) {
     const commits = merge.commits.filter(commit => {
       if (hideReleased && !commit.pending) return false;
-      const haystack = lower(commit.subject) + " " + lower(commit.hash) + " " + lower(merge.subject);
+      const own = taskOf(tasks, merge, commit);
+      if (task === "none" ? own : task && (!own || own.join(":") !== task)) return false;
+      const info = own && tasks.tasks ? tasks.tasks[own.join(":")] || {} : {};
+      const haystack = lower(commit.subject) + " " + lower(commit.hash) + " " + lower(merge.subject) + (own ? " #" + lower(own[1]) + " " + lower(info.title) : "");
       return words.every(word => haystack.includes(word));
     });
     if (commits.length) out.push({ ...merge, commits });

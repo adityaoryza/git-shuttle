@@ -4,6 +4,29 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-23
+
+### Added
+- `git shuttle trace bind TASK`, and **Link a branch** in the Tasks dialog of the web UI: a branch that already has commits is linked to a task, and
+  its past (start, commits, pull request, merge) is added to the trace with the dates it really had. A branch that was merged (it points at its
+  merge, or is in the history of the base) gets the commits that the merge brought. Times are shown in your time zone.
+- The Tasks dialog has two tabs: **Tasks** (click a task to open its timeline in place, with the branches and the last step; a long list of commits
+  is folded) and **Branches** (the linked branches with **Unlink**, and the form to link one: the branch is searched by typing, and the task that
+  is picked is marked, with a summary of what will be linked). `git shuttle trace unbind` takes a branch out of its task (its steps leave the trace).
+- The graph marks the work of a task: a badge with the number of the task on its branch and on its commits (also the commits that were not made
+  by git-shuttle, as long as they are on a branch that is for the task and not yet in the integration branch), and the search finds a task number.
+  The pointer on a badge shows the title of the task, and a click opens the task itself in a new tab (when the add-on gave its address).
+  `git shuttle trace map` gives the same to scripts.
+- A **task** list in the toolbar narrows the graph to the commits and branches of one task, with a way back ("Show all tasks").
+- The Release tab can pick by task: the commits show the badge of their task, a **Task** list limits them to one task (or to the ones of no task), the
+  search finds a task number or title, and "Select all of this task" cherry-picks only the commits of that task.
+- The task picker of the Start tab has filters (stage, project, fetched or not), a sort, a search, "Include done and closed" and a mark on the newest.
+
+### Fixed
+- A task whose title has quotes, a question mark or a dollar sign (`Copy "Export" to Accounting`) made `start --task` fail with "branch has
+  characters that are not allowed". What is not simple text is now dropped from the proposed name (a path, `..`, is still refused).
+- A shared branch (the base, the integration or the release branch, or a protected one) cannot be linked to a task: it marked all its commits.
+
 ## [0.6.0] - 2026-10-23
 
 ### Added

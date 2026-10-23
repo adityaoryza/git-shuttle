@@ -44,7 +44,14 @@ offers them to pick from (45 s allowed, `GIT_SHUTTLE_ADDON_TASKS_TIMEOUT`). `ref
 kept with the start of the task.
 
 Every step on a branch that is for a task is written to `<git dir>/shuttle-trace/events.jsonl` (private, never pushed): start, commit, push, pr, merge,
-release, and the deploys that carried the merge. `git shuttle trace list` and `trace show ID --addon NAME` read it; the web UI shows it in **Tasks**.
+release, and the deploys that carried the merge. `git shuttle trace list` and `trace show ID --addon NAME` read it (in your time zone); the web UI
+shows it in **Tasks**.
+
+A branch that already had work is linked afterwards: `git shuttle trace bind 15530 [--addon NAME] [--branch NAME] [--force]`, or **Tasks**, then **Link a
+branch** in the web UI (after a preview). The add-on is asked for the task (its `start` hook), the branch remembers it, and what the branch already
+did is written with its real dates: its start, its commits that the integration branch does not have, and, when `gh` finds them, its pull request
+and the merge (a merged branch has its commits from the pull request). Run again, it adds only what is missing. A shared branch (the integration
+or the release branch) cannot be linked, and a branch that is for another task needs `--force`.
 
 A branch remembers what it is for: `branch.NAME.shuttle-ref-addon`, `-id`, `-title` and `-link` in the settings of the repository.
 
@@ -59,7 +66,7 @@ A branch remembers what it is for: `branch.NAME.shuttle-ref-addon`, `-id`, `-tit
 - It receives only a short **environment** (`PATH`, `HOME`, `LANG`, `TERM`, `XDG_CONFIG_HOME`, `TMPDIR`) and the variables its manifest declared (up to 10,
   shown when you enable it). Nothing else of your environment: no token reaches it.
 - Every answer is **checked** (`lib/addons/protocol.py`): unknown fields are dropped, texts are cut to a size, control characters are removed, a
-  branch name can have no shell character, an address must be `http` or `https`, an identifier has a short safe alphabet. A refused answer
+  branch name keeps only letters, digits and simple punctuation (the rest, like quotes, is dropped), an address must be `http` or `https`, an identifier has a short safe alphabet. A refused answer
   stops the command with the reason (or, for the text of a pull request, is skipped with a warning). Nothing it says is ever run.
 - The add-on must be able to be a different program from yours: add-ons that are not enabled are only listed.
 - Names of git-shuttle's own commands cannot be taken, and neither can the flags of git-shuttle.

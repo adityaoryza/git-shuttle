@@ -93,4 +93,19 @@ t("releaseAction: picks onto a release branch that exists are appended; with non
   assert.deepStrictEqual(add.params, { onto: "rel/1", append: true, commits: ["aaaaaaa111", "ccccccc333"], push: true, strategy: undefined });
   assert.deepStrictEqual(releaseAction({ picked: [], target: "rel/1", name: "", push: true }), { action: null, label: "Add commits to rel/1", params: null });
 });
+const taskMap = { commits: { aaaaaaa111: ["odoo-task", "15607"], ccccccc333: ["odoo-task", "15530"] }, tasks: { "odoo-task:15607": { title: "Keep the order date" }, "odoo-task:15530": { title: "Handle proposed total" } } };
+t("filterMerges: only the commits of a task, or the ones of no task", () => {
+  assert.deepStrictEqual(filterMerges(merges, "", false, taskMap, "odoo-task:15607").map(m => m.commits.map(c => c.hash)), [["aaaaaaa111"]]);
+  assert.deepStrictEqual(filterMerges(merges, "", false, taskMap, "none").map(m => m.commits.map(c => c.hash)), [["bbbbbbb222"], ["ddddddd444"]]);
+  assert.strictEqual(filterMerges(merges, "", false, taskMap, "").length, 3, "no task chosen is every commit");
+});
+t("filterMerges: the search finds a task by its number or its title", () => {
+  assert.deepStrictEqual(filterMerges(merges, "#15530", false, taskMap, "").map(m => m.commits[0].hash), ["ccccccc333"]);
+  assert.deepStrictEqual(filterMerges(merges, "proposed total", false, taskMap, "").map(m => m.commits[0].hash), ["ccccccc333"]);
+});
+t("filterMerges: a commit is for the task of the merge it came with when the trace has no line for it", () => {
+  const withMerge = [{ merge: "m1", subject: "Merge x", date: "", commits: [{ hash: "eeeeeee555", subject: "x", pending: true }] }];
+  assert.strictEqual(filterMerges(withMerge, "", false, { commits: { m1: ["odoo-task", "9"] }, tasks: {} }, "odoo-task:9").length, 1);
+});
+
 console.log("  " + n + " passed, 0 failed");

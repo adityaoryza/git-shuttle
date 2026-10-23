@@ -396,6 +396,8 @@ def handle(server, method, route, body):
                                    "repo": r[3] if len(r) > 3 else "", "version": r[4] if len(r) > 4 else "", "state": r[5] if len(r) > 5 else "",
                                    "path": r[6] if len(r) > 6 else ""}
                                   for r in shuttle_records(repo["path"], ["addon", "available"]) if r]}
+        if method == "GET" and rest == ["trace", "map"]:
+            return trace_json(repo, ["map"])
         if method == "GET" and rest == ["trace", "tasks"]:
             return trace_json(repo, ["list"])
         if method == "POST" and rest == ["trace", "show"]:

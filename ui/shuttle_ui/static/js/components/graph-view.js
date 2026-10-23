@@ -3,6 +3,7 @@
 import { html, useMemo } from "../../vendor/preact-htm.js";
 import { absoluteTime, graphRows, hueOf, initials, isoTime, relativeTime } from "../graph.js";
 import { shortHash } from "../logic.js";
+import { ExternalLink } from "./links.js";
 import { ResizableTable } from "./table.js";
 import { Skeleton } from "./ui.js";
 
@@ -29,18 +30,28 @@ function Lanes({ row, width, head, flat }) {
   </svg>`;
 }
 
-const Ref = ({ r }) => html`<span class=${"ref ref-" + r.kind + (r.current ? " ref-current" : "")} title=${r.name}>${r.name}</span>`;
+// the number of a task: the title when the pointer is on it, and a click opens the task itself (a new tab) when the add-on gave its address
+export const TaskBadge = ({ id, title, link }) => {
+  const web = /^https?:\/\//.test(link || "");
+  const tip = "Task #" + id + (title ? ": " + title : "") + (web ? "\nClick to open the task" : "");
+  return web
+    ? html`<${ExternalLink} href=${link} class="task-badge task-badge-link" title=${tip} onClick=${e => e.stopPropagation()} onDblClick=${e => e.stopPropagation()}>#${id}<//>`
+    : html`<span class="task-badge" title=${tip}>#${id}</span>`;
+};
+const Ref = ({ r, task }) => html`<span class=${"ref ref-" + r.kind + (r.current ? " ref-current" : "")} title=${r.name}>${r.name}${task ? html`<${TaskBadge} id=${task.id} title=${task.title} link=${task.link} />` : null}</span>`;
 const Person = ({ name, email, showEmail }) => html`<span class="person" title=${(name || "") + (email ? " <" + email + ">" : "")}>
   <span class="avatar" style=${{ "--hue": hueOf(name) }} aria-hidden="true">${initials(name)}</span><span class="person-name">${name}</span>${showEmail && email ? html`<span class="person-email">${email}</span>` : null}</span>`;
 
-function makeColumns({ width, onCopy, hidden, filtered }) {
+function makeColumns({ width, onCopy, hidden, filtered, tasks }) {
+  // a remote branch (origin/feature/x) is for the task of its local branch
+  const taskOfRef = r => (tasks && tasks.branches ? tasks.branches[r.kind === "remote" ? r.name.replace(/^[^/]+\//, "") : r.name] : null);
   const natural = PAD * 2 + width * COL;
   const visibleRefs = (row, all) => all.filter(r => r.current || !hidden || !hidden.has((r.kind === "remote" ? "refs/remotes/" : "refs/heads/") + r.name));
   return [
     { key: "refs", label: "Branch / Tag", min: 90, width: 180, priority: 7, sortable: false,
       render: row => (row.wip ? html`<span class="ref ref-wip">working tree</span>` : (() => {
         const refs = visibleRefs(row, row.refs);
-        return html`${refs.slice(0, 3).map(r => html`<${Ref} r=${r} />`)}${refs.length > 3 ? html`<span class="ref" title=${refs.slice(3).map(r => r.name).join("\n")}>+${refs.length - 3}</span>` : null}`;
+        return html`${refs.slice(0, 3).map(r => html`<${Ref} r=${r} task=${taskOfRef(r)} />`)}${refs.length > 3 ? html`<span class="ref" title=${refs.slice(3).map(r => r.name).join("\n")}>+${refs.length - 3}</span>` : null}`;
       })()),
       text: row => (row.wip ? "working tree" : row.refs.slice(0, 3).map(r => r.name).join(" ")) },
     { key: "graph", label: "Graph", min: 56, max: Math.max(natural, 56), width: Math.min(natural, 200), priority: 8, required: true, sortable: false, fit: () => natural,
@@ -49,7 +60,7 @@ function makeColumns({ width, onCopy, hidden, filtered }) {
         : html`<${Lanes} row=${{ ...row.lane, sha: row.commit.sha }} width=${width} head=${row.refs.some(r => r.current)} flat=${!!ctx.sort || filtered} />`) },
     { key: "message", label: "Message", min: 140, width: 360, priority: 9, required: true, flex: true, sortable: false,
       render: row => (row.wip ? html`<span class="msg">${row.changes} changed ${row.changes === 1 ? "file" : "files"}</span>`
-        : html`<span class="msg" title=${row.commit.subject + (row.commit.body ? "\n\n" + row.commit.body : "")}>${row.commit.subject}</span>`),
+        : html`${tasks && tasks.commits && tasks.commits[row.commit.sha] ? (([a, id]) => html`<${TaskBadge} id=${id} title=${((tasks.tasks || {})[a + ":" + id] || {}).title} link=${((tasks.tasks || {})[a + ":" + id] || {}).link} />`)(tasks.commits[row.commit.sha]) : null}<span class="msg" title=${row.commit.subject + (row.commit.body ? "\n\n" + row.commit.body : "")}>${row.commit.subject}</span>`),
       text: row => (row.wip ? "" : row.commit.subject) },
     { key: "author", label: "Author", min: 90, width: 150, priority: 3, sortable: true,
       render: (row, ctx) => (row.wip ? null : html`<${Person} name=${row.commit.author} email=${row.commit.email} showEmail=${ctx.opts.email} />`),
@@ -74,13 +85,19 @@ const ACCESSORS = {
   date: row => (row.wip ? Infinity : row.commit.time), refcount: row => (row.wip ? 0 : row.refs.length),
 };
 
-const matches = (row, q) => row.wip || [row.commit.subject, row.commit.author, row.commit.sha, ...row.refs.map(r => r.name)].join(" ").toLowerCase().includes(q);
+const matches = (row, q, tasks) => row.wip || [row.commit.subject, row.commit.author, row.commit.sha, ...row.refs.map(r => r.name), (tasks && tasks.commits && tasks.commits[row.commit.sha] || [])[1] || ""].join(" ").toLowerCase().includes(q);
 
-export function GraphView({ graph, changes, loading, onMenu, hidden, selected, onSelect, onOpen, fresh, onCopy, filter }) {
+// a row is for a task when its commit is, or one of its branches is
+const inTask = (row, tasks, key) => row.wip || !key || !tasks
+  || (tasks.commits && (tasks.commits[row.commit.sha] || []).join(":") === key)
+  || row.refs.some(r => { const b = tasks.branches && tasks.branches[r.kind === "remote" ? r.name.replace(/^[^/]+\//, "") : r.name]; return b && b.addon + ":" + b.id === key; });
+
+export function GraphView({ graph, changes, loading, onMenu, hidden, selected, onSelect, onOpen, fresh, onCopy, filter, tasks, taskFilter, onClearTask }) {
   const needle = (filter || "").trim().toLowerCase();
+  const narrowed = !!needle || !!taskFilter;
   const all = useMemo(() => graphRows((graph && graph.commits) || [], (graph && graph.remotes) || [], changes), [graph, changes]);
-  const data = useMemo(() => (needle ? { ...all, rows: all.rows.filter(r => matches(r, needle)) } : all), [all, needle]);
-  const columns = useMemo(() => makeColumns({ width: data.width, onCopy, hidden, filtered: !!needle }), [data.width, onCopy, hidden, needle]);
+  const data = useMemo(() => (narrowed ? { ...all, rows: all.rows.filter(r => matches(r, needle, tasks) && inTask(r, tasks, taskFilter)) } : all), [all, needle, tasks, taskFilter]);
+  const columns = useMemo(() => makeColumns({ width: data.width, onCopy, hidden, filtered: narrowed, tasks }), [data.width, onCopy, hidden, narrowed, tasks]);
   if (!graph) return html`<${Skeleton} rows=${12} />`;
   if (!all.rows.length) return html`<div class="empty">This repository has no commits yet.</div>`;
   const selectedKey = selected ? (selected.type === "worktree" ? "worktree" : selected.sha) : null;
@@ -90,10 +107,10 @@ export function GraphView({ graph, changes, loading, onMenu, hidden, selected, o
     onRowMenu=${(px, py, row) => !row.wip && onMenu(px, py, row.commit, row.refs.filter(r => r.current || !hidden || !hidden.has((r.kind === "remote" ? "refs/remotes/" : "refs/heads/") + r.name)))}
     rowClass=${row => ["row", row.wip && "row-wip", !row.wip && row.refs.some(r => r.current) && "row-head", fresh && !row.wip && fresh.has(row.commit.sha) && "row-new", selectedKey === row.key && "row-selected"].filter(Boolean).join(" ")}
     rowAttrs=${row => (row.wip ? { title: "Show the changes of the working tree" } : { "data-sha": row.commit.sha })}
-    tools=${({ sort, clearSort }) => (needle ? html`<div class="table-note" role="status">${data.rows.filter(r => !r.wip).length} of ${all.rows.filter(r => !r.wip).length} commits match “${filter.trim()}”: the graph lines are hidden while you search.</div>` : sort ? html`<div class="table-note" role="status">Sorted by ${sort.key}: the graph lines are hidden because the order is no longer the history. <button type="button" class="link" onClick=${clearSort}>Back to the graph order</button></div>` : null)}
+    tools=${({ sort, clearSort }) => (narrowed ? html`<div class="table-note" role="status">${data.rows.filter(r => !r.wip).length} of ${all.rows.filter(r => !r.wip).length} commits ${taskFilter && !needle ? "are for the task" : "match" + (needle ? " “" + filter.trim() + "”" : "")}: the graph lines are hidden while the list is narrowed.${taskFilter ? html` <button type="button" class="link" onClick=${() => onClearTask && onClearTask()}>Show all tasks</button>` : ""}</div>` : sort ? html`<div class="table-note" role="status">Sorted by ${sort.key}: the graph lines are hidden because the order is no longer the history. <button type="button" class="link" onClick=${clearSort}>Back to the graph order</button></div>` : null)}
     menuExtras=${({ opts, setOpt }) => html`<div class="menu-group"><span class="hint">Date</span>
       <label class="check"><input type="radio" name="dates" checked=${opts.dates !== "absolute"} onChange=${() => setOpt("dates", "relative")} /> Relative (3 days ago)</label>
       <label class="check"><input type="radio" name="dates" checked=${opts.dates === "absolute"} onChange=${() => setOpt("dates", "absolute")} /> Date and time</label>
       <label class="check"><input type="checkbox" checked=${!!opts.email} onChange=${e => setOpt("email", e.target.checked)} /> Show the e-mail of authors</label></div>`}
-    empty=${needle ? "No commit matches the search." : "No commits"} />`;
+    empty=${narrowed ? "No commit matches." : "No commits"} />`;
 }

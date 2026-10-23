@@ -2,10 +2,11 @@
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { GH_MISSING, branchOptions, ghMissing, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
-import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks } from "../release.js";
+import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks, taskOf } from "../release.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { TaskPicker } from "./addons.js";
 import { FileRow } from "./file-row.js";
+import { TaskBadge } from "./graph-view.js";
 import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, cn } from "./ui.js";
 
 // ---- what the repository says, in the words of the settings
@@ -245,6 +246,8 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
   const [strategy, setStrategy] = useState("");
   const [query, setQuery] = useState("");
   const [hideReleased, setHideReleased] = useState(true);
+  const [taskMap, setTaskMap] = useState(null);         // which commits are for which task (the add-ons), to search and pick by task
+  const [task, setTask] = useState("");
 
   async function load() {
     try {
@@ -254,6 +257,7 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
       // all at once: nothing can be picked before the list is complete, and nothing picked is wiped afterwards
       setName(st["suggest.release"] || "auto");
       setPicked([]);
+      api("GET", "repos/" + repoId + "/trace/map").then(setTaskMap, () => setTaskMap(null));
       setCandidates(found);
       onLoaded();
     } catch (e) { onError(e); }
@@ -276,7 +280,16 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
   const changed = next => { setPicked(next); runner.clearPreview(); };
   const existing = releaseBranches(c.releasePattern, branchOptions(branches).map(o => o.name));
   const merges = candidates ? candidates.slice().reverse() : [];      // oldest first: that is the order they are picked in
-  const visible = filterMerges(merges, query, hideReleased);
+  const visible = filterMerges(merges, query, hideReleased, taskMap, task);
+  // the tasks that the unreleased commits are for, with how many: to pick by task
+  const taskCounts = new Map();
+  let withoutTask = 0;
+  for (const m of merges) for (const cm of m.commits) {
+    if (!cm.pending) continue;
+    const own = taskOf(taskMap, m, cm);
+    if (own) taskCounts.set(own.join(":"), (taskCounts.get(own.join(":")) || 0) + 1); else withoutTask++;
+  }
+  const taskInfo = key => ((taskMap && taskMap.tasks) || {})[key] || {};
   const visibleCount = visible.reduce((sum, m) => sum + m.commits.length, 0);
   const total = merges.reduce((sum, m) => sum + m.commits.length, 0);
   const plan = releaseAction({ picked, target, name, push, strategy });
@@ -311,12 +324,16 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
     <section class="stack" aria-label="Commits to release">
       <div class="release-tools">
         <${Input} type="search" value=${query} placeholder="Search message, sha or branch" aria-label="Search the commits" onInput=${e => setQuery(e.target.value)} />
+        ${taskMap ? html`<select class="input" aria-label="Task" value=${task} disabled=${!taskCounts.size} title=${taskCounts.size ? "Only the commits of one task" : "No commit is linked to a task yet: Tasks, then Branches, then Link a branch"} onChange=${e => setTask(e.target.value)}>
+          <option value="">${taskCounts.size ? "All tasks" : "No task linked"}</option>
+          ${[...taskCounts].map(([key, count]) => html`<option value=${key}>#${key.split(":").slice(1).join(":")} ${taskInfo(key).title || ""} (${count})</option>`)}
+          ${withoutTask ? html`<option value="none">No task (${withoutTask})</option>` : null}</select>` : null}
         <label class="check" title="Commits that are in the release branch, or in a release branch that is on its way"><input type="checkbox" checked=${hideReleased} onChange=${e => setHideReleased(e.target.checked)} /> Hide released</label>
       </div>
       <div class="release-count">
         <span class="hint" aria-live="polite">${visibleCount === total ? total + " commit" + (total === 1 ? "" : "s") : visibleCount + " of " + total + " commits"} · <strong>${picked.length} picked</strong></span>
         <span class="grow" />
-        <button type="button" class="link" disabled=${pendingOf(visible).length === 0} onClick=${() => changed(addPicks(picked, pendingOf(visible)))}>Select all${query ? " found" : " unreleased"}</button>
+        <button type="button" class="link" disabled=${pendingOf(visible).length === 0} onClick=${() => changed(addPicks(picked, pendingOf(visible)))}>Select all${task && task !== "none" ? " of this task" : query || task ? " found" : " unreleased"}</button>
         <button type="button" class="link" disabled=${picked.length === 0} onClick=${() => changed([])}>Clear</button>
       </div>
       <div class="release-groups">
@@ -325,7 +342,7 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
         ${visible.map(m => html`<div class="group"><div class="group-head"><strong class="msg" title=${m.subject}>${m.subject}</strong><span class="grow" /><span class="hint">${(m.date || "").slice(0, 10)}</span>
             <button type="button" class="link" disabled=${m.commits.every(cm => !cm.pending)} onClick=${() => changed(addPicks(picked, m.commits))}>Select all</button></div>
           ${m.commits.map(cm => html`<label class="check pick"><input type="checkbox" disabled=${!cm.pending} checked=${picked.some(p => p.hash === cm.hash)} onChange=${e => changed(e.target.checked ? addPicks(picked, [cm]) : removePicks(picked, [cm.hash]))} />
-            <code>${shortHash(cm.hash)}</code><span class="msg" title=${cm.subject}>${cm.subject}</span>${!cm.pending ? html`<${Badge} tone=${cm.in_release ? "info" : "neutral"}>${cm.in_release ? "in " + cm.in_release : "released"}<//>` : null}</label>`)}</div>`)}
+            <code>${shortHash(cm.hash)}</code>${(own => own ? html`<${TaskBadge} id=${own[1]} title=${taskInfo(own.join(":")).title} link=${taskInfo(own.join(":")).link} />` : null)(taskOf(taskMap, m, cm))}<span class="msg" title=${cm.subject}>${cm.subject}</span>${!cm.pending ? html`<${Badge} tone=${cm.in_release ? "info" : "neutral"}>${cm.in_release ? "in " + cm.in_release : "released"}<//>` : null}</label>`)}</div>`)}
       </div>
     </section>
 
