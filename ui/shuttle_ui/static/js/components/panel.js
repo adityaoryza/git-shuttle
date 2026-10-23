@@ -1,7 +1,7 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { GH_MISSING, branchOptions, conflictChoices, conflictCode, conflictSidesLine, ghMissing, groupByModule, hasMarkers, keepLabel, keepTitle, pickProgress, releaseReady, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { GH_MISSING, branchOptions, conflictChoices, conflictCode, conflictKindNote, conflictSidesLine, ghMissing, groupByModule, hasMarkers, keepLabel, keepTitle, pickProgress, releaseReady, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
 import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks, taskOf } from "../release.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { TaskPicker } from "./addons.js";
@@ -83,7 +83,7 @@ export function OperationBanner({ status, runner, confirm, onResolve, onHunks })
     ${progress ? html`<${PickProgress} progress=${progress} />` : null}
     <p>Nothing was forced and nothing was pushed. Resolve the conflicts in your editor, save, then continue${sides ? ", or choose here: place by place, or one whole side of a file" : ""}.</p>
     ${sides ? html`<p class="hint">${conflictSidesLine(sides)} Keeping one side drops what the other wrote in that file.</p>` : null}
-    ${status.conflict.length ? html`<ul class="files conflict-files">${status.conflict.map(f => html`<li class="conflict-row"><code>${f}</code>${sides ? html`<span class="conflict-actions">
+    ${status.conflict.length ? html`<ul class="files conflict-files">${status.conflict.map(f => html`<li class="conflict-row"><span class="conflict-file"><code>${f}</code>${sides && conflictKindNote(conflictCode(status, f), sides) ? html`<span class="hint conflict-note">${conflictKindNote(conflictCode(status, f), sides)}</span>` : null}</span>${sides ? html`<span class="conflict-actions">
       ${onHunks && hasMarkers(conflictCode(status, f)) ? html`<${Button} size="sm" onClick=${() => onHunks(f)} disabled=${runner.busy}>Choose place by place<//>` : null}
       <${Button} variant="outline" size="sm" title=${keepTitle(sides.ours, sides.theirs)} onClick=${() => onResolve("ours", f)} disabled=${runner.busy}>${keepLabel(sides.ours)}<//>
       <${Button} variant="outline" size="sm" title=${keepTitle(sides.theirs, sides.ours)} onClick=${() => onResolve("theirs", f)} disabled=${runner.busy}>${keepLabel(sides.theirs)}<//></span>` : null}</li>`)}</ul>` : null}

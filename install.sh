@@ -42,6 +42,11 @@ curl -fsSL "$REPO/archive/refs/tags/$version.tar.gz" | tar xz -C "$tmp/src" --st
 [[ -x "$tmp/src/bin/git-shuttle" || -f "$tmp/src/bin/git-shuttle" ]] || die "the archive has no bin/git-shuttle"
 
 mkdir -p "$PREFIX/share" "$PREFIX/bin"
+# the add-ons that were installed live in the program folder (addons/): they go into the new copy as they were, so that an add-on that was enabled stays enabled
+if [[ -d "$share/addons" ]]; then
+    rm -rf "$tmp/src/addons"
+    mv "$share/addons" "$tmp/src/addons" || die "cannot keep the add-ons that are installed in $share/addons: nothing was changed"
+fi
 rm -rf "$share"
 mv "$tmp/src" "$share"
 chmod +x "$share/bin/git-shuttle"

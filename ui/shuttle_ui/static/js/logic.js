@@ -237,6 +237,20 @@ export function conflictCode(status, path) {
   return entry ? entry.slice(0, 2) : "";
 }
 export const hasMarkers = code => code === "UU" || code === "AA";
+// Why a file has no places to choose from, in the words of the two sides (git's letters: first the side of "ours", then the side of "theirs"):
+// a file that one side deleted or never had is kept whole or left out. "" for a file that has places (UU, AA) and for what is not known.
+export function conflictKindNote(code, sides) {
+  if (!sides) return "";
+  const o = shortName(sides.ours.name, 40), t = shortName(sides.theirs.name, 40);
+  switch (code) {
+    case "DU": return o + " does not have this file; " + t + " changes it. Keeping " + t + " brings the file in as that commit has it; keeping " + o + " leaves it out.";
+    case "UD": return t + " deletes this file; " + o + " changes it. Keeping " + o + " keeps the file; keeping " + t + " deletes it.";
+    case "UA": return t + " adds this file; " + o + " does not have it. Keeping " + t + " adds it; keeping " + o + " leaves it out.";
+    case "AU": return o + " has this file; " + t + " does not. Keeping " + o + " keeps it; keeping " + t + " deletes it.";
+    case "DD": return "Both sides deleted this file.";
+    default: return "";
+  }
+}
 // who last changed the lines of a side of a place: one sentence for each commit
 export const blameLine = (b, total) => (b.picked ? "Commit " + b.picked + (total ? " of " + total : "") + " of this release: " : "Already on the branch: ") + b.subject
   + (b.author ? " (" + b.author + (b.when ? ", " + b.when : "") + ")" : "") + " · " + b.lines + (b.lines === 1 ? " line" : " lines");
@@ -279,4 +293,39 @@ export function branchTemplates(status, branches, now = new Date()) {
     if (next.name) out.push({ kind: "release", label: next.name, value: next.name, title: "The next release branch: the pattern of the settings, with the first free number" });
   }
   return out;
+}
+
+// ---- line by line: each line of either side is kept or left out; what is written is the kept lines of the left side, then those of the right
+// side (or the other way round); a whole side, or both, is one click. h is a place as the server gives it (ours, theirs, base and their numbers of lines).
+const linesOf = (text, count) => (count > 0 ? String(text).split("\n") : []);
+export function hunkLines(h) {
+  return { o: linesOf(h.ours, h.n_ours), t: linesOf(h.theirs, h.n_theirs), b: h.base === null || h.base === undefined ? null : linesOf(h.base, h.n_base) };
+}
+export const emptyPick = h => ({ o: Array(h.n_ours).fill(false), t: Array(h.n_theirs).fill(false), order: "ours", base: false });
+export function presetPick(h, id) {
+  if (id === "base") return { ...emptyPick(h), base: true };
+  return { o: Array(h.n_ours).fill(id !== "theirs"), t: Array(h.n_theirs).fill(id !== "ours"), order: id === "both-reverse" ? "theirs" : "ours", base: false };
+}
+// a click on a line (side: "o" or "t"); the first click on a place that was not decided starts from nothing kept
+export function togglePick(h, pick, side, index) {
+  const next = pick && !pick.base ? { ...pick, o: pick.o.slice(), t: pick.t.slice() } : emptyPick(h);
+  next[side][index] = !next[side][index];
+  return next;
+}
+export const setOrder = (pick, order) => ({ ...pick, order });
+// the lines that will be written: [{ side: "o"|"t"|"b", index, text }]
+export function pickResult(h, pick) {
+  const { o, t, b } = hunkLines(h);
+  const make = (side, lines, flags) => lines.map((text, index) => ({ side, index, text })).filter(l => flags[l.index]);
+  if (pick.base) return (b || []).map((text, index) => ({ side: "b", index, text }));
+  const mine = make("o", o, pick.o), theirs = make("t", t, pick.t);
+  return pick.order === "theirs" ? [...theirs, ...mine] : [...mine, ...theirs];
+}
+// what goes to the command: a name when the lines kept are exactly a whole side (or both), else the lines one by one
+export function pickChoice(h, pick) {
+  if (pick.base) return "base";
+  const tokens = r => r.map(l => l.side + (l.index + 1)).join("+");
+  const mine = tokens(pickResult(h, pick));
+  for (const id of ["ours", "theirs", "both", "both-reverse"]) if (tokens(pickResult(h, presetPick(h, id))) === mine) return id;
+  return "pick:" + mine;
 }

@@ -43,6 +43,8 @@ class TestValidation(unittest.TestCase):
             ("resolve", {"side": "ours", "paths": ["a b.txt"]}, [["resolve", "--ours", "--", "a b.txt"]]),
             ("resolve", {"file": "a/b.txt", "hunks": {"2": "theirs", "1": "ours", "10": "both-reverse"}},
              [["resolve", "--hunk", "1=ours", "--hunk", "2=theirs", "--hunk", "10=both-reverse", "--", "a/b.txt"]]),
+            ("resolve", {"file": "a.txt", "hunks": {"1": "pick:o1+t2+o3", "2": "pick:", "3": "pick:b1"}},
+             [["resolve", "--hunk", "1=pick:o1+t2+o3", "--hunk", "2=pick:", "--hunk", "3=pick:b1", "--", "a.txt"]]),
             ("worktree-add", {"path": "/tmp/wt", "branch": "a", "new_from": "develop"}, [["worktree", "add", "/tmp/wt", "a", "--new", "develop"]]),
             ("worktree-remove", {"path": "/tmp/wt", "force": True}, [["worktree", "remove", "/tmp/wt", "--force"]]),
             ("patch-apply", {"path": "/tmp/a.patch"}, [["patch", "apply", "/tmp/a.patch"]]),
@@ -75,6 +77,8 @@ class TestValidation(unittest.TestCase):
             ("resolve", {"file": "a", "hunks": {}}), ("resolve", {"file": "a", "hunks": {"x": "ours"}}), ("resolve", {"file": "a", "hunks": {"1": "mine"}}),
             ("resolve", {"file": "../a", "hunks": {"1": "ours"}}), ("resolve", {"file": "a", "hunks": [1]}), ("resolve", {"file": "a", "hunks": {"0": "ours"}}),
             ("resolve", {"hunks": {"1": "ours"}}), ("resolve", {"file": "-x", "hunks": {"1": "ours"}}), ("resolve", {"file": "a", "hunks": {"1": ["ours"]}}),
+            ("resolve", {"file": "a", "hunks": {"1": "pick:x1"}}), ("resolve", {"file": "a", "hunks": {"1": "pick:o0"}}), ("resolve", {"file": "a", "hunks": {"1": "pick:o1+"}}),
+            ("resolve", {"file": "a", "hunks": {"1": "pick:o1 t2"}}), ("resolve", {"file": "a", "hunks": {"1": "pick:o1;ls"}}), ("resolve", {"file": "a", "hunks": {"1": "pick:" + "o1+" * 9000 + "o1"}}),
             ("worktree-add", {"path": "relative", "branch": "a"}), ("worktree-add", {"path": "/a/../b", "branch": "a"}),
             ("worktree-add", {"path": "/tmp/x", "branch": "-a"}), ("worktree-add", {"path": "/tmp/x", "branch": "a", "new_from": "--x"}),
             ("worktree-remove", {"path": "-f"}), ("worktree-remove", {"path": "/x\ny"}), ("patch-apply", {"path": "a.patch"}),
@@ -148,6 +152,7 @@ class TestOperations(Base):
             self.assertEqual(len(data["hunks"]), 1)
             hunk = data["hunks"][0]
             self.assertEqual((hunk["n"], hunk["ours"], hunk["theirs"]), (1, "b", "B"))
+            self.assertEqual((hunk["n_ours"], hunk["n_theirs"], hunk["n_base"]), (1, 1, 0), "the number of lines of each side")
             self.assertEqual(self.api("POST", "repos/%s/conflicts" % self.rid(), {"path": "../x"})[0], 400, "a path outside the repository")
             self.assertEqual(self.api("POST", "repos/%s/conflicts" % self.rid(), {"path": "file.txt"})[0], 400, "a file that is not in conflict")
             self.assertEqual(self.api("POST", "repos/%s/conflicts" % self.rid(), {})[0], 400, "no path")

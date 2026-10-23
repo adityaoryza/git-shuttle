@@ -584,9 +584,6 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .tool-task { height: 30px; width: 190px; max-width: 30vw; } @media (max-width: 700px) { .tool-task { width: 100%; max-width: none; flex: 1 1 100%; } }
 
 /* a file in conflict, with the two buttons that keep one whole side of it */
-.conflict-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; padding: 4px 0; }
-.conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.conflict-actions .btn { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* the pick that waits, and a file in conflict place by place */
 .pick-progress { display: grid; gap: 6px; margin: 6px 0; }
@@ -614,3 +611,35 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
 .btn.is-on { border-color: var(--brand); color: var(--brand); }
 .templates { margin-top: 6px; }
+
+/* the dialog that resolves a file line by line */
+.modal-huge { width: min(1500px, calc(100vw - 16px)); height: min(92vh, 1100px); max-height: 92vh; }
+.modal-huge .modal-body { flex: 1; min-height: 0; align-content: start; }
+.side-head .right { text-align: right; }
+.code { display: grid; gap: 1px; font: 12.5px/1.45 var(--mono); }
+.code-line { display: grid; grid-template-columns: 16px 34px minmax(0, 1fr); gap: 6px; align-items: baseline; text-align: left; border: 0; background: transparent; color: var(--foreground); padding: 1px 6px; border-radius: 4px; cursor: pointer; font: inherit; }
+.code-line code { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.code-line:hover { background: var(--accent); } .code-line.on { background: color-mix(in srgb, var(--brand) 16%, transparent); }
+.code-line .mark { color: var(--brand); text-align: center; font-weight: 700; } .code-line .ln { color: var(--muted-foreground); text-align: right; user-select: none; }
+.code-line:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.result-box { border: 1px dashed var(--input); border-radius: var(--radius); padding: 8px 10px; display: grid; gap: 6px; min-width: 0; }
+.result-lines { margin: 0; padding: 0; list-style: none; font: 12.5px/1.45 var(--mono); display: grid; gap: 1px; }
+.result-lines li { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 6px; } .result-lines code { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.result-lines .src { color: var(--muted-foreground); text-align: center; }
+.choices .order { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+/* proportional at any width: long branch or commit names wrap or are cut, never clipped by the button */
+.hunk-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.side-head { flex-wrap: wrap; min-width: 0; } .side-head strong { overflow-wrap: anywhere; }
+.hunk-ctx, .side-text { overflow-x: auto; max-width: 100%; }
+@media (max-width: 900px) { .hunk-sides { grid-template-columns: minmax(0, 1fr); } .modal-huge { width: calc(100vw - 8px); height: 96vh; max-height: 96vh; } }
+@media (max-width: 520px) { .code-line { grid-template-columns: 14px 26px minmax(0, 1fr); } .choices { flex-wrap: wrap; } .choices .order { margin-left: 0; } }
+@media (max-width: 520px) { .side-head .right { flex: 1 0 100%; text-align: left; } }
+
+/* the files of a conflict: one tidy block each, the name and what it means on top, the choices under it in one row that wraps whole buttons */
+.conflict-files { display: grid; gap: 0; }
+.conflict-row { display: grid; gap: 8px; padding: 10px 0; border-top: 1px solid var(--border); }
+.conflict-row:first-child { border-top: 0; padding-top: 4px; }
+.conflict-file { display: grid; gap: 2px; min-width: 0; } .conflict-file code { overflow-wrap: anywhere; } .conflict-note { font-size: 12px; }
+.conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.conflict-actions .btn, .conflict-actions button { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 520px) { .conflict-actions .btn, .conflict-actions button { flex: 1 1 100%; } }
