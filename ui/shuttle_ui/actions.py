@@ -51,6 +51,12 @@ CATALOG = [
     {"id": "stash-list", "label": "Stashes", "group": "Changes", "cli": "git shuttle stash list | apply N | drop N | show N", "where": "toolbar Actions, stash list"},
     # worktrees
     {"id": "worktree-add", "label": "Add a worktree", "group": "Worktree", "cli": "git shuttle worktree add PATH BRANCH", "where": "toolbar Actions, branch menu"},
+    {"id": "addons", "label": "Add-ons", "group": "App", "cli": "git shuttle addon list", "where": "toolbar Actions, Add-ons dialog"},
+    {"id": "addon-enable", "label": "Enable an add-on", "group": "App", "cli": "git shuttle addon enable NAME", "where": "Add-ons dialog"},
+    {"id": "addon-install", "label": "Install an add-on", "group": "App", "cli": "git shuttle addon install NAME", "where": "Add-ons dialog"},
+    {"id": "addon-uninstall", "label": "Remove an installed add-on", "group": "App", "cli": "git shuttle addon uninstall NAME", "where": "Add-ons dialog"},
+    {"id": "tasks", "label": "Tasks", "group": "App", "cli": "git shuttle trace list | show TASK", "where": "toolbar Tasks, Start tab, task cards"},
+    {"id": "addon-disable", "label": "Disable an add-on", "group": "App", "cli": "git shuttle addon disable NAME", "where": "Add-ons dialog"},
     {"id": "worktree-list", "label": "Worktrees", "group": "Worktree", "cli": "git shuttle worktree list | remove PATH", "where": "toolbar Actions"},
     # finishing work
     {"id": "ship", "label": "Ship", "group": "Flow", "cli": "git shuttle ship", "where": "side panel, Ship"},
@@ -119,6 +125,8 @@ COMMANDS = {
     "move": ["move"],
     "stash": ["stash", "stash-pop", "stash-list"],
     "worktree": ["worktree-add", "worktree-list"],
+    "addon": ["addons", "addon-enable", "addon-disable", "addon-install", "addon-uninstall"],
+    "trace": ["tasks"],
     "patch": ["patch-create", "patch-apply"],
     "stage": ["stage"],
     "unstage": ["unstage"],

@@ -67,6 +67,7 @@ cmd_merge() {
     run git push "$remote" "$into" || stop "the push of '$into' was rejected (someone pushed in the meantime?).
   You are on '$into', with the merge done locally. Run  git pull --rebase $remote $into  and push again,
   then  git checkout $branch"
+    trace_event merge "$branch" "sha=$(trace_sha HEAD)" "into=$into"
     run git checkout "$branch" || stop "merged and pushed, but cannot go back to '$branch'."
     step "done: '$branch' is in '$into' on $remote"
 }

@@ -115,6 +115,12 @@ def shuttle_records(repo_path, args, timeout=60):
     return [rec.decode("utf-8", "replace").split("\x1f") for rec in done.stdout.split(b"\0") if rec]
 
 
+def shuttle_stdin(repo_path, args, data, timeout=75):
+    """A git-shuttle command that is given something on standard input (a key: never on the command line, never in a job log)."""
+    done = subprocess.run(SHUTTLE_ARGV + list(args), cwd=repo_path, env=child_env(), capture_output=True, input=data, start_new_session=True, timeout=timeout)
+    return done.returncode, (done.stdout + done.stderr).decode("utf-8", "replace")
+
+
 def shuttle_text(repo_path, args, timeout=60):
     """A read-only git-shuttle command and its plain output (or the reason it refused)."""
     done = subprocess.run(SHUTTLE_ARGV + list(args), cwd=repo_path, env=child_env(), capture_output=True, **NO_TERMINAL, timeout=timeout)

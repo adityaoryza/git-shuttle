@@ -1,4 +1,5 @@
 """The API routes: what each URL does. Nothing here knows about HTTP."""
+import json
 import os
 import re
 import subprocess
@@ -9,7 +10,7 @@ from .errors import BadRequest
 from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
 from . import prefs, updates, vault
-from .runner import NO_TERMINAL, child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_text
+from .runner import NO_TERMINAL, child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_stdin, shuttle_text
 from .validate import HASH_RE, build_commands, display_name, name as branch_name, text
 from .validate_ops import commitish
 
@@ -195,6 +196,70 @@ def compare(repo, body):
     return out
 
 
+def addon_records(repo, command, timeout=60, extra=()):
+    """The answers of the add-ons that `git shuttle addon cards|tasks --porcelain` gives: [{addon, <key>...}], and the reasons of those that said nothing."""
+    out, problems = [], []
+    for rec in shuttle_records(repo["path"], ["addon", command, *extra], timeout=timeout):
+        if len(rec) < 2:
+            continue
+        key, _, name = rec[0].partition("=")
+        if key == "problem":
+            problems.append({"addon": name, "problem": rec[1][:300]})
+            continue
+        try:
+            out.append((name, json.loads(rec[1])))
+        except ValueError:
+            continue
+    return out, problems
+
+
+def addon_setup(repo, name, body):
+    """What an add-on needs from the user (GET), or what the user typed for it (POST). The values go to the add-on on standard input and are never
+    kept, logged or sent back: the answer holds only what the add-on says (a secret is shown as set or not)."""
+    from .validate_ops import ADDON_RE
+    if not ADDON_RE.match(name):
+        raise BadRequest("the name of the add-on is not valid")
+    if body is None:
+        records = shuttle_records(repo["path"], ["addon", "setup", name], timeout=75)
+    else:
+        values = body.get("values")
+        if not isinstance(values, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in values.items()):
+            raise BadRequest("values must be an object of texts")
+        code, out = shuttle_stdin(repo["path"], ["addon", "setup", name, "--save", "--porcelain"], json.dumps(values).encode("utf-8"))
+        if code != 0:
+            raise BadRequest(out.strip()[:300] or "the add-on could not be set up")
+        records = [r.split("\x1f") for r in out.split("\0") if r]
+    try:
+        return json.loads(records[0][0])
+    except (ValueError, IndexError):
+        raise BadRequest("the add-on gave no usable answer", 500)
+
+
+def trace_json(repo, args):
+    try:
+        return json.loads(shuttle_text(repo["path"], ["trace"] + args + ["--porcelain"]))
+    except ValueError:
+        raise BadRequest("the trace cannot be read", 500)
+
+
+def addon_cards(repo):
+    """What the enabled add-ons show for the branch (each answer was checked by the command; nothing here runs an add-on itself)."""
+    out, problems = [], []
+    for rec in shuttle_records(repo["path"], ["addon", "cards"]):
+        if len(rec) < 2:
+            continue
+        key, _, name = rec[0].partition("=")
+        if key == "problem":
+            problems.append({"addon": name, "problem": rec[1][:300]})
+            continue
+        try:
+            cards = json.loads(rec[1]).get("cards", [])
+        except ValueError:
+            continue
+        out.append({"addon": name, "cards": cards})
+    return out, problems
+
+
 def deploy_targets(repo):
     """The saved deploy targets of a repository (the settings of git config, read by the command)."""
     names = ["target", "host", "port", "command", "branch", "sudo", "detector", "confirm", "last_time", "last_sha", "last_result"]
@@ -316,6 +381,32 @@ def handle(server, method, route, body):
             return fetch(repo)
         if method == "POST" and rest == ["preview"]:
             return preview(repo, body)
+        if method == "GET" and rest == ["addons"]:
+            return {"addons": [{"name": r[0].partition("=")[2], "state": r[1] if len(r) > 1 else "", "path": r[2] if len(r) > 2 else "",
+                                "version": r[3] if len(r) > 3 else "", "flags": r[4].split() if len(r) > 4 and r[4] else [],
+                                "hooks": r[5].split() if len(r) > 5 and r[5] else []}
+                               for r in shuttle_records(repo["path"], ["addon", "list"]) if r]}
+        if len(rest) == 3 and rest[0] == "addons" and rest[2] == "setup" and method in ("GET", "POST"):
+            return addon_setup(repo, rest[1], body if method == "POST" else None)
+        if method == "GET" and rest == ["addons", "tasks"]:
+            found, problems = addon_records(repo, "tasks", timeout=75, extra=["--all"] if body.get("all") == "1" else [])
+            return {"tasks": [{"addon": name, "tasks": data.get("tasks", []), "note": data.get("note", "")} for name, data in found], "problems": problems}
+        if method == "GET" and rest == ["addons", "available"]:
+            return {"available": [{"name": r[0].partition("=")[2], "title": r[1] if len(r) > 1 else "", "description": r[2] if len(r) > 2 else "",
+                                   "repo": r[3] if len(r) > 3 else "", "version": r[4] if len(r) > 4 else "", "state": r[5] if len(r) > 5 else "",
+                                   "path": r[6] if len(r) > 6 else ""}
+                                  for r in shuttle_records(repo["path"], ["addon", "available"]) if r]}
+        if method == "GET" and rest == ["trace", "tasks"]:
+            return trace_json(repo, ["list"])
+        if method == "POST" and rest == ["trace", "show"]:
+            from .validate_ops import ADDON_RE, TASK_ID_RE
+            addon, task = body.get("addon"), body.get("task")
+            if not isinstance(addon, str) or not ADDON_RE.match(addon) or not isinstance(task, str) or not TASK_ID_RE.match(task):
+                raise BadRequest("name the add-on and the task")
+            return trace_json(repo, ["show", task, "--addon", addon])
+        if method == "GET" and rest == ["addons", "cards"]:
+            cards, problems = addon_cards(repo)
+            return {"cards": cards, "problems": problems}
         if method == "GET" and rest == ["deploy"]:
             return {"targets": deploy_targets(repo), "vault": vault.info()}
         if method == "POST" and rest == ["deploy", "forget-password"]:

@@ -114,7 +114,7 @@ release_append() {
 }
 
 cmd_release() {
-    local args=() item hashes h seen=" " auto_name empty=0 append=0 onto="" from="" push=0 commits=()
+    local args=() item hashes h seen=" " auto_name empty=0 append=0 onto="" from="" push=0 commits=() traced=()
     need_repo
     load_branches
     while (( $# )); do
@@ -141,6 +141,7 @@ cmd_release() {
             *)
                 item=$1; shift
                 if branch_tip "$item" >/dev/null 2>&1; then
+                    traced+=("$item")                            # (the task of a branch, if it has one, is told that it is in this release)
                     hashes=$(branch_commits "$item") || exit 1   # a name that is a branch wins over a short hash
                 else
                     hashes=$item
@@ -162,8 +163,20 @@ cmd_release() {
     if (( append )); then
         [[ -n "$onto" ]] || die "release --append needs the release branch:  git shuttle release --onto <branch> --append COMMIT..."
         (( ${#commits[@]} )) || die "release --append needs at least one commit"
-        release_append "$onto" "$push" "${commits[@]}"
-        return
+        release_append "$onto" "$push" "${commits[@]}" || return $?
+        release_trace "$onto" "${traced[@]}"
+        return 0
     fi
-    cmd_pick "${args[@]}"
+    cmd_pick "${args[@]}" || return $?
+    release_trace "$onto" "${traced[@]}"
+}
+
+# release_trace RELEASE_BRANCH BRANCH... — each branch that is for a task puts "released" in the trace of its task.
+release_trace() {
+    local onto=$1 b
+    shift
+    for b in "$@"; do
+        trace_event release "$b" "release_branch=$onto" "sha=$(trace_sha "$b")"
+    done
+    return 0
 }

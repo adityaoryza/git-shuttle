@@ -4,6 +4,7 @@ import { api } from "../api.js";
 import { GH_MISSING, branchOptions, ghMissing, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
 import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks } from "../release.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
+import { TaskPicker } from "./addons.js";
 import { FileRow } from "./file-row.js";
 import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, cn } from "./ui.js";
 
@@ -73,9 +74,20 @@ export function OperationBanner({ status, runner, confirm }) {
 }
 
 // ---- 1. start a task
-export function StartTab({ status, branches, runner, onContinue, onSwitch }) {
+export function StartTab({ repoId, status, branches, runner, onContinue, onSwitch }) {
   const c = settings(status);
   const [name, setName] = useState("");
+  // the add-ons that were enabled and add a flag to start (git shuttle start --task 4821): a field each, to start from what they know
+  const [starters, setStarters] = useState([]);
+  const [fromValues, setFromValues] = useState({});
+  useEffect(() => {
+    let alive = true;
+    api("GET", "repos/" + repoId + "/addons").then(d => {
+      if (!alive) return;
+      setStarters((d.addons || []).filter(a => a.state === "enabled").flatMap(a => (a.flags || []).filter(f => f.startsWith("start:--")).map(f => ({ addon: a.name, flag: f.slice(8), key: a.name + ":" + f }))));
+    }, () => { if (alive) setStarters([]); });
+    return () => { alive = false; };
+  }, [repoId]);
   const [choice, setChoice] = useState("stash");     // what to do with uncommitted changes: the safe one is the default
   const plan = startPlan({ status, branches, name, prefix: c.branchPrefix || "feature/", choice });
   const { here } = plan;
@@ -105,6 +117,17 @@ export function StartTab({ status, branches, runner, onContinue, onSwitch }) {
     <${ActionBar} runner=${runner} action="start" params=${plan.params} label="Create branch" disabled=${!plan.canCreate}>
       ${plan.needsChoice || name ? html`<${Button} variant="ghost" size="sm" onClick=${() => { setName(""); runner.clearPreview(); }}>Cancel<//>` : null}
     <//>
+    ${starters.length ? html`<span class="section">Start from a task</span>
+      <p class="lead">An enabled add-on knows the task: it proposes the name of the branch, and the branch remembers the task.</p>
+      ${starters.map(s => {
+        const value = (fromValues[s.key] || "").trim();
+        const params = value ? { addon: { name: s.addon, flag: s.flag, value }, ...(plan.needsChoice ? { [choice]: true } : {}) } : null;
+        return html`<div class="from-task">
+          <${TaskPicker} repoId=${repoId} picked=${{ addon: s.addon, id: fromValues[s.key] }} onPick=${(addon, task) => { setFromValues({ ...fromValues, [s.key]: task.id }); runner.clearPreview(); }} />
+          <${Field} label=${s.addon + ": " + s.flag}><${Input} value=${fromValues[s.key] || ""} placeholder="pick one above, or type the number or the link of the task" onInput=${e => { setFromValues({ ...fromValues, [s.key]: e.target.value }); runner.clearPreview(); }} /><//>
+          ${params ? html`<${ActionBar} runner=${runner} action="start" params=${params} label="Create the branch from the task" />` : html`<p class="hint">Type the task to start from it.</p>`}
+        </div>`;
+      })}` : null}
     <${PreviewBox} runner=${runner} action="start" />
     ${refused ? html`<div class="actions"><${Button} variant="secondary" size="sm" onClick=${() => withChoice("stash")}>Stash and start<//><${Button} variant="secondary" size="sm" onClick=${() => withChoice("carry")}>Take changes along<//></div>` : null}
   </div>`;

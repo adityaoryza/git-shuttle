@@ -22,7 +22,7 @@ run_server() {
     printf '\n%s\n' "ui/server (python3)"
     if ! command -v python3 >/dev/null 2>&1; then echo "  python3 is missing: skipped"; return; fi
     local out rc file passed=0 failed_tests=0
-    for file in test_server.py test_deploy.py test_vault.py test_ops.py test_log.py test_brand.py test_cli.py; do
+    for file in test_server.py test_deploy.py test_vault.py test_addons.py test_ops.py test_log.py test_brand.py test_cli.py; do
         out=$(python3 -W ignore "$here/ui/$file" 2>&1); rc=$?
         printf '%s\n' "$out" | grep -E ' \.\.\. (ok|FAIL|ERROR)$' | sed -E 's/^(test_[a-z_0-9]+) \(.*\) \.\.\. ok$/  \x1b[32m✔\x1b[0m \1/; s/^(.*) \.\.\. (FAIL|ERROR)$/  \x1b[31m✘\x1b[0m \1/'
         (( rc == 0 )) || { printf '%s\n' "$out" | tail -40; failed=$((failed + 1)); }

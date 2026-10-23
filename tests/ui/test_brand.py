@@ -14,7 +14,7 @@ ALLOWED = (
     "https://img.shields.io/", "https://www.contributor-covenant.org/",                                         # documentation only (README badges, the code of conduct): never used by the tool
 )
 # not scanned: third-party files, and the scripts whose comments and case patterns spell out the shape of a URL (link.sh, update.sh)
-SKIP = ("ui/shuttle_ui/static/vendor/", "THIRD_PARTY_NOTICES.md", "lib/commands/link.sh", "lib/commands/update.sh", "tests/", "node_modules/", ".git/")
+SKIP = ("ui/shuttle_ui/static/vendor/", "THIRD_PARTY_NOTICES.md", "lib/commands/link.sh", "lib/commands/update.sh", "lib/commands/addon_install.sh", "tests/", "node_modules/", ".git/")
 TEXT = (".md", ".py", ".js", ".mjs", ".css", ".html", ".svg", ".sh", ".yml", ".yaml", ".json", ".txt")
 
 

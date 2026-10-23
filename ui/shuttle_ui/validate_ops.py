@@ -36,6 +36,10 @@ def one_of(value, options, field):
     return value
 
 
+ADDON_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}$")
+ADDON_FLAG_RE = re.compile(r"^[a-z][a-z0-9-]{0,30}$")
+TAG_RE = re.compile(r"^v[0-9][0-9A-Za-z._-]{0,30}$")
+TASK_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.#:/-]{0,59}$")
 TARGET_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
 MODULES_RE = re.compile(r"^[A-Za-z0-9_]+(,[A-Za-z0-9_]+)*$")
 HOST_RE = re.compile(r"^([A-Za-z0-9_][A-Za-z0-9._-]*@)?[A-Za-z0-9][A-Za-z0-9.:-]*$")
@@ -182,6 +186,16 @@ def build(action, p):
             if step == "reword" or item.get("message"):
                 messages += ["--message", "%s=%s" % (sha, text(item.get("message"), "message", 60000, True))]
         return [args + messages + (["--allow-pushed"] if flag(p.get("allow_pushed")) else [])]
+    if action in ("addon-enable", "addon-disable", "addon-install", "addon-uninstall"):
+        addon = p.get("name")
+        if not isinstance(addon, str) or not ADDON_RE.match(addon):
+            raise BadRequest("the name of the add-on is not valid: lowercase letters, digits and -")
+        args = ["addon", action.split("-", 1)[1], addon]
+        if action == "addon-install" and p.get("version"):
+            if not isinstance(p["version"], str) or not TAG_RE.match(p["version"]):
+                raise BadRequest("the version must be a tag like v0.2.0")
+            args += ["--version", p["version"]]
+        return [args]
     if action in ("deploy", "deploy-check", "deploy-setup", "deploy-forget"):
         return [deploy_args(action, p)]
     return None

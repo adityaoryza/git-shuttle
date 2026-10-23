@@ -11,6 +11,7 @@ push_branch() {
     run git push "${args[@]}" "$remote" "$branch" || stop "the push of '$branch' was rejected.
   If the remote has new commits:   git shuttle sync
   If you rewrote the branch:       git shuttle push --force-with-lease"
+    trace_event push "$branch" "sha=$(trace_sha "$branch")" "remote=$remote"
 }
 
 cmd_push() {

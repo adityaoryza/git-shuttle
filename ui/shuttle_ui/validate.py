@@ -78,7 +78,21 @@ def build_commands(action, params):
     if more is not None:
         return more
     if action == "start":
-        args = ["start", text(p.get("name"), "name", 200, True, True)]
+        # the name of the task may come from an add-on that was enabled (git shuttle start --task 4821): the flag is checked here, and
+        # again by the command, which knows only the flags that an enabled add-on declared
+        addon = p.get("addon")
+        args = ["start"]
+        if addon is not None:
+            from .validate_ops import ADDON_RE, ADDON_FLAG_RE
+            if not isinstance(addon, dict) or not isinstance(addon.get("name"), str) or not ADDON_RE.match(addon["name"]) \
+                    or not isinstance(addon.get("flag"), str) or not ADDON_FLAG_RE.match(addon["flag"]):
+                raise BadRequest("the add-on to start from is not valid")
+            value = text(addon.get("value"), "the task", 300, True, True)
+            if p.get("name"):
+                args.append(text(p.get("name"), "name", 200, True, True))
+            args += ["--" + addon["flag"], value]
+        else:
+            args.append(text(p.get("name"), "name", 200, True, True))
         if flag(p.get("stash")) and flag(p.get("carry")):
             raise BadRequest("choose --stash or --carry, not both")
         if flag(p.get("stash")):

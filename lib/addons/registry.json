@@ -1,0 +1,13 @@
+{
+  "addons": [
+    {
+      "name": "odoo-task",
+      "title": "Odoo tasks",
+      "description": "Start a branch from one of your Odoo tasks, fill the pull request from it, and trace the task from its first commit to its release. Reads the folders that odoo-task fetch writes.",
+      "repo": "adityaoryza/odoo-task-fetch",
+      "asset": "odoo-task-fetch-{tag}.tar.gz",
+      "program": "bin/git-shuttle-odoo-task",
+      "protocol": 1
+    }
+  ]
+}
