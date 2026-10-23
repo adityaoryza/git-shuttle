@@ -186,6 +186,21 @@ def build(action, p):
             if step == "reword" or item.get("message"):
                 messages += ["--message", "%s=%s" % (sha, text(item.get("message"), "message", 60000, True))]
         return [args + messages + (["--allow-pushed"] if flag(p.get("allow_pushed")) else [])]
+    if action == "task-unbind":
+        return [["trace", "unbind", "--branch", name(p.get("branch"), "the branch")]]
+    if action == "task-bind":
+        addon = p.get("addon")
+        if addon is not None and (not isinstance(addon, str) or not ADDON_RE.match(addon)):
+            raise BadRequest("the name of the add-on is not valid: lowercase letters, digits and -")
+        task = text(p.get("task"), "the task", 300, True, True)
+        if task.startswith("-"):
+            raise BadRequest("the task cannot start with -")
+        args = ["trace", "bind", task] + (["--addon", addon] if addon else [])
+        if p.get("branch"):
+            args += ["--branch", name(p.get("branch"), "the branch")]
+        if p.get("force") is True:
+            args.append("--force")
+        return [args]
     if action in ("addon-enable", "addon-disable", "addon-install", "addon-uninstall"):
         addon = p.get("name")
         if not isinstance(addon, str) or not ADDON_RE.match(addon):

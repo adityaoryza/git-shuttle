@@ -43,11 +43,28 @@ function App() {
   const [repoId, setRepoId] = useState(null);
   const [status, setStatus] = useState(null);
   const [graph, setGraph] = useState(null);
+  const [taskMap, setTaskMap] = useState(null);       // which commits and branches are for a task (the add-ons): marked in the graph
+  useEffect(() => {
+    if (!repoId || !graph) return undefined;
+    let alive = true;
+    api("GET", "repos/" + repoId + "/trace/map").then(d => { if (alive) setTaskMap(d); }, () => { if (alive) setTaskMap(null); });
+    return () => { alive = false; };
+  }, [repoId, graph]);
   const [tab, setTab] = useState("start");
   const [dialog, setDialog] = useState(null);
   const [modal, setModal] = useState(null);           // the dialogs of the actions: { name, ... }
   const [catalog, setCatalog] = useState([]);           // every action, from the server (for the palette)
   const [search, setSearch] = useState("");
+  const [taskFilter, setTaskFilter] = useState("");   // "addon:id": the graph shows only the work of that task
+  // the tasks that have work in the graph, with how many commits: to narrow the graph to one
+  const taskList = useMemo(() => {
+    if (!taskMap || !taskMap.tasks) return [];
+    const counts = {};
+    Object.values(taskMap.commits || {}).forEach(([a, id]) => { counts[a + ":" + id] = (counts[a + ":" + id] || 0) + 1; });
+    const out = Object.keys(taskMap.tasks).map(key => ({ key, id: key.split(":").slice(1).join(":"), title: (taskMap.tasks[key].title || "").slice(0, 50), count: counts[key] || 0 }));
+    return out.sort((x, y) => y.id.localeCompare(x.id, undefined, { numeric: true }));
+  }, [taskMap]);
+  const activeTask = taskList.some(t => t.key === taskFilter) ? taskFilter : "";
   const [logVersion, setLogVersion] = useState(0);      // changes when an action finishes: an open log reloads
   const searchRef = useRef(null);
   const [toasts, queue] = useToasts();
@@ -334,7 +351,7 @@ function App() {
       case "stash": return html`<${StashDialog} repoId=${repoId} onAction=${stashAction} onClose=${closeModal} notify=${notify} />`;
       case "addons": return html`<${AddonsDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} onSetup=${addon => setModal({ name: "addon-setup", addon })} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, { "addon-enable": "Enable", "addon-install": "Install", "addon-uninstall": "Remove" }[action] || "Disable", action === "addon-uninstall" ? "destructive" : undefined); }} />`;
       case "addon-setup": return html`<${AddonSetupDialog} repoId=${repoId} name=${modal.addon} notify=${notify} onClose=${closeModal} />`;
-      case "tasks": return html`<${TasksDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} />`;
+      case "tasks": return html`<${TasksDialog} repoId=${repoId} branches=${branches} current=${status.branch} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "task-unbind" ? "Unlink" : "Link", action === "task-unbind" ? "destructive" : undefined); }} />`;
       case "worktrees": return html`<${WorktreesDialog} repoId=${repoId} branches=${branches} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "worktree-remove" ? "Remove" : "Add", action === "worktree-remove" ? "destructive" : undefined); }} />`;
       case "journal": return html`<${JournalDialog} repoId=${repoId} status=${status} notify=${notify} onClose=${closeModal} onAction=${id => { setModal(null); perform(id); }} />`;
       case "compare": return html`<${CompareDialog} repoId=${repoId} branches=${branches} a=${modal.a} b=${modal.b} notify=${notify} onClose=${closeModal} />`;
@@ -365,12 +382,12 @@ function App() {
     </header>
     <${UpdateBanner} notice=${notice} notify=${notify} onHowTo=${() => { setAboutAuto(true); setDialog("about"); }} onLater=${() => api("POST", "update/notice", { snooze: notice.latest }).then(setNotice, e => fail(e))} />
     <${ProgressBar} active=${runner.busy || loading || fetching} />
-    ${status && repos.length ? html`<${Toolbar} ctx=${ctx} perform=${perform} search=${search} setSearch=${setSearch} searchRef=${searchRef} push=${push} />` : null}
+    ${status && repos.length ? html`<${Toolbar} ctx=${ctx} perform=${perform} search=${search} setSearch=${setSearch} searchRef=${searchRef} push=${push} taskList=${taskList} taskFilter=${activeTask} setTaskFilter=${setTaskFilter} />` : null}
 
     ${!repos.length ? html`<main class="onboarding"><${BrandMark} size=${56} class="onboarding-mark" /><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
       <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split" ref=${mainRef} style=${{ "--panel-w": panelSplit.size + "px" }}>
       <section class="graph-pane" aria-label="Commit graph" ref=${paneRef}>
-        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} /></div>
+        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} tasks=${taskMap} taskFilter=${activeTask} onClearTask=${() => setTaskFilter("")} /></div>
         ${selected && repoId ? html`<${Splitter} split=${detailSplit} axis="y" grow=${-1} label="Resize the details" />
           <${CommitPanel} key=${selected.type === "worktree" ? "worktree" : selected.sha} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} height=${detailSplit.size} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} actions=${fileActions} />` : null}
       </section>
