@@ -2,6 +2,16 @@
 
 All notable changes are listed here. The format follows Keep a Changelog, and the project follows Semantic Versioning.
 
+## [0.5.0] - 2026-10-23
+
+### Changed
+- A job shows what the command prints while it runs (the lines of the server during a deploy), and the view follows the last line, unless
+  you scrolled up. Before, the output came only when the job had ended, and the page had only a "running" badge to show.
+
+### Fixed
+- A browser test of the Deploy tab dismissed the toasts of a job too early (the failure comes a moment after the success) and then waited for a
+  toast that never leaves: it now dismisses until nothing shows up.
+
 ## [0.4.2] - 2026-10-22
 
 ### Fixed
