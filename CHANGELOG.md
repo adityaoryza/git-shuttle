@@ -4,6 +4,24 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-23
+
+### Added
+- **Resolve a file line by line**: *Choose place by place* is now a big dialog with the code line by line, the two sides next to each other, and under
+  each place the exact text that will be written. A click on a line keeps it or leaves it out; a button takes a whole side, or both in either order,
+  for one place, and the buttons at the top do it for all the places. For the command: `git shuttle resolve --hunk N=pick:o1+t2+o3 -- FILE` takes the
+  lines of ours (`o`), theirs (`t`) or what both started from (`b`), numbered from 1, in the order given; `pick:` alone takes the place out of the
+  file. A line that does not exist is refused before anything is written, also in a dry run. `conflicts --porcelain` reports the number of lines of
+  each side.
+
+### Fixed
+- **An update, and `install.sh` run again, no longer remove the add-ons that were installed.** They live in the program folder (`addons/`), which was
+  replaced as a whole, so every update meant installing and enabling them again. They are carried into the new copy as they were, so an enabled
+  add-on stays enabled (its pin is the checksum of its program); if that cannot be done, the update is not made. (This holds for the update *from* this
+  version on: the version that is being replaced does the swap.)
+- The files of a conflict in the banner are laid out one block each (name and what it means on top, the choices under it); the Keep buttons with a long
+  branch or commit name are no longer clipped, and they stack at the width of a phone.
+
 ## [0.9.0] - 2026-10-23
 
 ### Added
