@@ -1,7 +1,7 @@
 """Looking for a newer release, and installing it: `git shuttle update`, run when the page asks for it.
 
 check and apply run when the user clicks. The notice (a reminder that a newer release is out) is the one thing that looks by itself: at most
-once an hour, from this server or from any command of git-shuttle (the page never talks to the internet), one request for the number of the latest release (what the Update button
+every ten minutes (and at every start of the page), from this server or from any command of git-shuttle (the page never talks to the internet), one request for the number of the latest release (what the Update button
 asks, and no more: nothing about you or your repositories is sent). It can be turned off in the About dialog, or with
 GIT_SHUTTLE_NO_UPDATE_CHECK=1. The address that is asked is fixed in the command (the repository of git-shuttle); the page sends no
 parameter, so it cannot point the command anywhere else.
@@ -21,6 +21,7 @@ from .redact import redact
 from .runner import NO_TERMINAL, child_env, limited, parse_porcelain
 
 _LOCK = threading.Lock()
+RESTART_HOOK = None     # set by the command line: called when an update was installed, it starts this server again (True) or cannot (False)
 
 
 def updates_lock():
@@ -36,8 +37,8 @@ def _home():
 
 # -- the reminder that a newer release is out ----------------------------------------------------------------------------------
 
-NOTICE_EVERY = 3600             # a look at most once an hour (the commands of git-shuttle make it too: update_remind in lib/commands/update.sh)
-RETRY_AFTER = 3600              # when the look failed (no network): again in an hour
+NOTICE_EVERY = 600              # a look at most every ten minutes (the commands of git-shuttle make it too: update_remind in lib/commands/update.sh); a start always looks
+RETRY_AFTER = 600               # when the look failed (no network): again in ten minutes
 NOTICE_TIMEOUT = 15
 _NOTICE_LOCK = threading.Lock()
 _VERSION = re.compile(r"^\d+(\.\d+){1,3}$")
@@ -80,17 +81,17 @@ def _forced_off():
     return os.environ.get("GIT_SHUTTLE_NO_UPDATE_CHECK", "").strip() not in ("", "0")
 
 
-def notice():
+def notice(force=False):
     """What the page shows: is a newer release out, and has the user turned the reminder off or put it off for this release.
 
-    The look itself (a request to the release page) is made here when the last one is older than an hour, with a short wait, and its
-    answer is kept: the page asks once, and the next answers come from the file."""
+    The look itself (a request to the release page) is made here when the last one is older than ten minutes, or when it is forced (the start
+    of the page), with a short wait, and its answer is kept: the next answers come from the file."""
     with _NOTICE_LOCK:
         data = _read_notice()
         enabled = data.get("enabled", True) is not False
         off = _forced_off()
         now = time.time()
-        if enabled and not off and now - float(data.get("checked", 0) or 0) >= NOTICE_EVERY:
+        if enabled and not off and (force or now - float(data.get("checked", 0) or 0) >= NOTICE_EVERY):
             try:
                 code, out, _ = _run(["update", "--check", "--porcelain"], NOTICE_TIMEOUT)
                 info = parse_porcelain(out) if code == 0 else {}
@@ -100,7 +101,7 @@ def notice():
                 data.update({"latest": info.get("latest", ""), "notes": info.get("notes", ""), "can_update": info.get("can-update") == "1",
                              "kind": info.get("kind", ""), "checked": now})
             else:
-                data["checked"] = now - NOTICE_EVERY + RETRY_AFTER      # no answer: the next look is in an hour
+                data["checked"] = now - NOTICE_EVERY + RETRY_AFTER      # no answer: the next look comes later
             _write_notice(data)
         latest = data.get("latest", "")
         available = bool(latest) and _version_key(latest) > _version_key(__version__)
@@ -178,6 +179,8 @@ def apply(store):
         log.job("git-shuttle", "update", "finished  %s  %.1fs" % ("done" if code == 0 else "failed", time.time() - started))
         if code != 0:
             raise BadRequest(_reason(err or out) or "The update failed.", 500)
-        return {"ok": True, "version": installed, "output": output}
+        # the new release is in place: this server runs the old code until it starts again, so it does (after the answer is sent)
+        restart = bool(RESTART_HOOK and RESTART_HOOK())
+        return {"ok": True, "version": installed, "output": output, "restart": restart}
     finally:
         _LOCK.release()

@@ -13,12 +13,13 @@ export function describeCheck(info) {
   return { tone: "warn", title, detail: info.reason || "This copy cannot be updated from here.", canUpdate: false, notes: info.notes || "" };
 }
 
-// What was installed: the page keeps running the old server until it is restarted, so it says so.
+// What was installed: the server starts again by itself (the page reloads when it is back); where it cannot, the page says to start it by hand.
 export function describeApplied(result) {
   const version = result && result.version ? result.version : "";
   return {
     title: version ? "Updated to " + version : "Updated",
-    detail: "Stop git shuttle ui (Ctrl-C) and start it again to use it.",
+    detail: result && result.restart ? "The server starts again by itself, and this page reloads when it is back."
+      : "Stop git shuttle ui (Ctrl-C) and start it again to use it.",
   };
 }
 

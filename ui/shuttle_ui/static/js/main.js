@@ -6,7 +6,7 @@ import { Alert, Badge, Button, ProgressBar, Segmented } from "./components/ui.js
 import { ConfirmDialog } from "./components/confirm.js";
 import { ToastHost, useToasts } from "./components/toast-host.js";
 import { describeJob, fetchToast, toToast } from "./feedback.js";
-import { GH_MISSING, ghMissing } from "./logic.js";
+import { GH_MISSING, branchTemplates, ghMissing, releaseReady, resolveRequest } from "./logic.js";
 import { isPreviewSkipped } from "./skip-preview.js";
 import { GraphView } from "./components/graph-view.js";
 import { DeployTab } from "./components/deploy-tab.js";
@@ -17,6 +17,7 @@ import { pushState, pushTitle } from "./pushstate.js";
 import { AddRepoDialog, SettingsDialog } from "./components/dialogs.js";
 import { FormDialog } from "./components/form-dialog.js";
 import { AddonCards, AddonSetupDialog, AddonsDialog, TasksDialog } from "./components/addons.js";
+import { ConflictDialog } from "./components/conflict-dialog.js";
 import { CompareDialog, JournalDialog, PatchDialog, RewriteDialog, ShortcutsDialog, StashDialog, WorktreesDialog } from "./components/ops-dialogs.js";
 import { Toolbar } from "./components/toolbar.js";
 import { Palette } from "./components/palette.js";
@@ -226,11 +227,15 @@ function App() {
   };
   const switchTo = name => preview("switch", { name }, "Switch to " + name, "Switch");
   const selectCommit = sha => setSelected({ type: "commit", sha });
+  // keep one whole side of a file in conflict: the preview says which branch is kept and which is dropped
+  const resolveFile = (side, file) => { const r = resolveRequest(status, side, file); preview(r.action, r.params, r.label, r.verb); };
   async function releasePullRequest() {
     const c = settings(status);
     if (ghMissing(status)) { notify({ variant: "error", title: GH_MISSING.title, detail: GH_MISSING.text }); return; }
-    if (await confirm({ title: "Open a pull request?", body: "From " + status.branch + " to " + c.release + ".", confirmLabel: "Open pull request" })) {
-      runner.run("pr", { base: c.release, title: status.branch, body: "Release: " + status.branch }, "Pull request");
+    const ready = releaseReady(status);
+    const base = (ready && ready.base) || c.release;
+    if (await confirm({ title: "Open a pull request?", body: "From " + status.branch + " to " + base + ".", confirmLabel: "Open pull request" })) {
+      runner.run("pr", { base, title: status.branch, body: "Release: " + status.branch }, "Pull request");
     }
   }
 
@@ -304,6 +309,7 @@ function App() {
       case "add": setDialog("add"); return;
       case "shortcuts": setModal({ name: "shortcuts" }); return;
       case "about": setAboutAuto(id === "update"); setDialog("about"); return;
+      case "conflict": notify({ variant: "info", title: "Keep one side of a conflict", detail: "Use the buttons next to each file, in the banner at the top of the panel." }); return;
       case "files": return;
       default:
     }
@@ -350,6 +356,7 @@ function App() {
       case "palette": return html`<${Palette} entries=${paletteEntries()} early=${typedEarly} onReady=${() => { opening.current = false; }} onClose=${() => { opening.current = false; closeModal(); }} onPick=${e => perform(e.id)} />`;
       case "shortcuts": return html`<${ShortcutsDialog} onClose=${closeModal} />`;
       case "log": return html`<${LogPanel} repos=${repos} version=${logVersion} onClose=${closeModal} onRerun=${rerun} onCopy=${copyText} notify=${notify} confirm=${confirm} />`;
+      case "conflict": return html`<${ConflictDialog} repoId=${repoId} file=${modal.file} status=${status} onClose=${closeModal} onSubmit=${req => { setModal(null); preview(req.action, req.params, req.label, req.verb); }} />`;
       case "stash": return html`<${StashDialog} repoId=${repoId} onAction=${stashAction} onClose=${closeModal} notify=${notify} />`;
       case "addons": return html`<${AddonsDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} onSetup=${addon => setModal({ name: "addon-setup", addon })} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, { "addon-enable": "Enable", "addon-install": "Install", "addon-uninstall": "Remove", "addon-report": "Apply" }[action] || "Disable", action === "addon-uninstall" ? "destructive" : undefined); }} />`;
       case "addon-setup": return html`<${AddonSetupDialog} repoId=${repoId} name=${modal.addon} notify=${notify} onClose=${closeModal} />`;
@@ -397,8 +404,8 @@ function App() {
       <aside class="panel" aria-label="Next step">
         ${repo && repo.error ? html`<${Alert} tone="bad" title="Cannot read this repository">${repo.error}<//>` : null}
         ${status ? html`
-          <${ResultCard} runner=${runner} onPullRequest=${releasePullRequest} />
-          <${OperationBanner} status=${status} runner=${runner} confirm=${confirm} />
+          <${ResultCard} runner=${runner} onPullRequest=${releasePullRequest} ready=${!!releaseReady(status)} />
+          <${OperationBanner} status=${status} runner=${runner} confirm=${confirm} onResolve=${resolveFile} onHunks=${file => setModal({ name: "conflict", file })} />
           ${status["config.set"] === "0" ? html`<${Alert} tone="info" title="Using the default settings"><span>Integration <code>${c.integration || "?"}</code>, release <code>${c.release || "?"}</code>.</span> <a href="#" onClick=${e => { e.preventDefault(); setDialog("settings"); }}>Change</a><//>` : null}
           <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }, { value: "deploy", label: "Deploy" }]} />
           ${tab === "start" || tab === "ship" ? html`<${AddonCards} repoId=${repoId} branch=${status.branch} version=${tab + ":" + (runner.job && runner.job.state !== "running" ? runner.job.id : "")} />` : null}
@@ -415,7 +422,7 @@ function App() {
     ${dialog === "settings" && status ? html`<${SettingsDialog} status=${status} branches=${branches} repoName=${repo ? repo.name : ""} onSave=${saveSettings} onRemove=${removeRepo} onClose=${() => setDialog(null)} />` : null}
     ${modalView()}
     ${menu ? html`<${ContextMenu} menu=${menu} onClose=${() => setMenu(null)} />` : null}
-    ${pending && pending.ask ? html`<${BranchHereDialog} commit=${pending.commit} onClose=${() => setPending(null)} onSubmit=${(name, publish) => preview("branch", { name, commit: pending.commit.sha, push: publish }, "Create branch " + name, publish ? "Create and push" : "Create branch")} />` : null}
+    ${pending && pending.ask ? html`<${BranchHereDialog} commit=${pending.commit} templates=${branchTemplates(status, branches, new Date())} onClose=${() => setPending(null)} onSubmit=${(name, publish) => preview("branch", { name, commit: pending.commit.sha, push: publish }, "Create branch " + name, publish ? "Create and push" : "Create branch")} />` : null}
     ${pending && pending.diverged ? html`<${DivergedDialog} state=${push} runner=${runner} onClose=${() => setPending(null)} />` : null}
     ${pending && !pending.ask && !pending.diverged ? html`<${ActionConfirm} pending=${pending} runner=${runner} onClose=${() => setPending(null)} />` : null}
     ${confirmRequest ? html`<${ConfirmDialog} request=${confirmRequest} onAnswer=${answer} />` : null}

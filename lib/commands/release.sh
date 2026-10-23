@@ -109,8 +109,8 @@ release_append() {
         info "(dry run) then: git shuttle cherry-pick $*${push:+$([[ $push == 1 ]] && printf ', and push the branch')}"
         return 0
     fi
-    cmd_cherry_pick "$@" || return $?
-    if (( push )); then push_branch "$onto" 0; fi
+    # --push goes with the plan: it is done when the last commit is picked, also after a conflict that was resolved on the way
+    if (( push )); then cmd_cherry_pick --push "$@" || return $?; else cmd_cherry_pick "$@" || return $?; fi
 }
 
 cmd_release() {

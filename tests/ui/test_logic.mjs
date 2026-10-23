@@ -134,4 +134,78 @@ t("ghMissing: only when the status says so, and the message says what to do", ()
   for (const status of [{ gh: "1" }, {}, null, undefined]) assert.strictEqual(L.ghMissing(status), false, JSON.stringify(status));
   assert.ok(L.GH_MISSING.text.includes("gh auth login") && L.GH_MISSING.text.includes("hosting site"));
 });
+t("conflictChoices: the two sides in words, or null when the server does not say", () => {
+  const status = { "conflict.ours": "origin/develop", "conflict.ours.role": "what you rebase onto", "conflict.theirs": "feat/x", "conflict.theirs.role": "your own work, being replayed" };
+  assert.deepStrictEqual(L.conflictChoices(status), { ours: { name: "origin/develop", role: "what you rebase onto" }, theirs: { name: "feat/x", role: "your own work, being replayed" } });
+  for (const bad of [{}, null, undefined, { "conflict.ours": "a" }, { "conflict.theirs": "b" }]) assert.strictEqual(L.conflictChoices(bad), null, JSON.stringify(bad));
+  assert.deepStrictEqual(L.conflictChoices({ "conflict.ours": "a", "conflict.theirs": "b" }).ours, { name: "a", role: "" });
+});
+t("the buttons of a conflict say which branch is kept and which is dropped", () => {
+  const c = L.conflictChoices({ "conflict.ours": "origin/develop", "conflict.ours.role": "what you rebase onto", "conflict.theirs": "feat/x", "conflict.theirs.role": "your own work" });
+  assert.strictEqual(L.keepLabel(c.theirs), "Keep feat/x");
+  assert.ok(L.keepTitle(c.theirs, c.ours).includes("your own work") && L.keepTitle(c.theirs, c.ours).includes("what origin/develop wrote in it is dropped"));
+  assert.strictEqual(L.conflictSidesLine(c), "origin/develop is what you rebase onto; feat/x is your own work.");
+});
+t("resolveRequest: the side, one file, and the name of the branch in the label", () => {
+  const status = { "conflict.ours": "m1", "conflict.theirs": "m2" };
+  assert.deepStrictEqual(L.resolveRequest(status, "theirs", "a/b.txt"), { action: "resolve", params: { side: "theirs", paths: ["a/b.txt"] }, label: "Keep m2 in a/b.txt", verb: "Keep m2" });
+  assert.strictEqual(L.resolveRequest({}, "ours", "x").label, "Keep ours in x", "without the names of the branches it still works");
+});
+t("pickProgress: commit N of M, each commit with its state; null when no pick waits", () => {
+  const step = (state, sha, subject) => [state, sha, subject, "Alex", "2 days ago"].join("\x1f");
+  const status = { "pick.total": "3", "pick.index": "2", "pick.branch": "rel/x", "pick.base": "release", "pick.push": "1", "pick.mode": "pick",
+    "pick.step": [step("done", "a".repeat(40), "one"), step("current", "b".repeat(40), "two"), step("todo", "c".repeat(40), "three")] };
+  const p = L.pickProgress(status);
+  assert.deepStrictEqual([p.index, p.total, p.branch, p.base, p.push, p.mode], [2, 3, "rel/x", "release", true, "pick"]);
+  assert.deepStrictEqual(p.steps.map(s => s.state), ["done", "current", "todo"]);
+  assert.strictEqual(p.current.subject, "two");
+  assert.deepStrictEqual(L.parsePickStep(step("todo", "d", "x")), { state: "todo", sha: "d", subject: "x", author: "Alex", when: "2 days ago" });
+  for (const none of [{}, null, undefined, { "pick.total": "0" }]) assert.strictEqual(L.pickProgress(none), null, JSON.stringify(none));
+});
+t("releaseReady: the release branch that waits for its pull request", () => {
+  assert.deepStrictEqual(L.releaseReady({ "release.ready": "rel/x", "release.base": "release", "release.pushed": "1" }), { branch: "rel/x", base: "release", pushed: true });
+  assert.strictEqual(L.releaseReady({ "release.ready": "rel/x", "release.pushed": "0" }).pushed, false);
+  for (const none of [{}, null, undefined]) assert.strictEqual(L.releaseReady(none), null);
+});
+t("conflictCode and hasMarkers: only a file written on both sides has places to choose from", () => {
+  const status = { file: ["UU a.txt", "AA b/c.txt", "DU gone.txt", " M other.txt"] };
+  assert.deepStrictEqual(["a.txt", "b/c.txt", "gone.txt", "nope.txt"].map(f => L.conflictCode(status, f)), ["UU", "AA", "DU", ""]);
+  assert.deepStrictEqual(["UU", "AA", "DU", "UD", ""].map(L.hasMarkers), [true, true, false, false, false]);
+});
+t("the places of a conflict: who changed your side, what a place can keep, when all are decided, the request", () => {
+  assert.strictEqual(L.blameLine({ picked: 2, subject: "fix price", author: "Sam", when: "3 days ago", lines: 1 }, 7), "Commit 2 of 7 of this release: fix price (Sam, 3 days ago) · 1 line");
+  assert.strictEqual(L.blameLine({ picked: null, subject: "hotfix", author: "", when: "", lines: 4 }, 7), "Already on the branch: hotfix · 4 lines");
+  const sides = { ours: { name: "rel/x", role: "the branch you are on" }, theirs: { name: "abc1234 fix", role: "the commit you pick" } };
+  assert.deepStrictEqual(L.hunkChoices(sides, false).map(c => c.id), ["ours", "theirs", "both", "both-reverse"]);
+  assert.deepStrictEqual(L.hunkChoices(sides, true).map(c => c.id), ["ours", "theirs", "both", "both-reverse", "base"]);
+  assert.strictEqual(L.hunkChoices(sides, false)[2].label, "Both, rel/x first");
+  const hunks = [{ n: 1 }, { n: 2 }];
+  assert.strictEqual(L.hunksDecided(hunks, { 1: "ours" }), false);
+  assert.strictEqual(L.hunksDecided(hunks, { 1: "ours", 2: "both" }), true);
+  assert.strictEqual(L.hunksDecided([], {}), false, "nothing to decide is not decided");
+  assert.deepStrictEqual(L.resolveHunksRequest("a/b.txt", { 1: "ours", 2: "theirs" }),
+    { action: "resolve", params: { file: "a/b.txt", hunks: { 1: "ours", 2: "theirs" } }, label: "Resolve a/b.txt, place by place", verb: "Write the choices" });
+});
+t("branchTemplates: the prefix of the settings, the prefixes in use, the next release name", () => {
+  const branches = { local: [{ name: "19.0-feature/a" }, { name: "19.0-fix/b" }, { name: "main" }], remote: [{ name: "origin/19.0-release/261021-v1.0" }, { name: "origin/19.0-hotfix/c" }] };
+  const status = { "config.branchPrefix": "19.0-feature/", "config.releasePattern": "19.0-release/{yymmdd}-v1.{n}" };
+  const now = new Date(2026, 9, 23);
+  const t2 = L.branchTemplates(status, branches, now);
+  assert.deepStrictEqual(t2.map(t => t.value), ["19.0-feature/", "19.0-fix/", "19.0-hotfix/", "19.0-release/", "19.0-release/261023-v1.0"]);
+  assert.deepStrictEqual(t2.map(t => t.kind), ["prefix", "prefix", "prefix", "prefix", "release"]);
+  assert.strictEqual(L.branchTemplates({}, { local: [{ name: "main" }] }, now).length, 0, "no settings and no prefix in use: nothing to offer");
+  const inferred = L.branchTemplates({}, { remote: [{ name: "origin/release/261021-v1.0" }] }, now);
+  assert.ok(inferred.some(t => t.kind === "release" && t.value === "release/261023-v1.0"), "the release pattern is read from the release branches that exist");
+  assert.ok(L.branchTemplates(status, branches, now).length <= 6);
+  assert.deepStrictEqual(L.branchTemplates(null, undefined, now), []);
+});
+t("shortName: a long name is cut for a button, a short one stays", () => {
+  assert.strictEqual(L.shortName("feat/x"), "feat/x");
+  const cut = L.shortName("251fa0e [FEAT] price: first revision of the task");
+  assert.ok(cut.length <= 32 && cut.endsWith("…") && cut.startsWith("251fa0e [FEAT] price"));
+  assert.strictEqual(L.keepLabel({ name: "a".repeat(80) }).length, 5 + 32);
+  const sides = { ours: { name: "b".repeat(60), role: "" }, theirs: { name: "t", role: "" } };
+  assert.ok(L.hunkChoices(sides, false).every(c => c.label.length <= 40), "no label is longer than a button can hold");
+  assert.ok(L.hunkChoices(sides, false)[0].title.includes("b".repeat(60)), "the whole name is in the tooltip");
+});
 console.log("  " + n + " passed, 0 failed");

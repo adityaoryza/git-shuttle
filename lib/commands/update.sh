@@ -25,16 +25,18 @@ update_kind() {
     fi
 }
 
-# update_remind COMMAND [ARGS] — runs before a command: a look for a newer release in the background (at most once an hour, never waited for, never
+# update_remind COMMAND [ARGS] — runs before a command: a look for a newer release in the background (at most every ten minutes, never waited for, never
 # printed), and, when one is out, a line on the terminal, once for each release. The web UI reads the same answer (ui/shuttle_ui/updates.py), so
-# it shows the news at once. Off with GIT_SHUTTLE_NO_UPDATE_CHECK=1, or with the switch of the UI; it never runs for `update`, `ui` or the hooks.
+# it shows the news at once. Off with GIT_SHUTTLE_NO_UPDATE_CHECK=1, or with the switch of the UI; it never runs for `update`, `ui` (which looks by itself at
+# every start) or the hooks, nor for what the page runs (GIT_SHUTTLE_FROM_UI: the server looks, once, not each command).
 update_remind() {
     local command=${1:-} arg file py latest told
     shift || true
     case "$command" in ""|update|ui|help|-h|--help|version|--version|hook|check-message) return 0 ;; esac
     [[ -z "${GIT_SHUTTLE_NO_UPDATE_CHECK:-}" || "$GIT_SHUTTLE_NO_UPDATE_CHECK" == 0 ]] || return 0
+    [[ -z "${GIT_SHUTTLE_FROM_UI:-}" ]] || return 0
     file="${XDG_CONFIG_HOME:-$HOME/.config}/git-shuttle/update-notice.json"
-    if [[ ! -f "$file" || -z "$(find "$file" -mmin -60 2>/dev/null)" ]]; then
+    if [[ ! -f "$file" || -z "$(find "$file" -mmin -10 2>/dev/null)" ]]; then
         py=python3; "$py" -c '' >/dev/null 2>&1 || py=python
         if "$py" -c '' >/dev/null 2>&1; then
             ( "$py" -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from shuttle_ui import updates; updates.notice()' "$ROOT/ui" >/dev/null 2>&1 </dev/null & ) 2>/dev/null

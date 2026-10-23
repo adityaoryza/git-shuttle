@@ -32,6 +32,13 @@ t("an installed update says to restart the page's server", () => {
   assert.match(d.detail, /Ctrl-C/);
   assert.strictEqual(describeApplied({}).title, "Updated");
 });
+t("an update that restarts the server says the page reloads by itself, not to press Ctrl-C", () => {
+  const d = describeApplied({ version: "0.1.2", restart: true });
+  assert.strictEqual(d.title, "Updated to 0.1.2");
+  assert.match(d.detail, /by itself/);
+  assert.doesNotMatch(d.detail, /Ctrl-C/);
+  assert.match(describeApplied({ version: "0.1.2", restart: false }).detail, /Ctrl-C/, "where it cannot restart, it says so");
+});
 t("a failure is one sentence, with a fallback", () => {
   assert.strictEqual(describeFailure(new Error("cannot reach https://x: are you online?")), "cannot reach https://x: are you online?");
   assert.ok(describeFailure(null).length > 5);

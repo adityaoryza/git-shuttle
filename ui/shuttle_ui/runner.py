@@ -22,7 +22,8 @@ _DROPPED_ENV = ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECT
 def child_env(extra=None):
     env = {key: value for key, value in os.environ.items() if key not in _DROPPED_ENV}
     # Paths come from git itself or from the page: they name files, never patterns.
-    env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "GIT_EDITOR": "true", "NO_COLOR": "1", "GIT_LITERAL_PATHSPECS": "1"})
+    env.update({"GIT_TERMINAL_PROMPT": "0", "GIT_PAGER": "cat", "GIT_EDITOR": "true", "NO_COLOR": "1", "GIT_LITERAL_PATHSPECS": "1",
+                "GIT_SHUTTLE_FROM_UI": "1"})   # what the page runs does not look for a new release at every command: the server does
     if extra:
         env.update(extra)
     return env
@@ -75,7 +76,7 @@ def _end(proc):
 
 def parse_porcelain(raw):
     """NUL separated key=value records -> a dict; the repeating keys become lists."""
-    repeating = {"file", "conflict", "blocker", "candidate", "commit"}
+    repeating = {"file", "conflict", "blocker", "candidate", "commit", "pick.step", "hunk", "before", "ours", "base", "theirs", "after", "blame"}
     out = {}
     for rec in raw.split(b"\0"):
         if not rec:

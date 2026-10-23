@@ -162,9 +162,10 @@ It works on a copy made by the one-line installer. The release is downloaded nex
 report the version that was asked for) and only then swapped in; if anything fails, the installed copy is left as it was. A git clone
 is not touched (update it with `git pull`), and neither is a copy somebody put somewhere by hand. `git shuttle update --to v0.1.1`
 installs a named release, a pre-release or an older one. A running `git shuttle ui` has to be stopped and started again afterwards.
-The web UI has the same in its About dialog (the Actions palette: "Check for updates"), and it reminds you when a newer release is out: a
+The web UI has the same in its About dialog (the Actions palette: "Check for updates"). After **Update** the server starts again by itself and the page reloads (no Ctrl-C), and it reminds you when a newer release is out: a
 slim bar under the top bar ("git-shuttle 0.5.0 is available", with what changed, **Update…** and **Later**, which is for that release
-only). A command of git-shuttle (not `update`, `ui` or the hooks) looks in the background at most once an hour, so the page already knows when you
+only). `git shuttle ui` looks at every start (a line on the terminal when a release is out), and the server again every ten minutes while it runs. A command of
+git-shuttle (not `update`, `ui` or the hooks) looks in the background at most every ten minutes, so the page already knows when you
 open it, and says it once on the terminal when a release is out ("git-shuttle 0.8.0 is out"). The look is for the number of the latest release
 only (one request to github.com, the same one the Update button makes: nothing about you or your repositories is sent, it is never waited for,
 and the page itself never talks to the internet). Turn it off in the About dialog ("Remind me when a new version is out"), or with
@@ -214,7 +215,10 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle cherry-pick COMMIT...` | take commits onto the current branch in the order given; refuses protected branches and merge commits, skips what is already there |
 | `git shuttle stage -- PATH...` | `git add` for the files you name (new files need it before a commit) |
 | `git shuttle pr [--base B] [--title T] [--body-file F] [--draft]` | pushes the branch and opens a pull request with the GitHub CLI (`gh`) |
-| `git shuttle continue` / `abort` | finish, or give up, the rebase, merge or cherry-pick that stopped on a conflict |
+| `git shuttle continue` / `abort` | finish, or give up, the rebase, merge or cherry-pick that stopped on a conflict; a `pick`, `cherry-pick` or `release` goes on with the commits that are left (and pushes at the end if `--push` was given), `abort` forgets the plan |
+| `git shuttle resolve --ours\|--theirs -- PATH...` | in a conflict, keep one whole side of a file; it says which branch each side is (in a rebase `--ours` is what you rebase onto and `--theirs` is your own work), and the other side of that file is dropped (`git checkout --merge -- FILE` brings the conflict back) |
+| `git shuttle resolve --hunk N=ours\|theirs\|both\|both-reverse\|base -- FILE` | the same place by place: what each place in conflict of one file keeps (the numbers are those of `git shuttle conflicts FILE`); the file is marked as resolved when no place is left |
+| `git shuttle conflicts [--porcelain] [FILE...]` | the places where files are in conflict: the lines of both sides, what both started from (diff3 style), and who last changed the lines of yours on this branch (which commit of the release it was) |
 | `git shuttle candidates` | the branches merged into the integration branch that the release does not have yet |
 | `git shuttle ship [-m MSG] [-- PATH...]` | commit (with `-m`), then everything `merge` does, after **one** question |
 | `git shuttle release --onto NEW [--from BASE] [--push] BRANCH_OR_COMMIT...` | like `pick`, but a branch name stands for the commits it brought: no hashes to look up |
@@ -345,7 +349,7 @@ text-conversion program from your git configuration is run.
 
 ## What it does not do
 
-It does not force a push by itself, resolve conflicts, or talk to a hosting service (opening a pull request is left to the GitHub CLI,
+It does not force a push by itself, merge the two texts of a conflict for you (it can keep one whole side of a file: `resolve`), or talk to a hosting service (opening a pull request is left to the GitHub CLI,
 `gh`). It rewrites history (`amend`, `rewrite`, `drop`, `move`, `reset`, `rebase-on`) only for commits nobody else can have yet, unless you
 say otherwise, and the next push then asks for `--force-with-lease` explicitly. It works
 with the `git` you already have and its own configuration (`git config shuttle.*`); there is no other file to maintain.

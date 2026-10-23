@@ -83,6 +83,12 @@ Commands:
                                 throw changes away for good (--staged: also the staged ones; --untracked: delete new files too)
   status [--porcelain]          where you are, and what is left to ship (changes nothing)
   continue | abort              finish, or give up, the rebase/merge/cherry-pick that stopped on a conflict
+  resolve --ours|--theirs -- PATH...
+                                in a conflict, keep one whole side of a file (it says which branch each side is: in a rebase they are the other way round)
+  resolve --hunk N=ours|theirs|both|both-reverse|base -- FILE
+                                or place by place: choose what each place in conflict of one file keeps
+  conflicts [--porcelain] [FILE...]
+                                the places where files are in conflict: both sides, and who last changed yours on this branch
   candidates [--porcelain]      the branches merged into the integration branch that the release does not have yet
   commit -m MSG [-- PATH...]    commit after checking the message and the branch; PATH... commits only those files
   sync [--onto BRANCH]          fetch, then rebase the branch on the remote integration branch
@@ -183,6 +189,8 @@ main() {
         stage)         cmd_stage "$@" ;;
         unstage)       cmd_unstage "$@" ;;
         discard)       cmd_discard "$@" ;;
+        resolve)       cmd_resolve "$@" ;;
+        conflicts)     cmd_conflicts "$@" ;;
         ui)            # python3, or python where python3 is only a stub (Windows)
                        py=python3; "$py" -c '' >/dev/null 2>&1 || py=python
                        "$py" -c '' >/dev/null 2>&1 || { echo "git-shuttle ui needs python3" >&2; exit 1; }

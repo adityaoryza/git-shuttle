@@ -11,7 +11,7 @@ import sys
 import threading
 import webbrowser
 
-from . import __author__, __version__, log
+from . import __author__, __version__, log, updates
 from .http import UIServer
 from .runner import child_env
 from .store import Store, config_dir
@@ -25,6 +25,35 @@ WINDOWS_CWD = "/mnt/c"      # Windows programs started from a Linux folder compl
 def make_server(port=0, store=None, token=None, verbose=False):
     """A server on 127.0.0.1 (never another interface); port 0 picks a free one."""
     return UIServer(("127.0.0.1", port), store or Store(config_dir()), token or secrets.token_urlsafe(32), verbose)
+
+
+def announce_update():
+    """A look for a newer release at every start, in the background (the page reads the same answer): said once on the terminal."""
+    try:
+        news = updates.notice(force=True)
+    except Exception:       # a look that fails is no reason to say anything
+        return
+    if news.get("available") and news.get("enabled") and not news.get("snoozed"):
+        log.LOGGER.info("git-shuttle %s is out (this is %s): update from the page (About), or with  git shuttle update", news["latest"], news["current"])
+
+
+def request_restart(server, restarting):
+    """After an update: the server starts again with the new code, on the same port and with the same link, so that the page goes on.
+    False where that cannot be done (Windows has no exec: the page then says to start it again by hand)."""
+    if os.name == "nt":
+        return False
+    restarting.set()
+    threading.Timer(1.0, server.shutdown).start()       # a moment later: the answer to the request that asked for it is sent first
+    return True
+
+
+def restart(port, token, args):
+    """Start this program again in place (same process, same port, same link, no new tab). Does not return."""
+    flags = ["--verbose"] if args.verbose else ["--quiet"] if args.quiet else []
+    log.LOGGER.info("restarting with the new version")
+    os.environ["GIT_SHUTTLE_RESTART_TOKEN"] = token     # read, and forgotten, by the new process
+    sys.stdout.flush()
+    os.execv(sys.executable, [sys.executable, "-m", "shuttle_ui", "--port", str(port), "--no-open", *flags])
 
 
 def running_in_wsl(environ=None, proc_version="/proc/version"):
@@ -122,10 +151,11 @@ def main(argv=None):
     log.configure(verbose=args.verbose, quiet=args.quiet)
     store = Store(config_dir())
     register_repos(store, args.repo)
+    token = os.environ.pop("GIT_SHUTTLE_RESTART_TOKEN", "") or None      # a restart after an update keeps the link of the page that is open
     try:
-        server = make_server(args.port, store, verbose=args.verbose)
+        server = make_server(args.port, store, token=token, verbose=args.verbose)
     except OSError:
-        server = make_server(0, store, verbose=args.verbose)
+        server = make_server(0, store, token=token, verbose=args.verbose)
     port = server.server_address[1]
     link = "http://127.0.0.1:%d/#token=%s" % (port, server.token)
     stopping = stop_on_signal(server)
@@ -135,10 +165,15 @@ def main(argv=None):
     if not args.no_open:
         print("Opened in your default browser." if open_browser(link) else "Could not open a browser by itself: open the link above in your browser.", flush=True)
     log.LOGGER.info("Ctrl-C to stop")
+    restarting = threading.Event()
+    updates.RESTART_HOOK = lambda: request_restart(server, restarting)
+    threading.Thread(target=announce_update, daemon=True, name="update-notice").start()
     try:
         server.serve_forever()
     finally:
         server.server_close()
+    if restarting.is_set():
+        restart(port, server.token, args)
     if stopping.is_set():
         log.LOGGER.info("stopped")
 

@@ -50,28 +50,7 @@ cmd_pick() {
 
     run git checkout --no-track -b "$onto" "$remote/$from" || die "cannot create '$onto'"
 
-    local args=() i=0 remaining
-    [[ -z "$strat" ]] || args+=("--strategy-option=$strat")
-    for c in "${resolved[@]}"; do
-        i=$((i + 1))
-        if ! run git cherry-pick "${args[@]}" "$c"; then
-            if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
-                remaining="${resolved[*]:$i}"
-                stop "commit $(git log -1 --format='%h %s' "$c") hit a conflict (you are on '$onto').
-  Resolve the files, then  git add <files> && git cherry-pick --continue${remaining:+
-  then pick the rest:     git cherry-pick ${args[*]:-} $remaining}
-  or give up with         git cherry-pick --abort"
-            fi
-            info "  $(git log -1 --format='%h' "$c") is already in $remote/$from: skipped."
-            run git cherry-pick --skip || die "cannot skip the empty commit; run  git cherry-pick --abort"
-        fi
-    done
-
-    step "'$onto' is ready: $(git rev-list --count "$remote/$from..HEAD") commit(s) on top of $remote/$from"
-    git log --oneline "$remote/$from..HEAD"
-    if (( push )); then
-        push_branch "$onto" 0
-    else
-        info "Push it with:  git shuttle push --allow-protected   (or  git push -u $remote $onto)"
-    fi
+    # the plan lives in the git folder until the last commit is picked: a conflict in one of them does not make the rest be forgotten
+    pick_plan_start "$onto" "$from" "$strat" "$push" pick "${resolved[@]}"
+    pick_run 1
 }

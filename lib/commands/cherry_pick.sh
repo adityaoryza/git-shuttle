@@ -2,13 +2,15 @@
 # git shuttle cherry-pick COMMIT... — take commits from anywhere onto the branch you are on, in the order given
 #
 # Not for protected branches (use `release` or `pick` to build a release branch). A commit the branch already has, or one
-# that would change nothing, is skipped. A conflict leaves the cherry-pick waiting: `continue` or `abort`.
+# that would change nothing, is skipped. A conflict leaves the cherry-pick waiting: `continue` (which goes on with the rest) or `abort`.
+# --push pushes the branch when the last commit is picked.
 
 cmd_cherry_pick() {
-    local commits=() strat=""
+    local commits=() strat="" push=0
     while (( $# )); do
         case "$1" in
             -X|--strategy-option) [[ $# -ge 2 ]] || die "$1 needs a value (ours or theirs)"; strat=$2; shift 2 ;;
+            --push) push=1; shift ;;
             -*) die "cherry-pick: unknown option '$1'" ;;
             *) commits+=("$1"); shift ;;
         esac
@@ -43,21 +45,6 @@ cmd_cherry_pick() {
     for sha in "${resolved[@]}"; do info "  $(git log -1 --format='%h %s' "$sha")"; done
     confirm "Cherry-pick them onto '$BRANCH'?"
 
-    local args=() i=0 remaining
-    [[ -z "$strat" ]] || args+=("--strategy-option=$strat")
-    for sha in "${resolved[@]}"; do
-        i=$((i + 1))
-        if ! run git cherry-pick "${args[@]}" "$sha"; then
-            if [[ -n "$(git diff --name-only --diff-filter=U)" ]]; then
-                remaining="${resolved[*]:$i}"
-                stop "commit $(git log -1 --format='%h %s' "$sha") hit a conflict (you are on '$BRANCH').
-  Resolve the files, then  git shuttle continue${remaining:+
-  then pick the rest:      git shuttle cherry-pick $remaining}
-  or give up with          git shuttle abort"
-            fi
-            info "  $(git log -1 --format='%h' "$sha") would change nothing here: skipped."
-            run git cherry-pick --skip || die "cannot skip the empty commit; run  git shuttle abort"
-        fi
-    done
-    step "'$BRANCH' now has ${#resolved[@]} more commit(s)"
+    pick_plan_start "$BRANCH" "" "$strat" "$push" cherry-pick "${resolved[@]}"
+    pick_run 1
 }

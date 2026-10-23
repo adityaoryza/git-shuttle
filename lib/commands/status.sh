@@ -70,6 +70,28 @@ cmd_status() {
         emit staged "$staged"; emit unstaged "$unstaged"; emit untracked "$untracked"
         for pair in "${files[@]}"; do emit file "$pair"; done
         emit operation "$op"
+        if [[ -n "$op" ]]; then
+            conflict_sides   # what "ours" and "theirs" are, in words (lib/commands/resolve.sh)
+            emit conflict.ours "$SIDE_OURS"; emit conflict.ours.role "$SIDE_OURS_ROLE"
+            emit conflict.theirs "$SIDE_THEIRS"; emit conflict.theirs.role "$SIDE_THEIRS_ROLE"
+        fi
+        if [[ "$op" == cherry-pick ]] && pick_plan_load && pick_plan_matches; then
+            # a pick with a plan: commit N of M, and each commit with its state (done, current, todo)
+            local n=0 pstate psha
+            emit pick.mode "$PICK_MODE"; emit pick.branch "$PICK_BRANCH"; emit pick.base "$PICK_BASE"
+            emit pick.total "${#PICK_COMMITS[@]}"; emit pick.index "$PICK_CURRENT"; emit pick.push "$PICK_PUSH"
+            for psha in "${PICK_COMMITS[@]}"; do
+                n=$((n + 1))
+                if (( n < PICK_CURRENT )); then pstate="done"; elif (( n == PICK_CURRENT )); then pstate="current"; else pstate="todo"; fi
+                emit pick.step "$pstate"$'\x1f'"$psha"$'\x1f'"$(git log -1 --format='%s%x1f%an%x1f%cr' "$psha")"
+            done
+        fi
+        if [[ -z "$op" && -f "$(pick_done_file)" ]]; then
+            # a release branch that was picked and is waiting for its pull request (only while you are on it)
+            local ready_branch ready_base ready_pushed
+            ready_branch=$(sed -n 's/^branch=//p' "$(pick_done_file)"); ready_base=$(sed -n 's/^base=//p' "$(pick_done_file)"); ready_pushed=$(sed -n 's/^pushed=//p' "$(pick_done_file)")
+            if [[ -n "$ready_branch" && "$ready_branch" == "$branch" ]]; then emit release.ready "$ready_branch"; emit release.base "$ready_base"; emit release.pushed "$ready_pushed"; fi
+        fi
         for pair in "${conflicts[@]}"; do emit conflict "$pair"; done
         for pair in "${blockers[@]}"; do emit blocker "$pair"; done
         emit hook "$hook"

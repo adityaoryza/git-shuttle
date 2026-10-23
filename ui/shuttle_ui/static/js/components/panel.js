@@ -1,7 +1,7 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { GH_MISSING, branchOptions, ghMissing, groupByModule, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { GH_MISSING, branchOptions, conflictChoices, conflictCode, conflictSidesLine, ghMissing, groupByModule, hasMarkers, keepLabel, keepTitle, pickProgress, releaseReady, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
 import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks, taskOf } from "../release.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { TaskPicker } from "./addons.js";
@@ -44,7 +44,7 @@ function ActionBar({ runner, action, params, label, disabled, children }) {
 // what a step is called: a commit by its message, the rest by command
 const stepLabel = argv => (argv[0] === "commit" ? "commit " + JSON.stringify(argv[2]) : argv[0] === "init" ? "save the settings (git shuttle init)" : "git shuttle " + argv.slice(0, 2).join(" "));
 
-export function ResultCard({ runner, onPullRequest }) {
+export function ResultCard({ runner, onPullRequest, ready }) {
   const j = runner.job;
   if (!j) return null;
   const tone = j.state === "done" ? "ok" : j.state === "running" ? "neutral" : "bad";
@@ -56,19 +56,37 @@ export function ResultCard({ runner, onPullRequest }) {
       ${(j.steps || []).filter(s => s.output).map(s => html`<${Output} follow=${s.state === "running"}>${s.output}<//>`)}</details>` : null}
     ${j.state === "running" && !(j.steps || []).some(s => s.output) ? html`<p class="hint">Started: waiting for the first lines of output…</p>` : null}
     ${j.state === "stopped" ? html`<p class="hint">The repository was left mid-operation. Resolve it in the banner above.</p>` : null}
-    ${j.state === "done" && j.action === "release" ? html`<${Button} variant="secondary" onClick=${onPullRequest}>Open a pull request<//>` : null}
+    ${j.state === "done" && (j.action === "release" || (j.action === "continue" && ready)) ? html`<${Button} variant="secondary" onClick=${onPullRequest}>Open a pull request<//>` : null}
   </section>`;
 }
 
 // ---- stopped half way
-export function OperationBanner({ status, runner, confirm }) {
+const stepMark = state => (state === "done" ? "✓" : state === "current" ? "●" : "○");
+function PickProgress({ progress }) {
+  const left = progress.total - progress.index;
+  return html`<div class="pick-progress">
+    <p class="pick-title"><strong>Commit ${progress.index} of ${progress.total}</strong> of the pick onto <code>${progress.branch}</code>${progress.push ? ", pushed when the last one is in" : ""}</p>
+    <ol class="pick-steps">${progress.steps.map((s, i) => html`<li class=${"pick-" + s.state} aria-label=${s.state}><span class="pick-mark" aria-hidden="true">${stepMark(s.state)}</span>
+      <span class="pick-n">${i + 1}</span><code>${shortHash(s.sha)}</code><span class="pick-subject" title=${s.subject}>${s.subject}</span><span class="hint">${s.author}${s.when ? ", " + s.when : ""}</span></li>`)}</ol>
+    <p class="hint">${left ? (left === 1 ? "After this one, the last commit is picked by itself." : "After this one, the " + left + " commits that are left are picked by themselves.") : "This is the last commit."}</p>
+  </div>`;
+}
+
+export function OperationBanner({ status, runner, confirm, onResolve, onHunks }) {
   if (!status || !status.operation) return null;
+  const sides = onResolve ? conflictChoices(status) : null;
+  const progress = pickProgress(status);
   const abort = async () => {
     if (await confirm({ title: "Abort the " + status.operation + "?", body: "The repository returns to how it was before it started.", confirmLabel: "Abort", tone: "destructive" })) runner.run("abort", {}, "Abort");
   };
   return html`<${Alert} tone="bad" title=${"Stopped: a " + status.operation + " is waiting"}>
-    <p>Nothing was forced and nothing was pushed. Resolve the conflicts in your editor, save, then continue.</p>
-    ${status.conflict.length ? html`<ul class="files">${status.conflict.map(f => html`<li><code>${f}</code></li>`)}</ul>` : null}
+    ${progress ? html`<${PickProgress} progress=${progress} />` : null}
+    <p>Nothing was forced and nothing was pushed. Resolve the conflicts in your editor, save, then continue${sides ? ", or choose here: place by place, or one whole side of a file" : ""}.</p>
+    ${sides ? html`<p class="hint">${conflictSidesLine(sides)} Keeping one side drops what the other wrote in that file.</p>` : null}
+    ${status.conflict.length ? html`<ul class="files conflict-files">${status.conflict.map(f => html`<li class="conflict-row"><code>${f}</code>${sides ? html`<span class="conflict-actions">
+      ${onHunks && hasMarkers(conflictCode(status, f)) ? html`<${Button} size="sm" onClick=${() => onHunks(f)} disabled=${runner.busy}>Choose place by place<//>` : null}
+      <${Button} variant="outline" size="sm" title=${keepTitle(sides.ours, sides.theirs)} onClick=${() => onResolve("ours", f)} disabled=${runner.busy}>${keepLabel(sides.ours)}<//>
+      <${Button} variant="outline" size="sm" title=${keepTitle(sides.theirs, sides.ours)} onClick=${() => onResolve("theirs", f)} disabled=${runner.busy}>${keepLabel(sides.theirs)}<//></span>` : null}</li>`)}</ul>` : null}
     <div class="actions"><${Button} onClick=${() => runner.run("continue", {}, "Continue")} disabled=${runner.busy}>Mark resolved and continue<//><${Button} variant="destructive" onClick=${abort} disabled=${runner.busy}>Abort<//></div>
     <p class="hint">After continuing, run Ship again (without a new message) to finish the rest.</p>
   <//>`;
@@ -237,6 +255,7 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested, 
 // ---- 3. release: pick commits from what was merged, in order
 export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded, onSettings, onCopy, onPullRequest }) {
   const c = settings(status);
+  const ready = releaseReady(status);
   const [candidates, setCandidates] = useState(null);
   const [picked, setPicked] = useState([]);
   const [name, setName] = useState("");
@@ -297,6 +316,9 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
 
   if (candidates === null) return html`<div class="tab"><${Skeleton} rows=${5} height=${22} /></div>`;
   return html`<div class="tab release">
+    ${ready && !made ? html`<${Alert} tone="ok" title=${"Release branch " + ready.branch + " is ready"}>
+      <span>${ready.pushed ? "It is on the remote." : "It is not pushed yet: push it, then open the pull request."} The pull request goes to <code>${ready.base || c.release || "the release branch"}</code>.</span>
+      <div class="actions"><${Button} size="sm" onClick=${onPullRequest}>Open the pull request<//></div><//>` : null}
     ${made ? html`<${Alert} tone="info" title=${"Done: " + made}>
       <span>The commits show “in” the release branch until its pull request is merged into <code>${c.release || "the release branch"}</code>.</span>
       <div class="actions"><${Button} size="sm" onClick=${onPullRequest}>Open the pull request<//><${Button} variant="ghost" size="sm" onClick=${() => setMade(null)}>Dismiss<//></div>

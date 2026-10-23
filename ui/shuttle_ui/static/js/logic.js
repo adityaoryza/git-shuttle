@@ -189,3 +189,94 @@ export function inferReleasePattern(names) {
   }
   return best ? best.pattern : "";
 }
+
+// The two sides of a conflict, in words, for the buttons next to every file in conflict. null when the server does not say (an older one).
+// "ours" and "theirs" are git's: the server says which branch each is (in a rebase they are the other way round from what they sound like).
+export function conflictChoices(status) {
+  const s = status || {};
+  if (!s["conflict.ours"] || !s["conflict.theirs"]) return null;
+  return {
+    ours: { name: s["conflict.ours"], role: s["conflict.ours.role"] || "" },
+    theirs: { name: s["conflict.theirs"], role: s["conflict.theirs.role"] || "" },
+  };
+}
+// a name that is long (a commit with its title) is cut for a button; the whole name is in its tooltip
+export const shortName = (name, max = 32) => (name.length > max ? name.slice(0, max - 1).trimEnd() + "…" : name);
+export const keepLabel = side => "Keep " + shortName(side.name);
+export const keepTitle = (side, other) => "Keep " + side.name + (side.role ? " (" + side.role + ")" : "") + " for this file; what " + other.name + " wrote in it is dropped";
+export const conflictSidesLine = c => c.ours.name + (c.ours.role ? " is " + c.ours.role : "") + "; " + c.theirs.name + (c.theirs.role ? " is " + c.theirs.role : "") + ".";
+// side: "ours" or "theirs"; the request for the preview that comes before anything is changed
+export function resolveRequest(status, side, file) {
+  const c = conflictChoices(status);
+  const name = c ? c[side].name : side;
+  return { action: "resolve", params: { side, paths: [file] }, label: "Keep " + name + " in " + file, verb: "Keep " + name };
+}
+
+// ---- a pick that waits: pick, cherry-pick and release have a plan, and  git shuttle continue  goes on with the commits that are left
+export function parsePickStep(entry) {
+  const [state, sha, subject, author, when] = String(entry).split("\x1f");
+  return { state, sha, subject: subject || "", author: author || "", when: when || "" };
+}
+// where the pick stands, or null: { index, total, branch, base, push, mode, steps: [{ state: done|current|todo, sha, subject, author, when }], current }
+export function pickProgress(status) {
+  const s = status || {};
+  const total = +s["pick.total"] || 0;
+  if (!total) return null;
+  const steps = (s["pick.step"] || []).map(parsePickStep);
+  return { index: +s["pick.index"] || 0, total, branch: s["pick.branch"] || "", base: s["pick.base"] || "", push: s["pick.push"] === "1",
+    mode: s["pick.mode"] || "", steps, current: steps.find(x => x.state === "current") || null };
+}
+// the release branch that was picked and waits for its pull request (only while you are on it), or null
+export function releaseReady(status) {
+  const s = status || {};
+  return s["release.ready"] ? { branch: s["release.ready"], base: s["release.base"] || "", pushed: s["release.pushed"] === "1" } : null;
+}
+// the two letters git shows for a file in conflict (UU, AA: written on both sides, so it has places to choose from; DU, UD...: one side deleted it)
+export function conflictCode(status, path) {
+  const entry = ((status && status.file) || []).find(f => f.slice(3) === path);
+  return entry ? entry.slice(0, 2) : "";
+}
+export const hasMarkers = code => code === "UU" || code === "AA";
+// who last changed the lines of a side of a place: one sentence for each commit
+export const blameLine = (b, total) => (b.picked ? "Commit " + b.picked + (total ? " of " + total : "") + " of this release: " : "Already on the branch: ") + b.subject
+  + (b.author ? " (" + b.author + (b.when ? ", " + b.when : "") + ")" : "") + " · " + b.lines + (b.lines === 1 ? " line" : " lines");
+// what a place can keep, in the words of the branches
+export function hunkChoices(sides, hasBase) {
+  const o = sides.ours.name, t = sides.theirs.name;
+  const why = side => (side.role ? " (" + side.role + ")" : "");
+  const list = [
+    { id: "ours", label: "Keep " + shortName(o), title: "Only the lines of " + o + why(sides.ours) },
+    { id: "theirs", label: "Keep " + shortName(t), title: "Only the lines of " + t + why(sides.theirs) },
+    { id: "both", label: "Both, " + shortName(o, 24) + " first", title: "The lines of " + o + ", then the lines of " + t },
+    { id: "both-reverse", label: "Both, " + shortName(t, 24) + " first", title: "The lines of " + t + ", then the lines of " + o },
+  ];
+  if (hasBase) list.push({ id: "base", label: "What it was before", title: "Go back to what both sides started from" });
+  return list;
+}
+export const hunksDecided = (hunks, choices) => hunks.length > 0 && hunks.every(h => !!choices[h.n]);
+// choices: { placeNumber: choice }; the request for the preview that comes before anything is written
+export function resolveHunksRequest(file, choices) {
+  const hunks = {};
+  for (const [n, choice] of Object.entries(choices)) hunks[n] = choice;
+  return { action: "resolve", params: { file, hunks }, label: "Resolve " + file + ", place by place", verb: "Write the choices" };
+}
+
+// ---- the names a new branch can start from, in the words of the settings: the prefix of task branches, the other prefixes in use, the next
+// release name. A click on one fills the field; typing by hand stays as it was.
+export function branchTemplates(status, branches, now = new Date()) {
+  const s = status || {};
+  const prefix = s["config.branchPrefix"] || "";
+  const names = branchOptions(branches).map(o => o.name);
+  const out = [];
+  if (prefix) out.push({ kind: "prefix", label: prefix, value: prefix, title: "A task branch: the prefix of the settings, then the name of the task" });
+  for (const p of prefixOptions(branches)) {
+    if (out.length >= 5) break;
+    if (!out.some(t => t.value === p.name)) out.push({ kind: "prefix", label: p.name, value: p.name, title: "A prefix that other branches use" });
+  }
+  const pattern = s["config.releasePattern"] || inferReleasePattern(names);
+  if (pattern) {
+    const next = releasePreview(pattern, names, now);
+    if (next.name) out.push({ kind: "release", label: next.name, value: next.name, title: "The next release branch: the pattern of the settings, with the first free number" });
+  }
+  return out;
+}

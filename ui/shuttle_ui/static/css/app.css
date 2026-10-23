@@ -582,3 +582,35 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .task-list li.picked { box-shadow: inset 0 0 0 2px var(--brand); border-radius: 4px; } .task-list li.picked .task-row { background: color-mix(in srgb, var(--brand) 14%, transparent); }
 .task-check { width: 14px; color: var(--brand); font-weight: 700; flex: none; }
 .tool-task { height: 30px; width: 190px; max-width: 30vw; } @media (max-width: 700px) { .tool-task { width: 100%; max-width: none; flex: 1 1 100%; } }
+
+/* a file in conflict, with the two buttons that keep one whole side of it */
+.conflict-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 10px; padding: 4px 0; }
+.conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.conflict-actions .btn { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* the pick that waits, and a file in conflict place by place */
+.pick-progress { display: grid; gap: 6px; margin: 6px 0; }
+.pick-title { margin: 0; }
+.pick-steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; max-height: 168px; overflow: auto; font-size: 12.5px; }
+.pick-steps li { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.pick-steps .pick-subject { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.pick-mark { width: 12px; text-align: center; flex: none; } .pick-n { width: 18px; color: var(--muted-foreground); text-align: right; flex: none; }
+.pick-done, .pick-todo { color: var(--muted-foreground); } .pick-current { color: var(--foreground); font-weight: 600; } .pick-current .pick-mark { color: var(--brand); }
+.hunk-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.hunk { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 8px; margin-bottom: 12px; min-width: 0; }
+.hunk-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } .hunk-head .badge { margin-left: auto; }
+.hunk-ctx, .side-text { margin: 0; font: 12.5px/1.45 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.hunk-ctx { color: var(--muted-foreground); }
+.hunk-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 760px) { .hunk-sides { grid-template-columns: minmax(0, 1fr); } }
+.side { border: 1px solid var(--border); border-radius: var(--radius); background: var(--muted); padding: 8px 10px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.side.picked { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 10%, var(--muted)); }
+.side-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; } .side-head strong { overflow-wrap: anywhere; } .side-note { margin: 0; }
+.blame { margin: 0; padding-left: 16px; font-size: 12px; color: var(--muted-foreground); } .blame .from-pick { color: var(--brand); }
+.hunk-base summary { cursor: pointer; }
+.choices { display: flex; flex-wrap: wrap; gap: 6px; }
+.choice { border: 1px solid var(--input); background: transparent; color: var(--foreground); border-radius: var(--radius); padding: 6px 10px; font: 500 13px ui-sans-serif, system-ui, sans-serif; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice:hover { background: var(--accent); } .choice.on { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 14%, transparent); color: var(--brand); }
+.choice:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+.btn.is-on { border-color: var(--brand); color: var(--brand); }
+.templates { margin-top: 6px; }
