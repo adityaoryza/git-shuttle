@@ -14,22 +14,48 @@ branch_slug() {
 }
 
 cmd_start() {
-    local name="" from="" mode=""
+    local name="" from="" mode="" owner
+    local addon_args=()      # name, flag, value of the flags that an enabled add-on declared (--task 15607)
     while (( $# )); do
         case "$1" in
             --from) [[ $# -ge 2 ]] || die "--from needs a branch"; from=$2; shift 2 ;;
             --stash|--carry)
                 [[ -z "$mode" || "$mode" == "${1#--}" ]] || die "start: --stash and --carry cannot be used together"
                 mode=${1#--}; shift ;;
-            -*) die "start: unknown option '$1'" ;;
+            -*) owner=$(addon_flag_owner start "$1")
+                [[ -n "$owner" ]] || die "start: unknown option '$1'"
+                [[ $# -ge 2 ]] || die "start: $1 needs a value (it is an option of the add-on '$owner')"
+                addon_args+=("$owner" "${1#--}" "$2"); shift 2 ;;
             *) [[ -z "$name" ]] || die "start: give the name as one argument, in quotes"; name=$1; shift ;;
         esac
     done
-    [[ -n "$name" ]] || die "start needs a name:  git shuttle start \"keep manual order date\""
+    [[ -n "$name" || ${#addon_args[@]} -gt 0 ]] || die "start needs a name:  git shuttle start \"keep manual order date\""
     need_repo
     refuse_operation
     [[ -n "$mode" ]] || require_clean_tree
     load_branches
+    local ref_addon="" ref_id="" ref_title="" ref_link="" ref_trace=() detail_line
+    if (( ${#addon_args[@]} )); then
+        # what the add-on knows (the task): its answer is checked, and a name it proposes is used only when none was given
+        local i hook_name hook_args
+        for (( i = 0; i < ${#addon_args[@]}; i += 3 )); do
+            hook_name=${addon_args[i]}
+            hook_args=("arg.${addon_args[i+1]}=${addon_args[i+2]}" "repo.root=$REPO_ROOT" "repo.name=$REPO_NAME" "repo.branch_prefix=$(cfg branchPrefix)")
+            addon_hook "$hook_name" start "${hook_args[@]}" || die "the add-on '$hook_name': $ADDON_PROBLEM"
+            [[ -n "$name" ]] || name=$(addon_rec branch)
+            if [[ -z "$ref_id" ]]; then
+                ref_addon=$hook_name; ref_id=$(addon_rec ref-id); ref_title=$(addon_rec ref-title); ref_link=$(addon_rec ref-link)
+                # what the add-on knows of the task today (the stage, the project...): kept in the trace of the task, with the date
+                while IFS= read -r detail_line; do
+                    [[ -n "$detail_line" ]] && ref_trace+=("d.${detail_line%%$'\x1f'*}=${detail_line#*$'\x1f'}")
+                done < <(addon_rec_all ref-detail)
+            fi
+            [[ -z "$(addon_rec note)" ]] || info "$hook_name: $(addon_rec note)"
+            addon_cleanup
+        done
+        [[ -n "$name" ]] || die "the add-on gave no branch name: give one:  git shuttle start \"keep manual order date\" ${addon_args[1]:+--${addon_args[1]} ${addon_args[2]}}"
+        [[ -z "$ref_id" ]] || info "for:        $ref_addon #$ref_id${ref_title:+  $ref_title}"
+    fi
 
     local prefix slug branch remote
     prefix=$(cfg branchPrefix); prefix=${prefix:-feature/}
@@ -72,6 +98,14 @@ cmd_start() {
             die "cannot create '$branch': your uncommitted changes conflict with $remote/$from; nothing was changed (use --stash, or commit them first)"
         fi
         die "cannot create '$branch'"
+    fi
+    if [[ -n "$ref_id" ]] && ! (( DRY_RUN )); then
+        # the branch remembers what it is for: the pull request, the cards of the page and the release notes read it
+        git config "branch.$branch.shuttle-ref-addon" "$ref_addon"
+        git config "branch.$branch.shuttle-ref-id" "$ref_id"
+        [[ -z "$ref_title" ]] || git config "branch.$branch.shuttle-ref-title" "$ref_title"
+        [[ -z "$ref_link" ]] || git config "branch.$branch.shuttle-ref-link" "$ref_link"
+        trace_event start "$branch" "from=$remote/$from" "sha=$(trace_sha HEAD)" "${ref_trace[@]}"
     fi
     step "on '$branch', cut from $remote/$from"
     (( stashed )) && info "your changes are in the stash ('git stash list'); bring them back with: git stash pop"

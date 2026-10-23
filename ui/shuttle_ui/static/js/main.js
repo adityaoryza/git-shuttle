@@ -16,6 +16,7 @@ import { ActionConfirm, BranchHereDialog, ContextMenu, DivergedDialog } from "./
 import { pushState, pushTitle } from "./pushstate.js";
 import { AddRepoDialog, SettingsDialog } from "./components/dialogs.js";
 import { FormDialog } from "./components/form-dialog.js";
+import { AddonCards, AddonSetupDialog, AddonsDialog, TasksDialog } from "./components/addons.js";
 import { CompareDialog, JournalDialog, PatchDialog, RewriteDialog, ShortcutsDialog, StashDialog, WorktreesDialog } from "./components/ops-dialogs.js";
 import { Toolbar } from "./components/toolbar.js";
 import { Palette } from "./components/palette.js";
@@ -276,6 +277,8 @@ function App() {
       case "link": api("GET", "repos/" + repoId + "/commits/" + args.commit.sha + "/link").then(d => copy(d.url), e => fail(e, "Cannot make the link")); return;
       case "stashes": setModal({ name: "stash" }); return;
       case "worktrees": setModal({ name: "worktrees" }); return;
+      case "addons": setModal({ name: "addons" }); return;
+      case "tasks": setModal({ name: "tasks" }); return;
       case "journal": setModal({ name: "journal" }); return;
       case "log": setModal({ name: "log" }); return;
       case "settings": setDialog("settings"); return;
@@ -329,6 +332,9 @@ function App() {
       case "shortcuts": return html`<${ShortcutsDialog} onClose=${closeModal} />`;
       case "log": return html`<${LogPanel} repos=${repos} version=${logVersion} onClose=${closeModal} onRerun=${rerun} onCopy=${copyText} notify=${notify} confirm=${confirm} />`;
       case "stash": return html`<${StashDialog} repoId=${repoId} onAction=${stashAction} onClose=${closeModal} notify=${notify} />`;
+      case "addons": return html`<${AddonsDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} onSetup=${addon => setModal({ name: "addon-setup", addon })} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, { "addon-enable": "Enable", "addon-install": "Install", "addon-uninstall": "Remove" }[action] || "Disable", action === "addon-uninstall" ? "destructive" : undefined); }} />`;
+      case "addon-setup": return html`<${AddonSetupDialog} repoId=${repoId} name=${modal.addon} notify=${notify} onClose=${closeModal} />`;
+      case "tasks": return html`<${TasksDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} />`;
       case "worktrees": return html`<${WorktreesDialog} repoId=${repoId} branches=${branches} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "worktree-remove" ? "Remove" : "Add", action === "worktree-remove" ? "destructive" : undefined); }} />`;
       case "journal": return html`<${JournalDialog} repoId=${repoId} status=${status} notify=${notify} onClose=${closeModal} onAction=${id => { setModal(null); perform(id); }} />`;
       case "compare": return html`<${CompareDialog} repoId=${repoId} branches=${branches} a=${modal.a} b=${modal.b} notify=${notify} onClose=${closeModal} />`;
@@ -354,7 +360,7 @@ function App() {
         ${status.protected === "1" ? html`<${Badge} tone="warn">protected<//>` : null}
         ${status["integration.ref"] ? html`<span class="hint">↑${ahead} ↓${behind} vs ${status["integration.ref"]}</span>${behind > 0 && !reasonOf("sync", ctx) ? html`<${Button} variant="outline" size="sm" class="behind-btn" title=${"Rebase this branch on " + status["integration.ref"]} onClick=${() => perform("sync")}>↓${behind} behind ${status["integration.ref"]}: update<//>` : null}` : null}` : null}
       <span class="grow" />
-      ${repoId ? html`<${Button} variant="ghost" size="sm" onClick=${fetchRemote} busy=${fetching}>${fetching ? "Fetching…" : "Fetch"}<//><${Button} variant="ghost" size="sm" onClick=${() => setDialog("settings")}>Settings<//>` : null}
+      ${repoId ? html`<${Button} variant="ghost" size="sm" onClick=${fetchRemote} busy=${fetching}>${fetching ? "Fetching…" : "Fetch"}<//><${Button} variant="ghost" size="sm" onClick=${() => setModal({ name: "tasks" })} title="Tasks and their trace">Tasks<//><button type="button" class="icon-btn" onClick=${() => setModal({ name: "addons" })} aria-label="Add-ons" title="Add-ons"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12v6a2 2 0 0 1-2 2h-4v-2.5a1.5 1.5 0 0 0-3 0V20H6a2 2 0 0 1-2-2v-4h2.5a1.5 1.5 0 0 0 0-3H4V6a2 2 0 0 1 2-2h4V3.5a2.5 2.5 0 0 1 5 0V4h3a2 2 0 0 1 2 2v3h-.5a1.5 1.5 0 0 0 0 3z"/></svg></button><${Button} variant="ghost" size="sm" onClick=${() => setDialog("settings")}>Settings<//>` : null}
             <${ThemeToggle} />
     </header>
     <${UpdateBanner} notice=${notice} notify=${notify} onHowTo=${() => { setAboutAuto(true); setDialog("about"); }} onLater=${() => api("POST", "update/notice", { snooze: notice.latest }).then(setNotice, e => fail(e))} />
@@ -376,7 +382,8 @@ function App() {
           <${OperationBanner} status=${status} runner=${runner} confirm=${confirm} />
           ${status["config.set"] === "0" ? html`<${Alert} tone="info" title="Using the default settings"><span>Integration <code>${c.integration || "?"}</code>, release <code>${c.release || "?"}</code>.</span> <a href="#" onClick=${e => { e.preventDefault(); setDialog("settings"); }}>Change</a><//>` : null}
           <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }, { value: "deploy", label: "Deploy" }]} />
-          ${tab === "start" ? html`<${StartTab} status=${status} branches=${branches} runner=${runner} onContinue=${() => setTab("ship")} onSwitch=${switchTo} />` : null}
+          ${tab === "start" || tab === "ship" ? html`<${AddonCards} repoId=${repoId} branch=${status.branch} version=${tab + ":" + (runner.job && runner.job.state !== "running" ? runner.job.id : "")} />` : null}
+          ${tab === "start" ? html`<${StartTab} repoId=${repoId} status=${status} branches=${branches} runner=${runner} onContinue=${() => setTab("ship")} onSwitch=${switchTo} />` : null}
           ${tab === "ship" ? html`<${ShipTab} status=${status} runner=${runner} groups=${groups} setGroups=${setGroups} tested=${!!tested[key]} setTested=${v => setTested({ ...tested, [key]: v })} worktree=${worktree} onOpenFile=${openFile} />` : null}
           ${tab === "deploy" ? html`<${DeployTab} repoId=${repoId} status=${status} branches=${branches} runner=${runner} onError=${fail} confirm=${confirm} />` : null}
           ${tab === "release" ? html`<${ReleaseTab} repoId=${repoId} status=${status} branches=${branches} runner=${runner} onError=${fail} onLoaded=${() => reload()} onSettings=${() => setDialog("settings")} onCopy=${copy} onPullRequest=${releasePullRequest} />` : null}

@@ -227,6 +227,7 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle hook install\|uninstall\|status` | a `commit-msg` hook that applies the message rules to every commit |
 | `git shuttle config` | the settings in effect |
 | `git shuttle deploy [TARGET] [--modules A,B]` | run the update command of a saved server over ssh, after a push (`--setup NAME`, `--list`, `--forget NAME`, `--plan`, `--check`) |
+| `git shuttle addon list \| info \| enable \| disable \| check \| cards` | add-ons: programs `git-shuttle-NAME` that tell git-shuttle the task of a branch, the text of a pull request ([docs/addons.md](docs/addons.md)) |
 | `git shuttle update [--check] [--to TAG]` | bring git-shuttle to the latest release (a copy made by the installer); `--check` only looks |
 
 Options for every command: `-y/--yes` (do not ask), `-n/--dry-run` (show the commands only), `-h/--help`, `--version`.

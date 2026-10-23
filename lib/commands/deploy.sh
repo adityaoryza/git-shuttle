@@ -407,6 +407,7 @@ cmd_deploy() {
     local tty=-T; [[ "$DEPLOY_SUDO" == ask || -t 0 ]] && tty=-t
     if run "${DEPLOY_SSH[@]}" "$tty" -- "$DEPLOY_HOST" "$DEPLOY_REMOTE"; then
         (( DRY_RUN )) || deploy_record "$DEPLOY_TARGET" "$DEPLOY_TIP" "$DEPLOY_MODULES" ok
+        trace_global deploy "target=$DEPLOY_TARGET" "tip=$DEPLOY_TIP" "branch=$DEPLOY_BRANCH" "modules=$DEPLOY_MODULES"
         step "deployed to '$DEPLOY_TARGET'"
     else
         local rc=$?

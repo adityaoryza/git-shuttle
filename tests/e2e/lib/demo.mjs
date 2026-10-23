@@ -119,6 +119,23 @@ case "$1" in
   clear) rm -f "$dir/$key" ;;
 esac
 `, { mode: 0o755 });
+  // a stand-in for an add-on (docs/addons.md): a program git-shuttle-task that shows one card, with a title that tries to be HTML
+  const addons = path.join(root, "addons");
+  fs.mkdirSync(addons);
+  fs.writeFileSync(path.join(addons, "git-shuttle-task"), `#!/usr/bin/env bash
+case "\${1:-}" in
+  --shuttle-manifest) echo '{"protocol":1,"name":"task","version":"0.1.0","description":"Tasks of a tracker","hooks":["start","status","setup","tasks"],"flags":{"start":["--task"]}}' ;;
+  hook) input=$(cat)
+        if [[ "$2" == tasks ]]; then
+          open='{"id":"15607","title":"Keep manual Order Date","subtitle":"Running","fields":[{"label":"Project","value":"Confort et eau"},{"label":"Fetched","value":"yes"}]},{"id":"15490","title":"Update doc on SO printout","subtitle":"To Validate","fields":[{"label":"Project","value":"Preaucess"},{"label":"Fetched","value":"no"}]}'
+          old='{"id":"15001","title":"An old one","subtitle":"Done","fields":[{"label":"Project","value":"Preaucess"},{"label":"Fetched","value":"no"}]}'
+          if grep -q '"all": "1"' <<<"$input"; then printf '{"tasks":[%s,%s]}\n' "$open" "$old"; else printf '{"tasks":[%s]}\n' "$open"; fi; exit 0; fi
+        if [[ "$2" == setup ]]; then if grep -q '"action": "save"' <<<"$input"; then echo '{"ok":true,"message":"Connected to the tracker as me"}'; else echo '{"ready":false,"note":"No key yet","fields":[{"key":"login","kind":"text","label":"Login","value":"me","required":true},{"key":"token","kind":"secret","label":"API token","required":true,"help":"from your profile"}]}'; fi; exit 0; fi
+        if [[ "$2" == start ]]; then echo '{"branch":"Keep manual Order Date","reference":{"id":"15607","title":"Keep manual Order Date on confirmation","link":"https://odoo.example/web#id=15607"},"note":"task found"}'; exit 0; fi
+        if [[ "$(cat "$(dirname "$0")/mode" 2>/dev/null)" == bad ]]; then echo '{"cards":[{"title":"A link that must not be one","link":"javascript:alert(1)"}]}'
+        else echo '{"cards":[{"title":"<b>Keep</b> the order date <img src=x onerror=alert(1)>","subtitle":"Running","link":"https://odoo.example/web#id=15607","text":"The order date stays.","fields":[{"label":"Project","value":"Confort et eau"}]}]}'; fi ;;
+esac
+`, { mode: 0o755 });
   // somebody else pushes to the remote: a commit on `branch`, made in a separate clone
   const pushToRemote = (branch, file, text, message, who = "sam") => {
     const other = fs.mkdtempSync(path.join(root, "other-"));
@@ -131,5 +148,5 @@ esac
     git(other, ["push", "-q", "origin", branch], { who });
     return git(other, ["rev-parse", "HEAD"]);
   };
-  return { root, remote, work, gh, ssh, secretTool, pushToRemote, git: (args, opts) => git(work, args, opts), remoteGit: (args, opts) => git(remote, args, opts), at, write, commit, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+  return { root, remote, work, gh, ssh, secretTool, addons, pushToRemote, git: (args, opts) => git(work, args, opts), remoteGit: (args, opts) => git(remote, args, opts), at, write, commit, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
 }

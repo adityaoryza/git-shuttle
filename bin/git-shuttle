@@ -93,6 +93,11 @@ Commands:
         [--from BASE] [--strategy-option ours|theirs] [--push]
   hook install|uninstall|status a commit-msg hook that applies the message rules to every commit
   config                        the effective settings
+  addon list | info NAME | enable NAME | disable NAME | check NAME | cards
+                                add-ons: programs named git-shuttle-NAME that tell git-shuttle more (the task of a branch, the text of a pull request);
+                                none does anything until it is enabled (docs/addons.md)
+  trace [list] | show TASK [--addon NAME] [--porcelain]
+                                what happened to a task, from its first commit to the deploy that carried it (the branch must have been started from a task)
   update [--check] [--to TAG]   bring git-shuttle to the latest release (a copy made by install.sh); --check only looks
 
 Options:
@@ -184,12 +189,16 @@ main() {
         update)        cmd_update "$@" ;;
         pr)            cmd_pr "$@" ;;
         deploy)        cmd_deploy "$@" ;;
+        addon)         cmd_addon "$@" ;;
+        trace)         cmd_trace "$@" ;;
         hook)          cmd_hook "$@" ;;
         config)        cmd_config "$@" ;;
         check-message) cmd_check_message "$@" ;;
         -h|--help|help) usage ;;
         --version|version) echo "git-shuttle $SHUTTLE_VERSION" ;;
-        *) printf 'git-shuttle: unknown command "%s"\n\n' "$command" >&2; usage >&2; exit 1 ;;
+        *) # an enabled add-on is a command too:  git shuttle task ...  runs git-shuttle-task
+           addon_passthrough "$command" "$@" && exit 0
+           printf 'git-shuttle: unknown command "%s"\n\n' "$command" >&2; usage >&2; exit 1 ;;
     esac
 }
 

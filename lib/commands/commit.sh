@@ -45,6 +45,7 @@ cmd_commit() {
     else
         run git commit -m "$message" || die "git commit failed"
     fi
+    trace_event commit "$branch" "sha=$(trace_sha HEAD)" "subject=${message%%$'\n'*}"
 }
 
 # git shuttle check-message FILE — used by the commit-msg hook.
