@@ -18,9 +18,16 @@ const addServer = async (page, values) => {
 // A toast stays while the pointer is on it (the pointer is moved away first), and an error toast stays until it is dismissed: those are
 // dismissed here. Without that a job that was meant to fail made the next click wait for a toast that never leaves.
 const quiet = async page => {
-  for (const close of await page.locator(".toast .toast-close").all()) await close.click().catch(() => {});
-  await page.mouse.move(5, 5);        // after the dismissing: the pointer must not be left where the next toast appears
-  await settled(page);
+  // Toasts of a job come a moment apart (done, then failed) and an error toast stays until it is dismissed: dismiss what is there, move the
+  // pointer away (a toast under it never leaves), and go on until nothing has shown up for a moment.
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    for (const close of await page.locator(".toast .toast-close").all()) await close.click().catch(() => {});
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(400);
+    if ((await page.locator(".toast").count()) === 0) { await page.waitForTimeout(300); if ((await page.locator(".toast").count()) === 0) return; }
+  }
+  await settled(page);          // says which toast stays
 };
 const settled = page => page.waitForFunction(() => !document.querySelector(".toast-title"), null, { timeout: 20000 }).catch(async e => { throw new Error("a toast stays: " + (await page.locator(".toast").allInnerTexts()).join(" // ")); });
 // a finished job; a failed one raises its error toast a moment later: wait for it, then let the toasts go (they sit over the buttons of the panel)

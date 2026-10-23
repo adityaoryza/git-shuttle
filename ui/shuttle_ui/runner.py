@@ -1,6 +1,8 @@
 """Running git-shuttle: one command in a repository, and reading its machine-readable output. Never through a shell."""
 import os
+import signal
 import subprocess
+import threading
 
 from .errors import BadRequest
 from .paths import SHUTTLE_ARGV
@@ -33,14 +35,42 @@ def limited(raw):
     return raw[:MAX_OUTPUT].decode("utf-8", "replace") + "\n[output cut: more than %d KiB]" % (MAX_OUTPUT // 1024)
 
 
-def run_shuttle(repo_path, args, dry_run=False, timeout=120, extra_env=None):
-    """One git-shuttle command in a repository; returns (exit status, output)."""
+def run_shuttle(repo_path, args, dry_run=False, timeout=120, extra_env=None, on_output=None):
+    """One git-shuttle command in a repository; returns (exit status, output).
+
+    on_output(text) gets everything printed so far each time more arrives, so that a long command can be followed while it runs.
+    """
     argv = SHUTTLE_ARGV + ["-n" if dry_run else "-y"] + list(args)
+    if on_output is None:
+        try:
+            done = subprocess.run(argv, cwd=repo_path, env=child_env(extra_env), capture_output=True, **NO_TERMINAL, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return 124, "timed out"
+        return done.returncode, limited(done.stdout + done.stderr)
+    proc = subprocess.Popen(argv, cwd=repo_path, env=child_env(extra_env), stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **NO_TERMINAL)
+    expired = threading.Event()
+    timer = threading.Timer(timeout, lambda: (expired.set(), _end(proc)))
+    timer.start()
+    out = b""
     try:
-        done = subprocess.run(argv, cwd=repo_path, env=child_env(extra_env), capture_output=True, **NO_TERMINAL, timeout=timeout)
-    except subprocess.TimeoutExpired:
-        return 124, "timed out"
-    return done.returncode, limited(done.stdout + done.stderr)
+        for chunk in iter(lambda: os.read(proc.stdout.fileno(), 4096), b""):
+            out += chunk
+            on_output(limited(out))
+    finally:
+        timer.cancel()
+        proc.stdout.close()
+        code = proc.wait()
+    if expired.is_set():
+        return 124, limited(out) + "\ntimed out"
+    return code, limited(out)
+
+
+def _end(proc):
+    """Ends a command that ran too long, with what it started (it has its own session)."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except OSError:
+        pass
 
 
 def parse_porcelain(raw):

@@ -34,8 +34,10 @@ def scrub(raw, secret):
     return raw.replace(b"\r\n", b"\n").replace(b"\r", b"\n").decode("utf-8", "replace")
 
 
-def run_with_secret(repo_path, args, secret, timeout=900):
-    """One git-shuttle command on a pseudo terminal, with the sudo password typed when the server asks. Returns (exit status, output)."""
+def run_with_secret(repo_path, args, secret, timeout=900, on_output=None):
+    """One git-shuttle command on a pseudo terminal, with the sudo password typed when the server asks. Returns (exit status, output).
+
+    on_output(text) gets what was printed so far (the password cut out) each time more arrives."""
     import pty
     argv = SHUTTLE_ARGV + ["-y"] + list(args)
     master, slave = pty.openpty()
@@ -64,6 +66,8 @@ def run_with_secret(repo_path, args, secret, timeout=900):
             if not chunk:
                 break
             out += chunk
+            if on_output:
+                on_output(scrub(out[:MAX_OUTPUT], secret))
             tail = out[since:]
             if PROMPT.search(tail):
                 if answers >= 1 and WRONG.search(tail):
