@@ -169,6 +169,26 @@ class TestAddons(Base):
             with self.assertRaises(BadRequest):
                 build_commands("task-bind", bad)
 
+    def test_the_report_actions_are_validated(self):
+        self.assertEqual(build_commands("addon-report", {"name": "odoo-task", "on": True}), [["addon", "report", "odoo-task", "on"]])
+        self.assertEqual(build_commands("addon-report", {"name": "odoo-task", "on": False}), [["addon", "report", "odoo-task", "off"]])
+        self.assertEqual(build_commands("task-report", {"branch": "feature/x"}), [["trace", "report", "--branch", "feature/x"]])
+        for action, bad in (("addon-report", {"name": "odoo-task", "on": "yes"}), ("addon-report", {"name": "../x", "on": True}), ("addon-report", {"on": True}),
+                            ("task-report", {}), ("task-report", {"branch": "--evil"})):
+            with self.assertRaises(BadRequest):
+                build_commands(action, bad)
+
+    def test_the_address_of_the_repository_for_the_report_has_no_secret(self):
+        import importlib.util
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("shuttle_report", os.path.join(here, "..", "..", "lib", "addons", "report.py"))
+        rp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rp)
+        self.assertEqual(rp.web_url("git@github.com:acme/shop.git"), "https://github.com/acme/shop")
+        self.assertEqual(rp.web_url("https://tok3n:x-oauth@github.com/acme/shop.git"), "https://github.com/acme/shop")
+        self.assertEqual(rp.web_url("https://ghp_SECRET@github.com/o/r"), "https://github.com/o/r")
+        self.assertEqual(rp.web_url("file:///tmp/repo"), "")
+
     def test_the_install_actions_validate_the_name_and_the_version(self):
         self.assertEqual(build_commands("addon-install", {"name": "odoo-task", "version": "v0.2.0"}), [["addon", "install", "odoo-task", "--version", "v0.2.0"]])
         self.assertEqual(build_commands("addon-uninstall", {"name": "odoo-task"}), [["addon", "uninstall", "odoo-task"]])

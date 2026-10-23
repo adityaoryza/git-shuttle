@@ -403,4 +403,91 @@ assert_status 1 "$RC" "values that are not JSON are refused"
 OUT=$(echo '{"../x":"y"}' | "$SHUTTLE" addon setup keyed --save 2>&1); RC=$?
 assert_status 1 "$RC" "a key with characters that are not allowed is refused"
 
+# --- the report: the pull request and the commits, added to the Customer report of the task (off until it is turned on) ------------------
+cat >"$AD/git-shuttle-reporter" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --shuttle-manifest) echo '{"protocol":1,"name":"reporter","hooks":["report"],"env":["FAKE_LOG","FAKE_MODE"]}' ;;
+    hook)
+        input=$(cat)
+        action=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["action"])' <<<"$input")
+        echo "$action" >>"$FAKE_LOG.reporter"
+        [[ "$action" == post ]] && printf '%s' "$input" >"$FAKE_LOG.reporter.post"
+        case "$action:${FAKE_MODE:-ok}" in
+            preview:ok) echo '{"ok":true,"message":"x_customer_report (html) has text: the entry is added after it, the text is kept","text":"git-shuttle - branch rpt\nPull request: T (https://github.example/a/b/pull/7)","field":"x_customer_report"}' ;;
+            post:ok) echo '{"ok":true,"message":"Added to x_customer_report of task 77","text":"","field":"x_customer_report"}' ;;
+            *:skipped) echo '{"ok":true,"message":"already there","text":"","field":"x_customer_report","skipped":true}' ;;
+            *:refused) echo '{"ok":false,"message":"Authentication failed","text":"","field":""}' ;;
+            *) echo "boom" >&2; exit 3 ;;
+        esac ;;
+esac
+EOF
+chmod +x "$AD/git-shuttle-reporter"
+cat >"$SB/gh-report" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"$(dirname "$0")/gh-report.log"
+case "$1 $2" in
+    "pr view") echo '{"url":"https://github.example/a/b/pull/7","number":7,"title":"T","baseRefName":"develop"}' ;;
+    *) echo "https://github.example/a/b/pull/7" ;;
+esac
+EOF
+chmod +x "$SB/gh-report"
+export GIT_SHUTTLE_GH="$SB/gh-report"
+shuttle addon report reporter on
+assert_status 1 "$RC" "the report of an add-on that is not enabled"
+shuttle -y addon enable reporter
+shuttle addon report reporter maybe
+assert_status 1 "$RC" "the report must be turned on or off, nothing else"
+shuttle -n addon report reporter on
+assert_eq "" "$(git config shuttle.addon.reporter.report)" "turning the report on in a dry run changes nothing"
+shuttle addon list --porcelain
+rest=$(tr '\037' '|' <<<"${OUT#*addon=reporter}")
+assert_not_contains "${rest%%addon=*}" "|on" "the report is off at first"
+
+git checkout -q -b rpt develop
+echo r >r.txt; git add r.txt; git commit -q -m "[FEAT] shop: a report test"
+git config branch.rpt.shuttle-ref-addon reporter
+git config branch.rpt.shuttle-ref-id 77
+shuttle -y pr
+assert_status 0 "$RC" "a pull request of a task whose report is off"
+assert_not_contains "$OUT" "Customer report" "...says nothing of the report"
+[[ -e "$FAKE_LOG.reporter" ]] && called=yes || called=no
+assert_eq "no" "$called" "...and never calls the add-on"
+
+shuttle -y addon report reporter on
+assert_status 0 "$RC" "turning the report on"
+assert_eq "on" "$(git config shuttle.addon.reporter.report)" "...for this repository only"
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=ok shuttle -n pr
+assert_status 0 "$RC" "pr --dry-run with the report on"
+assert_contains "$OUT" "the entry is added after it, the text is kept" "...shows what it asks of the add-on"
+assert_not_contains "$(cat "$FAKE_LOG.reporter")" "post" "...and writes nothing"
+FAKE_MODE=ok shuttle -y pr
+assert_status 0 "$RC" "pr with the report on"
+assert_contains "$OUT" "Customer report of task #77: Added to x_customer_report of task 77" "the report is written after the pull request is open"
+POST=$(cat "$FAKE_LOG.reporter.post")
+assert_contains "$POST" '"url": "https://github.example/a/b/pull/7"' "...with the address of the pull request"
+assert_contains "$POST" '"subject": "[FEAT] shop: a report test"' "...and the commits of the branch"
+assert_contains "$POST" '"ref_id": "77"' "...for the task of the branch"
+assert_not_contains "$POST" "$SECRET_TOKEN" "...and nothing of the environment"
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=refused shuttle -y pr
+assert_status 0 "$RC" "a report that the add-on cannot write does not undo the pull request"
+assert_contains "$OUT" "Authentication failed" "...and says why"
+FAKE_MODE=crash shuttle -y pr
+assert_status 0 "$RC" "an add-on that crashes does not either"
+assert_contains "$OUT" "Customer report" "...and says it"
+FAKE_MODE=skipped shuttle -y trace report
+assert_status 0 "$RC" "trace report when the pull request is already in the report"
+assert_not_contains "$(cat "$FAKE_LOG.reporter")" "post" "...writes nothing"
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=ok shuttle -y trace report
+assert_status 0 "$RC" "trace report"
+assert_contains "$(cat "$FAKE_LOG.reporter")" "post" "...writes it again, on demand"
+git checkout -q develop
+shuttle -y trace report --branch develop
+assert_status 1 "$RC" "trace report for a branch that is not for a task"
+shuttle -y addon report reporter off
+assert_eq "off" "$(git config shuttle.addon.reporter.report)" "the report can be turned off again"
+
 finish

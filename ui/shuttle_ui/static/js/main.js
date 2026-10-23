@@ -81,7 +81,7 @@ function App() {
   const [oldServer, setOldServer] = useState(false);   // the server is older than this page
   const [serverVersion, setServerVersion] = useState("");
   const [aboutAuto, setAboutAuto] = useState(false);   // opened to look for an update
-  const [notice, setNotice] = useState(null);          // is a newer release out (the server looks, at most once a day)
+  const [notice, setNotice] = useState(null);          // is a newer release out (a look at most once an hour, by the server or by any command)
   const [selected, setSelected] = useState(null);   // the commit (or the working tree) whose details are open
   const mainRef = useRef(null), paneRef = useRef(null);
   const mainSize = useSize(mainRef), paneSize = useSize(paneRef);
@@ -143,9 +143,11 @@ function App() {
   useEffect(() => {
     const look = () => api("GET", "update/notice").then(setNotice, () => { /* no answer: no reminder */ });
     look();
-    const again = setInterval(look, 6 * 3600 * 1000);
+    const again = setInterval(look, 10 * 60 * 1000);       // the server reads a file (a look at the network is made at most once an hour), and the commands of git-shuttle keep it fresh
+    const back = () => { if (document.visibilityState === "visible") look(); };
+    document.addEventListener("visibilitychange", back);
     api("GET", "version").then(info => { if (info && info.version) setServerVersion(info.version); if (!checkVersion(info).ok) setOldServer(true); }).catch(e => { if (e.oldServer) setOldServer(true); });
-    return () => clearInterval(again);
+    return () => { clearInterval(again); document.removeEventListener("visibilitychange", back); };
   }, []);
   useEffect(() => {
     loadPrefs().then(p => { prefs.current = p; return loadRepos(); })
@@ -349,9 +351,9 @@ function App() {
       case "shortcuts": return html`<${ShortcutsDialog} onClose=${closeModal} />`;
       case "log": return html`<${LogPanel} repos=${repos} version=${logVersion} onClose=${closeModal} onRerun=${rerun} onCopy=${copyText} notify=${notify} confirm=${confirm} />`;
       case "stash": return html`<${StashDialog} repoId=${repoId} onAction=${stashAction} onClose=${closeModal} notify=${notify} />`;
-      case "addons": return html`<${AddonsDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} onSetup=${addon => setModal({ name: "addon-setup", addon })} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, { "addon-enable": "Enable", "addon-install": "Install", "addon-uninstall": "Remove" }[action] || "Disable", action === "addon-uninstall" ? "destructive" : undefined); }} />`;
+      case "addons": return html`<${AddonsDialog} repoId=${repoId} notify=${notify} onClose=${closeModal} onSetup=${addon => setModal({ name: "addon-setup", addon })} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, { "addon-enable": "Enable", "addon-install": "Install", "addon-uninstall": "Remove", "addon-report": "Apply" }[action] || "Disable", action === "addon-uninstall" ? "destructive" : undefined); }} />`;
       case "addon-setup": return html`<${AddonSetupDialog} repoId=${repoId} name=${modal.addon} notify=${notify} onClose=${closeModal} />`;
-      case "tasks": return html`<${TasksDialog} repoId=${repoId} branches=${branches} current=${status.branch} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "task-unbind" ? "Unlink" : "Link", action === "task-unbind" ? "destructive" : undefined); }} />`;
+      case "tasks": return html`<${TasksDialog} repoId=${repoId} branches=${branches} current=${status.branch} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "task-unbind" ? "Unlink" : action === "task-report" ? "Add" : "Link", action === "task-unbind" ? "destructive" : undefined); }} />`;
       case "worktrees": return html`<${WorktreesDialog} repoId=${repoId} branches=${branches} notify=${notify} onClose=${closeModal} onRun=${(action, params, label) => { setModal(null); preview(action, params, label, action === "worktree-remove" ? "Remove" : "Add", action === "worktree-remove" ? "destructive" : undefined); }} />`;
       case "journal": return html`<${JournalDialog} repoId=${repoId} status=${status} notify=${notify} onClose=${closeModal} onAction=${id => { setModal(null); perform(id); }} />`;
       case "compare": return html`<${CompareDialog} repoId=${repoId} branches=${branches} a=${modal.a} b=${modal.b} notify=${notify} onClose=${closeModal} />`;

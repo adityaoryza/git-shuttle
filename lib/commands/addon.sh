@@ -191,9 +191,9 @@ addon_list() {
     if (( porcelain )); then
         while IFS= read -r name; do
             [[ -n "$name" ]] || continue
-            printf 'addon=%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\0' "$name" "$(addon_state "$name")" "$(addon_find "$name")" "$(addon_cfg "$name" version)" \
+            printf 'addon=%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\0' "$name" "$(addon_state "$name")" "$(addon_find "$name")" "$(addon_cfg "$name" version)" \
                 "$([[ "$(addon_state "$name")" == enabled ]] && addon_cfg_all "$name" flags | paste -sd' ' -)" \
-                "$([[ "$(addon_state "$name")" == enabled ]] && addon_cfg_all "$name" hooks | paste -sd' ' -)"
+                "$([[ "$(addon_state "$name")" == enabled ]] && addon_cfg_all "$name" hooks | paste -sd' ' -)" "$(addon_cfg "$name" report)"
         done < <(addon_names)
         return 0
     fi
@@ -314,7 +314,8 @@ addon_check() {
 
 # addon_tasks [PORCELAIN] — the tasks to choose from, as the enabled add-ons that have a `tasks` hook say them (it may ask a server: more time).
 addon_tasks() {
-    local porcelain=${1:-0} all=${2:-0} name json any=0 input
+    local porcelain=${1:-0} all=${2:-0} name json any=0 input extra=()
+    (( all )) && extra=("arg.all=1")
     need_repo
     ADDON_RUN_TIMEOUT=${GIT_SHUTTLE_ADDON_TASKS_TIMEOUT:-45}
     while IFS= read -r name; do
@@ -323,7 +324,7 @@ addon_tasks() {
         addon_need_python
         addon_cleanup
         input=$(mktemp)
-        addon_proto input tasks "repo.root=$REPO_ROOT" "repo.name=$REPO_NAME" $( ((all)) && echo "arg.all=1") >"$input"
+        addon_proto input tasks "repo.root=$REPO_ROOT" "repo.name=$REPO_NAME" "${extra[@]}" >"$input"
         if addon_run "$name" "$input" hook tasks && addon_validate tasks; then
             any=1
             json=$(cat "$ADDON_NORM")
@@ -445,8 +446,9 @@ for c in json.load(sys.stdin)["cards"]:
 }
 
 cmd_addon() {
-    local sub=${1:-list} scope="" porcelain=0 name="" version="" save=0 all=0
+    local sub=${1:-list} scope="" porcelain=0 name="" version="" save=0 all=0 state=""
     shift || true
+    if [[ "$sub" == report ]]; then name=${1:-}; state=${2:-}; [[ -n "$name" ]] || die "addon report needs a name and on or off"; addon_report_toggle "$name" "$state"; return 0; fi
     while (( $# )); do
         case "$1" in
             --global) scope=--global; shift ;;
@@ -470,6 +472,6 @@ cmd_addon() {
         available) [[ -z "$name" ]] || die "addon available takes no name"; addon_available "$porcelain" ;;
         install)   [[ -n "$name" ]] || die "addon install needs a name (git shuttle addon available)"; addon_install "$name" "$version" ;;
         uninstall) [[ -n "$name" ]] || die "addon uninstall needs a name"; addon_uninstall "$name" ;;
-        *)       die "addon: '$sub' is not a command (list, info, enable, disable, check, cards, tasks, setup, available, install, uninstall)" ;;
+        *)       die "addon: '$sub' is not a command (list, info, enable, disable, check, cards, tasks, setup, report, available, install, uninstall)" ;;
     esac
 }

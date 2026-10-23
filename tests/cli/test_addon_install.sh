@@ -22,7 +22,8 @@ fake() {
     python3 "$SRC/tests/helpers/fake_addon_release.py" "$PORT_FILE" acme/acme-tool acme-tool "$1" "${2:-ok}" &
     PIDS+=($!)
     for _ in {1..50}; do [[ -s "$PORT_FILE" ]] && break; sleep 0.1; done
-    export GIT_SHUTTLE_ADDON_BASE="http://127.0.0.1:$(cat "$PORT_FILE")"
+    GIT_SHUTTLE_ADDON_BASE="http://127.0.0.1:$(cat "$PORT_FILE")"
+    export GIT_SHUTTLE_ADDON_BASE
 }
 requests() { grep -c . "$PORT_FILE.log" 2>/dev/null || true; }
 

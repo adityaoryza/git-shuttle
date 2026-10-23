@@ -186,6 +186,13 @@ def build(action, p):
             if step == "reword" or item.get("message"):
                 messages += ["--message", "%s=%s" % (sha, text(item.get("message"), "message", 60000, True))]
         return [args + messages + (["--allow-pushed"] if flag(p.get("allow_pushed")) else [])]
+    if action == "addon-report":
+        addon = p.get("name")
+        if not isinstance(addon, str) or not ADDON_RE.match(addon) or not isinstance(p.get("on"), bool):
+            raise BadRequest("name the add-on, and say on or off")
+        return [["addon", "report", addon, "on" if p["on"] else "off"]]
+    if action == "task-report":
+        return [["trace", "report", "--branch", name(p.get("branch"), "the branch")]]
     if action == "task-unbind":
         return [["trace", "unbind", "--branch", name(p.get("branch"), "the branch")]]
     if action == "task-bind":

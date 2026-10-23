@@ -37,6 +37,22 @@ An add-on that needs a login or a key says so with the `setup` hook, and the web
 standard input (`git shuttle addon setup NAME --save` reads them from standard input, never from the command line, where others could see
 them), are not written to any log, and a value that the add-on repeats in its message is hidden. The add-on must be enabled first.
 
+### `report` hook: the pull request and the commits, for the people who follow the task
+
+After `git shuttle pr`, an add-on may add the pull request and the commits of the branch to the task it is for (odoo-task: the Customer report,
+the custom field `x_customer_report`), so that the PM can check them on GitHub. It is the only way an add-on can write, and it has rules:
+- **Off until you turn it on, for one repository**: `git shuttle addon report NAME on` (the button *Customer report* in the Add-ons dialog).
+- **Shown first, asked, then written**: the hook is called with `{"action":"preview"}` (the add-on says what it would add) and, after your
+  answer (or `--yes`, which the web UI gives after its own preview), with `{"action":"post"}`. `git shuttle trace report` does the same for a pull
+  request that is already open.
+- **Only adds**: the add-on keeps the text that is there and puts its entry after it; it adds one entry for each pull request; it reads the
+  field again and puts the old value back if the old text is not all there. odoo-task writes only a custom field (`x_...`) of text or html type
+  of one task, and nothing else.
+- **A failure never undoes the pull request**: it is a warning, with the way to try again.
+
+The input has `branch`, `ref_id`, `pr` (`url`, `title`, `base`), `commits` (`sha`, `subject`, `url`) and `repo.web` (the address of the repository
+without anything that comes before the `@` of a remote); the answer is `{"ok", "message", "text", "field", "skipped"}`.
+
 ### `tasks` hook, `details`, and the trace
 
 `tasks` lists the tasks of the user (up to 60: `id`, `title`, optional `subtitle`, `link`, up to 8 `fields`, and a `note`); the Start tab of the web UI

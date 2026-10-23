@@ -384,7 +384,7 @@ def handle(server, method, route, body):
         if method == "GET" and rest == ["addons"]:
             return {"addons": [{"name": r[0].partition("=")[2], "state": r[1] if len(r) > 1 else "", "path": r[2] if len(r) > 2 else "",
                                 "version": r[3] if len(r) > 3 else "", "flags": r[4].split() if len(r) > 4 and r[4] else [],
-                                "hooks": r[5].split() if len(r) > 5 and r[5] else []}
+                                "hooks": r[5].split() if len(r) > 5 and r[5] else [], "report": len(r) > 6 and r[6] == "on"}
                                for r in shuttle_records(repo["path"], ["addon", "list"]) if r]}
         if len(rest) == 3 and rest[0] == "addons" and rest[2] == "setup" and method in ("GET", "POST"):
             return addon_setup(repo, rest[1], body if method == "POST" else None)

@@ -67,4 +67,5 @@ cmd_pr() {
         trace_event pr "$branch" "base=$base" "title=$title" "url=$("$gh" pr view "$branch" --json url --jq .url 2>/dev/null | head -n1)"
     fi
     step "pull request opened"
+    task_report_after_pr "$branch" "$base" "$title"
 }

@@ -9,6 +9,7 @@ set -u
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 suite=${1:-all}
 failed=0
+export GIT_SHUTTLE_NO_UPDATE_CHECK=1       # a command looks for a newer release by itself (update_remind): not in a test, unless it is about that
 
 run_cli() {
     local file

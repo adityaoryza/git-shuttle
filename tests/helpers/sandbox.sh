@@ -10,6 +10,7 @@ export GIT_EDITOR=true GIT_TERMINAL_PROMPT=0
 
 # sandbox_new [DIRNAME] — creates $SB (the root), $REMOTE (bare) and $WORK (the clone, with spaces in its path on purpose).
 sandbox_new() {
+    export GIT_SHUTTLE_NO_UPDATE_CHECK=1     # a command looks for a newer release by itself (update_remind): not in a test, unless it is about that
     SB=$(mktemp -d "${TMPDIR:-/tmp}/shuttle-test.XXXXXX")
     REMOTE="$SB/remote.git"
     WORK="$SB/${1:-my work}"

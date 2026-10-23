@@ -123,8 +123,10 @@ The dialog also looks for a newer release and installs it (`POST /api/update/che
 `git shuttle update`). They are called only when the button is clicked; the page sends no parameter, so it cannot choose the address
 that is asked (GitHub, over https) or the version that is installed. One update runs at a time, and the result is in the history.
 
-The reminder under the top bar (`GET /api/update/notice`) is the one look the server makes by itself: at most once a day (an hour after a
-look that failed), for the number of the latest release, with the answer kept in `~/.config/git-shuttle/update-notice.json`. The page asks the
+The reminder under the top bar (`GET /api/update/notice`) is the one look git-shuttle makes by itself: at most once an hour (also after a
+look that failed), for the number of the latest release, by the server or by any command of git-shuttle (`update_remind` in
+`lib/commands/update.sh`, in the background, never waited for; it also says "git-shuttle X is out" once per release on a terminal). The answer is kept in
+`~/.config/git-shuttle/update-notice.json`. The page asks the
 server and never the internet. `POST /api/update/notice` takes only `{"enabled": true|false}` (the switch in About) and `{"snooze":
 "0.5.0"}` ("Later", for that release). `GIT_SHUTTLE_NO_UPDATE_CHECK=1` turns it off for good and the page cannot turn it back on.
 Releases are fetched from the tag archive of the repository over https; they are not signed, so the trust is the one you give to the

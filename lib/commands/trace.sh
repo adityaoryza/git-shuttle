@@ -61,7 +61,9 @@ trace_bind() {
     branch=${branch:-$(git symbolic-ref -q --short HEAD || true)}
     [[ -n "$branch" ]] || die "bind: you are not on a branch: name it with --branch"
     git show-ref -q --verify "refs/heads/$branch" || die "bind: there is no branch '$branch' here"
-    [[ "$branch" != "$BASE" && "$branch" != "$INTEGRATION" && "$branch" != "$RELEASE" ]] && ! is_protected "$branch" || die "bind: '$branch' is a shared branch, not the work of one task"
+    if [[ "$branch" == "$BASE" || "$branch" == "$INTEGRATION" || "$branch" == "$RELEASE" ]] || is_protected "$branch"; then
+        die "bind: '$branch' is a shared branch, not the work of one task"
+    fi
     if [[ -z "$addon" ]]; then
         while IFS= read -r name; do
             [[ -n "$name" ]] || continue
@@ -143,6 +145,18 @@ cmd_trace() {
             load_branches
             TRACE_SHARED="$BASE $INTEGRATION $RELEASE" TRACE_BASE=${remote_ref:-HEAD} "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" map "$file" "$REPO_ROOT"
             return 0 ;;
+        report)
+            # the pull request and the commits of the branch, added to the Customer report of its task (the same as after `git shuttle pr`)
+            local rtarget rpr
+            load_branches
+            rtarget=${branch:-$(git symbolic-ref -q --short HEAD || true)}
+            [[ -n "$rtarget" ]] || die "report: you are not on a branch: name it with --branch"
+            report_applicable "$rtarget" || die "report: '$rtarget' is not for a task whose add-on has the report turned on (git shuttle addon report NAME on)"
+            rpr=$(mktemp)
+            "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName >"$rpr" 2>/dev/null || { rm -f "$rpr"; die "report: there is no pull request for '$rtarget' yet (git shuttle pr)"; }
+            task_report_flow "$rtarget" "$INTEGRATION" "$rpr"
+            rm -f "$rpr"
+            return 0 ;;
         unbind)
             # a branch that was linked to a task by mistake: it forgets the task, and its steps leave the trace
             local target gone
@@ -203,6 +217,6 @@ for e in data["events"]:
     for k, v in (e.get("details") or {}).items():
         print("                         %s: %s" % (k, v))'
             ;;
-        *) die "trace: '$sub' is not a command (list, show, bind, unbind, map)" ;;
+        *) die "trace: '$sub' is not a command (list, show, bind, unbind, report, map)" ;;
     esac
 }

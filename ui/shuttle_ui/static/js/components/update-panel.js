@@ -1,4 +1,4 @@
-/* Updates, in the About dialog: looking for a release is a click; the reminder that one is out is the server's own look, once a day, and can be turned off here. */
+/* Updates, in the About dialog: looking for a release is a click; the reminder that one is out is the look that the server or a command makes, at most once an hour, and can be turned off here. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { describeApplied, describeCheck, describeFailure } from "../update.js";
@@ -33,7 +33,7 @@ export function UpdatePanel({ auto, notify, notice, onNotice }) {
     ${notice ? html`<div class="update-remind">
       <label class="check"><input type="checkbox" checked=${notice.enabled} disabled=${notice.forced_off}
         onChange=${e => api("POST", "update/notice", { enabled: e.target.checked }).then(onNotice, e2 => setState(s => ({ ...s, step: "failed", message: describeFailure(e2) })))} /> Remind me when a new version is out</label>
-      <p class="hint">${notice.forced_off ? "Turned off here by GIT_SHUTTLE_NO_UPDATE_CHECK." : "Once a day this server asks github.com for the number of the latest release: nothing about you or your repositories is sent."}</p>
+      <p class="hint">${notice.forced_off ? "Turned off here by GIT_SHUTTLE_NO_UPDATE_CHECK." : "At most once an hour, this server (or a git-shuttle command) asks github.com for the number of the latest release: nothing about you or your repositories is sent."}</p>
     </div>` : null}
     <div aria-live="polite">
       ${found ? html`<${Alert} tone=${found.tone === "warn" ? "warn" : "info"} title=${found.title}>

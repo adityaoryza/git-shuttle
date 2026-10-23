@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+os.environ.setdefault("GIT_SHUTTLE_NO_UPDATE_CHECK", "1")   # a command looks for a newer release by itself (update_remind): not in a test
 from unittest import mock
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "ui"))
