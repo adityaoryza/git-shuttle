@@ -2,6 +2,7 @@
  * What an add-on says was checked by the command (a size, a safe alphabet, http or https for a link); it is shown as text, never as HTML. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
+import { linkify } from "../logic.js";
 import { ExternalLink } from "./links.js";
 import { Alert, Badge, Button, Field, Input, Modal, Segmented, Skeleton } from "./ui.js";
 import { Combobox } from "./combobox.js";
@@ -15,7 +16,7 @@ function CardText({ text }) {
   const lines = text.split("\n");
   const long = lines.length > 8 || text.length > 700;
   const shown = all || !long ? text : lines.slice(0, 8).join("\n").slice(0, 700) + "…";
-  return html`<div class="addon-text-wrap"><p class="addon-text">${shown}</p>${long ? html`<button type="button" class="link" onClick=${() => setAll(!all)}>${all ? "Show less" : "Show all"}</button>` : null}</div>`;
+  return html`<div class="addon-text-wrap"><p class="addon-text">${linkify(shown).map(p => (p.url ? html`<${ExternalLink} href=${p.url} class="addon-link">${p.text}<//>` : p.text))}</p>${long ? html`<button type="button" class="link" onClick=${() => setAll(!all)}>${all ? "Show less" : "Show all"}</button>` : null}</div>`;
 }
 
 export function AddonCards({ repoId, branch, version }) {
@@ -175,13 +176,13 @@ export function TaskPicker({ repoId, version, onPick, picked }) {
   </div>`;
 }
 
-const EVENT_SAY = { bind: "Linked to the task", start: "Started", commit: "Commit", push: "Pushed", pr: "Pull request", merge: "Merged", release: "Released", deploy: "Deployed" };
-const eventText = e => [e.branch && "branch " + e.branch, e.sha && e.sha.slice(0, 10), e.title || e.subject, e.url, e.target && "to " + e.target, e.tag && "tag " + e.tag, e.base && "into " + e.base, e.into && "into " + e.into, e.release_branch && "onto " + e.release_branch, e.linked && "added afterwards, with its real date"].filter(Boolean).join(" · ");
+const EVENT_SAY = { branch: "Branch made", bind: "Linked to the task", start: "Started", commit: "Commit", push: "Pushed", pr: "Pull request", merge: "Merged", release: "Released", deploy: "Deployed" };
+const eventText = e => [e.branch && "branch " + e.branch, e.sha && e.sha.slice(0, 10), e.title || e.subject, e.url, e.target && "to " + e.target, e.tag && "tag " + e.tag, e.base && "into " + e.base, e.into && "into " + e.into, e.release_branch && "onto " + e.release_branch, e.linked && "added afterwards, with its real date", e.from && e.type === "branch" && "from " + e.from].filter(Boolean).join(" · ");
 
 // every step that git-shuttle took for the tasks, in order: start, commit, push, pull request, merge, release, deploy
 // a date of the trace (UTC, with a Z) in the time zone of this browser
 const localTime = iso => { const d = new Date(iso); return isNaN(d) ? String(iso || "") : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); };
-const LAST_SAY = { start: "started", commit: "committed", push: "pushed", pr: "pull request", merge: "merged", release: "released", deploy: "deployed", bind: "linked" };
+const LAST_SAY = { branch: "branch made", start: "started", commit: "committed", push: "pushed", pr: "pull request", merge: "merged", release: "released", deploy: "deployed", bind: "linked" };
 
 function Timeline({ events }) {
   const [all, setAll] = useState(false);

@@ -266,5 +266,83 @@ class TestTraceBackfillMerged(unittest.TestCase):
             self.assertEqual(sorted(e["type"] for e in tr.events(os.path.join(tmp, "t", "e.jsonl"))), ["commit", "commit", "merge", "start"])
 
 
+class TestReportCommits(unittest.TestCase):
+    def test_the_commits_of_the_report_are_the_commits_of_the_task_not_the_merges_of_other_branches(self):
+        import importlib.util
+        import subprocess
+        import tempfile
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("shuttle_report3", os.path.join(here, "..", "..", "lib", "addons", "report.py"))
+        rp = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(rp)
+        env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL="a@a")
+        with tempfile.TemporaryDirectory() as tmp:
+            def git(*args):
+                subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True)
+            git("init", "-q", "-b", "staging")
+            write(os.path.join(tmp, "a"), "1"); git("add", "a"); git("commit", "-qm", "base")
+            git("checkout", "-qb", "task")
+            write(os.path.join(tmp, "t"), "t"); git("add", "t"); git("commit", "-qm", "[FEAT] shop: the work of the task")
+            git("checkout", "-qb", "other", "staging")
+            write(os.path.join(tmp, "o"), "o"); git("add", "o"); git("commit", "-qm", "[FIX] shop: somebody else")
+            git("checkout", "-q", "task")
+            git("merge", "-q", "--no-ff", "-m", "Merge branch 'other' into staging", "other")
+            doc = rp.build("preview", tmp, "task", "staging", "x", "1", "")
+            subjects = [c["subject"] for c in doc["commits"]]
+            self.assertIn("[FEAT] shop: the work of the task", subjects)
+            self.assertFalse(any(s.startswith("Merge ") for s in subjects), subjects)
+            # with a pull request, its own commits are the list: what the branch holds besides is not the work of the task
+            prfile = os.path.join(tmp, "pr.json")
+            with open(prfile, "w") as handle:
+                json.dump({"url": "https://github.example/a/b/pull/9", "title": "T", "baseRefName": "staging",
+                           "commits": [{"oid": "c" * 40, "messageHeadline": "[FEAT] shop: only this one"}]}, handle)
+            doc = rp.build("preview", tmp, "task", "staging", "x", "1", prfile)
+            self.assertEqual([c["subject"] for c in doc["commits"]], ["[FEAT] shop: only this one"])
+
+
+class TestReportSteps(unittest.TestCase):
+    def test_the_steps_of_a_task_come_from_its_trace_in_order(self):
+        import importlib.util
+        import subprocess
+        import tempfile
+        here = os.path.dirname(os.path.abspath(__file__))
+        load = lambda name, file: (lambda m: (m.__spec__.loader.exec_module(m), m)[1])(importlib.util.module_from_spec(importlib.util.spec_from_file_location(name, os.path.join(here, "..", "..", "lib", "addons", file))))
+        rp, tr = load("shuttle_report4", "report.py"), load("shuttle_trace4", "trace.py")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL="a@a")
+            run = lambda *args: subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True, text=True).stdout.strip()
+            run("init", "-q", "-b", "staging")
+            run("commit", "-q", "--allow-empty", "-m", "base")
+            run("checkout", "-q", "-b", "feat/x")
+            run("commit", "-q", "--allow-empty", "-m", "[FEAT] a thing")
+            real = run("rev-parse", "HEAD")
+            trace = os.path.join(tmp, "events.jsonl")
+            base = ["addon=odoo-task", "task=15842", "title=Feedback", "branch=feat/x"]
+            tr.append(trace, ["type=start", "at=2026-10-26T02:13:00Z", "sha=" + "a" * 40, "d.Project=Preaucess"] + base)
+            tr.append(trace, ["type=commit", "at=2026-10-26T04:29:00Z", "sha=" + "e" * 40, "subject=[FEAT] a thing (before the rebase)"] + base)
+            tr.append(trace, ["type=commit", "at=2026-10-26T04:30:00Z", "sha=" + real, "subject=[FEAT] a thing"] + base)
+            tr.append(trace, ["type=push", "at=2026-10-26T04:36:00Z", "sha=" + real] + base)
+            tr.append(trace, ["type=pr", "at=2026-10-26T04:37:00Z", "url=https://github.example/a/b/pull/286", "title=Feedback", "base=staging"] + base)
+            tr.append(trace, ["type=merge", "at=2026-10-26T04:38:00Z", "sha=" + "c" * 40, "into=staging"] + base)
+            tr.append(trace, ["type=release", "at=2026-10-26T05:00:00Z", "release_branch=rel/1", "sha=" + "d" * 40] + base)
+            os.environ["REPORT_TRACE_FILE"], os.environ["REPORT_ADDON"] = trace, "odoo-task"
+            try:
+                doc = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
+            finally:
+                os.environ.pop("REPORT_TRACE_FILE", None)
+                os.environ.pop("REPORT_ADDON", None)
+            titles = [p["title"] for p in doc["phases"]]
+            self.assertEqual(titles, ["Started", "Commits", "Pushed", "Pull request", "Merged", "Released"])
+            commits = [p for p in doc["phases"] if p["title"] == "Commits"][0]["items"]
+            self.assertEqual([c["text"] for c in commits], [real[:8] + " [FEAT] a thing"], "the commit that was rewritten is not listed")
+            pr = [p for p in doc["phases"] if p["title"] == "Pull request"][0]["items"][0]
+            self.assertEqual((pr["url"], pr["ref"]), ("https://github.example/a/b/pull/286",) * 2)
+            started = [p for p in doc["phases"] if p["title"] == "Started"][0]["items"]
+            self.assertIn("Project: Preaucess", [i["text"] for i in started])
+            # a task without a trace keeps the report of the pull request and its commits
+            doc2 = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
+            self.assertNotIn("phases", doc2)
+
+
 if __name__ == "__main__":
     unittest.main()

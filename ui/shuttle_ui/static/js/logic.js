@@ -201,6 +201,21 @@ export function conflictChoices(status) {
   };
 }
 // a name that is long (a commit with its title) is cut for a button; the whole name is in its tooltip
+// a text as pieces: plain text, and the web addresses in it (http or https only) that can be clicked; the pieces put back together are the text
+export function linkify(text) {
+  const out = [];
+  const re = /https?:\/\/[^\s<>"'`)\]]+/g;
+  let last = 0, m;
+  while ((m = re.exec(String(text)))) {
+    const url = m[0].replace(/[.,;:!?]+$/, "");
+    if (m.index > last) out.push({ text: text.slice(last, m.index) });
+    out.push({ text: url, url });
+    last = m.index + url.length;
+    re.lastIndex = last;
+  }
+  if (last < String(text).length) out.push({ text: String(text).slice(last) });
+  return out;
+}
 export const shortName = (name, max = 32) => (name.length > max ? name.slice(0, max - 1).trimEnd() + "…" : name);
 export const keepLabel = side => "Keep " + shortName(side.name);
 export const keepTitle = (side, other) => "Keep " + side.name + (side.role ? " (" + side.role + ")" : "") + " for this file; what " + other.name + " wrote in it is dropped";

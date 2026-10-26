@@ -175,6 +175,13 @@ t("plainSide: the sides of a conflict get plain titles, and an unknown role keep
   assert.strictEqual(L.plainSide({ name: "odd/name", role: "something new" }).title, "odd/name");
   assert.strictEqual(L.plainSide(null).title, "");
 });
+t("linkify: the web addresses of a text are pieces of their own, and only http and https", () => {
+  const pieces = L.linkify("see https://hub.doodex.net/web#id=1&model=project.task, and (https://a.example/b). javascript:alert(1) ftp://x");
+  assert.deepStrictEqual(pieces.filter(p => p.url).map(p => p.url), ["https://hub.doodex.net/web#id=1&model=project.task", "https://a.example/b"]);
+  assert.strictEqual(pieces.map(p => p.text).join(""), "see https://hub.doodex.net/web#id=1&model=project.task, and (https://a.example/b). javascript:alert(1) ftp://x");
+  assert.deepStrictEqual(L.linkify("no address"), [{ text: "no address" }]);
+  assert.deepStrictEqual(L.linkify(""), []);
+});
 t("conflictCode and hasMarkers: only a file written on both sides has places to choose from", () => {
   const status = { file: ["UU a.txt", "AA b/c.txt", "DU gone.txt", " M other.txt"] };
   assert.deepStrictEqual(["a.txt", "b/c.txt", "gone.txt", "nope.txt"].map(f => L.conflictCode(status, f)), ["UU", "AA", "DU", ""]);

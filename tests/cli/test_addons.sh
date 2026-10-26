@@ -191,6 +191,22 @@ git checkout -q main
 FAKE_MODE=ok shuttle -y trace bind 15607
 assert_status 1 "$RC" "the base branch cannot be linked either"
 git checkout -q develop
+# a branch that is made from a branch of a task is for the same task
+git checkout -q feature/keep_manual_order_date
+shuttle -n branch child_of_task
+assert_eq "" "$(git config branch.child_of_task.shuttle-ref-id)" "branch --dry-run links nothing"
+shuttle -y branch child_of_task
+assert_status 0 "$RC" "branch from a branch of a task"
+assert_contains "$OUT" "task #15607, like 'feature/keep_manual_order_date'" "...says that it is for the same task"
+assert_eq "15607" "$(git config branch.child_of_task.shuttle-ref-id)" "...and the new branch is linked (the task)"
+assert_eq "task" "$(git config branch.child_of_task.shuttle-ref-addon)" "...(the add-on)"
+assert_eq "Keep manual Order Date on confirmation" "$(git config branch.child_of_task.shuttle-ref-title)" "...(the title)"
+assert_contains "$(cat "$TRACE")" '"branch": "child_of_task"' "...and the trace has it"
+git checkout -q develop
+shuttle -y branch not_for_a_task
+assert_eq "" "$(git config branch.not_for_a_task.shuttle-ref-id)" "a branch made from a branch that is not for a task is not for one"
+git checkout -q feature/keep_manual_order_date
+
 git checkout -q feature/keep_manual_order_date
 
 git checkout -q develop
