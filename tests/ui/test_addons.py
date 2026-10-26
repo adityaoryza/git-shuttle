@@ -324,7 +324,7 @@ class TestReportSteps(unittest.TestCase):
             tr.append(trace, ["type=push", "at=2026-10-26T04:36:00Z", "sha=" + real] + base)
             tr.append(trace, ["type=pr", "at=2026-10-26T04:37:00Z", "url=https://github.example/a/b/pull/286", "title=Feedback", "base=staging"] + base)
             tr.append(trace, ["type=merge", "at=2026-10-26T04:38:00Z", "sha=" + "c" * 40, "into=staging"] + base)
-            tr.append(trace, ["type=release", "at=2026-10-26T05:00:00Z", "release_branch=rel/1", "sha=" + "d" * 40] + base)
+            tr.append(trace, ["type=release", "at=2026-10-26T05:00:00Z", "release_branch=19.0-release/1", "sha=" + "d" * 40] + base)
             os.environ["REPORT_TRACE_FILE"], os.environ["REPORT_ADDON"] = trace, "odoo-task"
             try:
                 doc = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
@@ -342,6 +342,17 @@ class TestReportSteps(unittest.TestCase):
             for phase in doc["phases"]:  # a ref that the field does not show can never match: the step would be written on every run
                 for item in phase["items"]:
                     self.assertTrue(not item.get("ref") or item["ref"] in item["text"] or item["ref"] == item.get("url"), item)
+            # a deploy of the release branch carries the task although the merge of staging is not in it (cherry-picks)
+            tr.append(trace, ["type=deploy", "at=2026-10-26T05:30:00Z", "target=prod", "tip=" + "f" * 40, "branch=19.0-release/1"])
+            tr.append(trace, ["type=deploy", "at=2026-10-26T04:50:00Z", "target=prod", "tip=" + "f" * 40, "branch=19.0-release/0"])
+            os.environ["REPORT_TRACE_FILE"], os.environ["REPORT_ADDON"] = trace, "odoo-task"
+            try:
+                doc3 = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
+            finally:
+                os.environ.pop("REPORT_TRACE_FILE", None)
+                os.environ.pop("REPORT_ADDON", None)
+            deploys = [(p["title"], p["items"][0]["text"]) for p in doc3["phases"] if p["title"].startswith("Deployed")]
+            self.assertEqual(deploys, [("Deployed to prod", "to prod (branch 19.0-release/1)")], "19.0-release/0 is not the release of this task")
             # a task without a trace keeps the report of the pull request and its commits
             doc2 = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
             self.assertNotIn("phases", doc2)
