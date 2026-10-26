@@ -1,7 +1,7 @@
 /* The action panel: Start a task, Ship it, Release it. Each ends in one button: Preview, then Run. */
 import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { GH_MISSING, branchOptions, conflictChoices, conflictCode, conflictKindNote, conflictSidesLine, ghMissing, groupByModule, hasMarkers, keepLabel, keepTitle, pickProgress, releaseReady, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand } from "../logic.js";
+import { GH_MISSING, branchOptions, conflictChoices, conflictCode, conflictKindNote, conflictSidesLine, ghMissing, groupByModule, hasMarkers, keepLabel, keepTitle, pickProgress, releaseReady, messageProblem, moduleOf, pathsToStage, shipParams, shortHash, upgradeCommand, branchFromName } from "../logic.js";
 import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBranches, releaseNotes, removePicks, taskOf } from "../release.js";
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { TaskPicker } from "./addons.js";
@@ -99,6 +99,8 @@ export function StartTab({ repoId, status, branches, runner, onContinue, onSwitc
   // the add-ons that were enabled and add a flag to start (git shuttle start --task 4821): a field each, to start from what they know
   const [starters, setStarters] = useState([]);
   const [fromValues, setFromValues] = useState({});
+  const [fromTitles, setFromTitles] = useState({});      // the title of the task that was picked, to suggest a name for the branch
+  const [fromNames, setFromNames] = useState({});        // a name for the branch that was typed (empty: the add-on proposes one from the task)
   useEffect(() => {
     let alive = true;
     api("GET", "repos/" + repoId + "/addons").then(d => {
@@ -140,10 +142,17 @@ export function StartTab({ repoId, status, branches, runner, onContinue, onSwitc
       <p class="lead">An enabled add-on knows the task: it proposes the name of the branch, and the branch remembers the task.</p>
       ${starters.map(s => {
         const value = (fromValues[s.key] || "").trim();
-        const params = value ? { addon: { name: s.addon, flag: s.flag, value }, ...(plan.needsChoice ? { [choice]: true } : {}) } : null;
+        const typed = (fromNames[s.key] || "").trim();
+        // the title of the task without its [Tags]: what the add-on proposes too (the preview shows the name that will be used)
+        const suggested = (fromTitles[s.key] || "").replace(/^(\s*\[[^\]]*\]\s*)+/, "").trim();
+        const shownBranch = branchFromName(typed || suggested, c.branchPrefix || "feature/");
+        const params = value ? { ...(typed ? { name: typed } : {}), addon: { name: s.addon, flag: s.flag, value }, ...(plan.needsChoice ? { [choice]: true } : {}) } : null;
         return html`<div class="from-task">
-          <${TaskPicker} repoId=${repoId} picked=${{ addon: s.addon, id: fromValues[s.key] }} onPick=${(addon, task) => { setFromValues({ ...fromValues, [s.key]: task.id }); runner.clearPreview(); }} />
+          <${TaskPicker} repoId=${repoId} picked=${{ addon: s.addon, id: fromValues[s.key] }} onPick=${(addon, task) => { setFromValues({ ...fromValues, [s.key]: task.id }); setFromTitles({ ...fromTitles, [s.key]: task.title }); runner.clearPreview(); }} />
           <${Field} label=${s.addon + ": " + s.flag}><${Input} value=${fromValues[s.key] || ""} placeholder="pick one above, or type the number or the link of the task" onInput=${e => { setFromValues({ ...fromValues, [s.key]: e.target.value }); runner.clearPreview(); }} /><//>
+          ${value ? html`<${Field} label="Name of the branch (optional)" hint=${typed ? "Your name is used as it is, with the prefix of the settings." : "Leave it empty to use the name from the task. Type one to fix the naming yourself."}>
+              <${Input} class="mono" value=${fromNames[s.key] || ""} placeholder=${suggested || "from the title of the task"} onInput=${e => { setFromNames({ ...fromNames, [s.key]: e.target.value }); runner.clearPreview(); }} /><//>
+            ${shownBranch ? html`<p class="hint">Branch: <code>${shownBranch}</code>${typed ? "" : " (the preview shows the name that the add-on gives)"}</p>` : null}` : null}
           ${params ? html`<${ActionBar} runner=${runner} action="start" params=${params} label="Create the branch from the task" />` : html`<p class="hint">Type the task to start from it.</p>`}
         </div>`;
       })}` : null}

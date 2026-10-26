@@ -117,6 +117,18 @@ t("highlightLine: kinds", () => {
   assert.deepStrictEqual(kinds("class", "py"), ["kw:class"]);
   assert.deepStrictEqual(kinds("classy = 1", "py"), ["num:1"]);
 });
+t("highlightLine: the names of functions and classes, self, constants and decorators have a colour of their own", () => {
+  const kinds = (line, lang) => highlightLine(line, lang).filter(p => p.kind).map(p => p.kind + ":" + p.text);
+  assert.deepStrictEqual(kinds("class MailActivity(models.Model):", "py"), ["kw:class", "cls:MailActivity"]);
+  assert.deepStrictEqual(kinds("def _previsit_open_activity(self, order, xmlid):", "py"), ["kw:def", "fn:_previsit_open_activity", "self:self"]);
+  assert.deepStrictEqual(kinds("return self.search([", "py"), ["kw:return", "self:self", "fn:search"]);
+  assert.deepStrictEqual(kinds("x = self.env.ref(xmlid, raise_if_not_found=False)", "py"), ["self:self", "fn:ref", "const:False"]);
+  assert.deepStrictEqual(kinds("    @api.model_create_multi", "py"), ["dec:@api.model_create_multi"]);
+  assert.deepStrictEqual(kinds("('res_model', '=', 'sale.order'),", "py"), ["str:'res_model'", "str:'='", "str:'sale.order'"]);
+  assert.deepStrictEqual(kinds("], limit=1)", "py"), ["num:1"]);
+  assert.deepStrictEqual(kinds("function total(a) { return a; }", "js"), ["kw:function", "fn:total", "kw:return"]);
+  assert.deepStrictEqual(kinds('<field name="a"/>', "xml"), ["tag:<field", "attr:name", "str:\"a\""]);
+});
 t("languageOf", () => {
   assert.deepStrictEqual(["a/b.PY", "x.js", "x.mjs", "d.xml", "Makefile", "x.unknown", "dir.d/file"].map(languageOf), ["py", "js", "js", "xml", "", "", ""]);
 });

@@ -11,6 +11,8 @@ const KEYWORDS = {
   md: "",
 };
 const LANGS = { py: "py", js: "js", mjs: "js", jsx: "js", ts: "js", tsx: "js", json: "json", xml: "xml", html: "xml", htm: "xml", svg: "xml", css: "css", scss: "css", sh: "sh", bash: "sh", zsh: "sh", md: "md", yml: "sh", yaml: "sh", csv: "" };
+const SELF = new Set(["self", "cls", "this"]);
+const CONST = new Set(["None", "True", "False", "null", "true", "false", "undefined", "NaN"]);
 const COMMENT = { py: "#", sh: "#", js: "//", css: "", xml: "", json: "", md: "" };
 
 export function languageOf(path) {
@@ -25,7 +27,7 @@ export function highlightLine(line, lang) {
   const out = [];
   const push = (kind, text) => { if (!text) return; const last = out[out.length - 1]; if (last && last.kind === kind) last.text += text; else out.push({ kind, text }); };
   const comment = COMMENT[lang];
-  let i = 0;
+  let i = 0, prev = "";           // prev: the last word, to know the name after def, function or class
   while (i < line.length) {
     const rest = line.slice(i);
     let m;
@@ -37,7 +39,20 @@ export function highlightLine(line, lang) {
     if (comment && rest.startsWith(comment) && !(lang === "sh" && i > 0 && /\S/.test(line[i - 1]))) { push("com", rest); break; }
     if ((m = /^("(?:[^"\\]|\\.)*"?|'(?:[^'\\]|\\.)*'?|`(?:[^`\\]|\\.)*`?)/.exec(rest))) { push("str", m[0]); i += m[0].length; continue; }
     if ((m = /^\d[\d._xa-fA-F]*/.exec(rest)) && !/\w/.test(line[i - 1] || "")) { push("num", m[0]); i += m[0].length; continue; }
-    if ((m = /^[A-Za-z_][\w-]*/.exec(rest))) { push(words.has(m[0]) ? "kw" : "", m[0]); i += m[0].length; continue; }
+    if ((lang === "py" || lang === "js") && (m = /^@[\w.]+/.exec(rest)) && !line.slice(0, i).trim()) { push("dec", m[0]); i += m[0].length; continue; }
+    if (lang === "xml" && (m = /^[\w:.-]+(?==)/.exec(rest))) { push("attr", m[0]); i += m[0].length; continue; }
+    if ((m = /^[A-Za-z_][\w-]*/.exec(rest))) {
+      const word = m[0];
+      let kind = words.has(word) ? "kw" : "";
+      if (SELF.has(word)) kind = "self";
+      else if (CONST.has(word)) kind = "const";
+      else if (!kind) {
+        if (prev === "class") kind = "cls";
+        else if (prev === "def" || prev === "function") kind = "fn";
+        else if (/^\s*\(/.test(rest.slice(word.length)) && (lang === "py" || lang === "js")) kind = "fn";
+      }
+      push(kind, word); prev = word; i += word.length; continue;
+    }
     push("", rest[0]); i++;
   }
   return out;

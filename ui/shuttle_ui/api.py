@@ -268,10 +268,10 @@ def trace_json(repo, args):
         raise BadRequest("the trace cannot be read", 500)
 
 
-def addon_cards(repo):
+def addon_cards(repo, refresh=False):
     """What the enabled add-ons show for the branch (each answer was checked by the command; nothing here runs an add-on itself)."""
     out, problems = [], []
-    for rec in shuttle_records(repo["path"], ["addon", "cards"]):
+    for rec in shuttle_records(repo["path"], ["addon", "cards"] + (["--refresh"] if refresh else []), timeout=75 if refresh else 60):
         if len(rec) < 2:
             continue
         key, _, name = rec[0].partition("=")
@@ -435,7 +435,7 @@ def handle(server, method, route, body):
                 raise BadRequest("name the add-on and the task")
             return trace_json(repo, ["show", task, "--addon", addon])
         if method == "GET" and rest == ["addons", "cards"]:
-            cards, problems = addon_cards(repo)
+            cards, problems = addon_cards(repo, body.get("refresh") == "1")
             return {"cards": cards, "problems": problems}
         if method == "GET" and rest == ["deploy"]:
             return {"targets": deploy_targets(repo), "vault": vault.info()}

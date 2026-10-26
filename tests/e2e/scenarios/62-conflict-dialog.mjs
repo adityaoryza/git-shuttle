@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { overflowsHorizontally } from "../lib/checks.mjs";
+import { lowContrast, overflowsHorizontally } from "../lib/checks.mjs";
 
 const tab = (page, name) => page.getByRole("tab", { name });
 const FILE = "billing/invoice.py";
@@ -30,6 +30,23 @@ export const scenarios = {
     t.ok("the lines of the version that is kept are ticked", (await dialog.locator(".side-theirs .code-line.on").count()) === 2 && (await dialog.locator(".side-ours .code-line.on").count()) === 0);
     await dialog.getByRole("button", { name: "Keep both" }).click();
     t.ok("both can be kept, and the order is a choice", (await dialog.locator(".result-lines li").count()) === 4 && (await dialog.getByRole("button", { name: "Your change first" }).count()) === 1);
+    t.ok("the code is in the colours of its language (keywords, names of functions, numbers)", (await dialog.locator(".code-line .tok-kw").count()) >= 1 && (await dialog.locator(".code-line .tok-fn").count()) >= 1 && (await dialog.locator(".result-lines .tok-kw").count()) >= 1);
+    await page.screenshot({ path: "/tmp/gs-pal-dark-both.png" });
+    for (const scheme of ["dark", "light"]) {
+      await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), scheme);
+      await page.waitForTimeout(600);       // the colours of the page change over a moment: look when they have settled
+      const low = await lowContrast(page);
+      t.ok(`no text under 4.5:1 in the dialog (${scheme}), a change that keeps both`, low.length === 0, JSON.stringify(low.slice(0, 4)));
+    }
+    await page.screenshot({ path: "/tmp/gs-pal-light-both.png" });
+    await dialog.getByRole("button", { name: "Use “What is already there”" }).click();
+    for (const scheme of ["light", "dark"]) {
+      await page.evaluate(theme => document.documentElement.setAttribute("data-theme", theme), scheme);
+      await page.waitForTimeout(600);       // the colours of the page change over a moment: look when they have settled
+      const low = await lowContrast(page);
+      t.ok(`no text under 4.5:1 in the dialog (${scheme}), a change that keeps one version (the other is struck through)`, low.length === 0, JSON.stringify(low.slice(0, 4)));
+    }
+    await page.screenshot({ path: "/tmp/gs-pal-dark-one.png" });
     await dialog.getByRole("button", { name: "Use “Your change”" }).click();
     t.ok("nothing was written by the choices", fs.readFileSync(path.join(t.demo.work, FILE), "utf8").includes("<<<<<<<"));
     t.ok("it fits a phone", await (async () => { await page.setViewportSize({ width: 390, height: 800 }); const ok = !(await overflowsHorizontally(page)); await page.setViewportSize({ width: 1366, height: 800 }); return ok; })());

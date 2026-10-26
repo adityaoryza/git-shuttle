@@ -280,6 +280,11 @@ assert_contains "$OUT" "== Keep manual Order Date  (Running)" "...the title and 
 assert_contains "$OUT" "Project: Confort et eau" "...and the fields"
 shuttle addon cards --porcelain
 assert_contains "$(tr '\0' '\n' <<<"$OUT")" '"title":"Keep manual Order Date"' "porcelain: JSON, checked"
+assert_not_contains "$(cat "$FAKE_LOG.input")" '"refresh"' "a look at the cards does not ask the add-on to read its source again"
+shuttle addon cards --refresh --porcelain
+assert_status 0 "$RC" "cards --refresh"
+assert_contains "$(cat "$FAKE_LOG.input")" '"refresh": "1"' "...tells the add-on to read its source again (arg.refresh)"
+assert_contains "$(tr '\0' '\n' <<<"$OUT")" '"title":"Keep manual Order Date"' "...and still shows the cards"
 FAKE_MODE=evil shuttle addon cards --porcelain
 assert_not_contains "$(tr '\0' '\n' <<<"$OUT")" "javascript:" "a link that is not http or https is refused"
 git checkout -q develop

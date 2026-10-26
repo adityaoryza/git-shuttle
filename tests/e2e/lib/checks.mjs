@@ -10,7 +10,8 @@ export const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) =
 export async function lowContrast(page, min = 4.5) {
   const found = await page.evaluate(() => {
     const out = [];
-    const parse = c => { const m = c.match(/[\d.]+/g).map(Number); return { r: m[0], g: m[1], b: m[2], a: m.length > 3 ? m[3] : 1 }; };
+    // color-mix() comes back as color(srgb 0.9 0.9 0.9 / 0.5): the numbers are 0 to 1, not 0 to 255
+    const parse = c => { const m = c.match(/[\d.]+/g).map(Number); const k = c.startsWith("color(") ? 255 : 1; return { r: m[0] * k, g: m[1] * k, b: m[2] * k, a: m.length > 3 ? m[3] : 1 }; };
     // the colour behind an element: translucent layers are blended over what is behind them
     const background = el => {
       const layers = [];

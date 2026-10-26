@@ -9,23 +9,39 @@ import { Combobox } from "./combobox.js";
 const webAddress = link => (typeof link === "string" && /^https?:\/\//.test(link) ? link : "");
 
 // version: anything that should make the cards be read again (another tab, a job that ended: an add-on may just have been enabled)
+// a long text shows its first lines; the rest is one click away (the line breaks of the text are kept)
+function CardText({ text }) {
+  const [all, setAll] = useState(false);
+  const lines = text.split("\n");
+  const long = lines.length > 8 || text.length > 700;
+  const shown = all || !long ? text : lines.slice(0, 8).join("\n").slice(0, 700) + "…";
+  return html`<div class="addon-text-wrap"><p class="addon-text">${shown}</p>${long ? html`<button type="button" class="link" onClick=${() => setAll(!all)}>${all ? "Show less" : "Show all"}</button>` : null}</div>`;
+}
+
 export function AddonCards({ repoId, branch, version }) {
   const [groups, setGroups] = useState([]);
   const [problems, setProblems] = useState([]);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     let alive = true;
     api("GET", "repos/" + repoId + "/addons/cards").then(d => { if (alive) { setGroups(d.cards || []); setProblems(d.problems || []); } }, () => { if (alive) { setGroups([]); setProblems([]); } });
     return () => { alive = false; };
   }, [repoId, branch, version]);
+  // ask the add-ons to read their source again (odoo-task fetches the task from Odoo: a read), then show what they say now
+  const refresh = () => {
+    setBusy(true);
+    api("GET", "repos/" + repoId + "/addons/cards?refresh=1").then(d => { setGroups(d.cards || []); setProblems(d.problems || []); }, e => setProblems([{ addon: "?", problem: e.message }])).then(() => setBusy(false));
+  };
   const cards = groups.flatMap(g => (g.cards || []).map(c => ({ ...c, addon: g.addon })));
   if (!cards.length && !problems.length) return null;
   return html`<section class="addon-cards" aria-label="From add-ons">
     ${problems.map(p => html`<p class="hint addon-problem">The add-on <strong>${p.addon}</strong> shows nothing: ${p.problem}</p>`)}
     ${cards.map(card => html`<article class="addon-card">
-    <header><strong>${card.title}</strong>${card.subtitle ? html`<${Badge}>${card.subtitle}<//>` : null}</header>
+    <header><strong>${card.title}</strong>${card.subtitle ? html`<${Badge}>${card.subtitle}<//>` : null}
+      <${Button} size="sm" variant="ghost" class="addon-refresh" busy=${busy} disabled=${busy} title="Ask the add-on to read it again (for a task: it is fetched from Odoo, a read), to see what changed" onClick=${refresh}>${busy ? "Reading…" : "Refresh"}<//></header>
     ${webAddress(card.link) ? html`<${ExternalLink} href=${card.link} class="addon-link">${card.link.replace(/^https?:\/\//, "")}<//>` : null}
     ${(card.fields || []).length ? html`<dl class="addon-fields">${card.fields.map(f => html`<dt>${f.label}</dt><dd>${f.value}</dd>`)}</dl>` : null}
-    ${card.text ? html`<p class="addon-text">${card.text}</p>` : null}
+    ${card.text ? html`<${CardText} text=${card.text} />` : null}
     <footer class="hint">from the add-on ${card.addon}</footer>
   </article>`)}
   </section>`;

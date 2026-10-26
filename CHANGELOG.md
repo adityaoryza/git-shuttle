@@ -4,6 +4,19 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-26
+
+### Added
+- The card of a task (Start and Ship tabs) has a **Refresh** button: the add-on is asked to read its source again (`git shuttle addon cards --refresh`;
+  odoo-task fetches the task from Odoo, a read, with its latest messages) and the card shows what it says now, and whether it changed. A long text is
+  shown in its first lines with "Show all", and its line breaks are kept.
+- The conflict dialog has a clear palette: one colour for each version (blue for what is already there, orange for your change, apart for people who do
+  not see red and green), kept lines tinted and ticked, left-out lines grey (struck through once the change is decided), the result carries the colour of
+  each line's origin with a legend, the chosen answer is filled and ticked; the contrast is checked in the dark and the light theme.
+- **Code has the colours of an editor**: keywords purple, names of functions yellow, classes teal, `self` and constants blue, strings orange, numbers green,
+  comments green and italic, decorators, XML attributes; in the conflict dialog and in every diff, in both themes.
+- **Start from a task**: once a task is chosen, the name of the branch can be fixed by hand (a field under the task; empty keeps the name from the task).
+
 ## [0.9.2] - 2026-10-26
 
 ### Fixed

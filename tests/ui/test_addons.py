@@ -132,6 +132,8 @@ class TestAddons(Base):
         self.assertEqual(git(self.world.work, "config", "branch.feature/keep_the_order_date.shuttle-ref-id"), "15607")
         _, cards = self.api("GET", "repos/%s/addons/cards" % self.rid())
         self.assertEqual(cards["cards"][0]["addon"], "tracker")
+        status, again = self.api("GET", "repos/%s/addons/cards?refresh=1" % self.rid())
+        self.assertEqual((status, again["cards"][0]["addon"]), (200, "tracker"), "the cards can be asked again with a refresh")
         _, listed = self.api("GET", "repos/%s/trace/tasks" % self.rid())
         self.assertIn("15607", [t["id"] for t in listed["tasks"]], "the start is in the trace")
         status, shown = self.api("POST", "repos/%s/trace/show" % self.rid(), {"addon": "tracker", "task": "15607"})
