@@ -21,6 +21,9 @@ cmd_merge() {
     refuse_protected "$branch" "merge"
     require_clean_tree
     load_branches
+    if [[ -z "$into" ]] && is_release_branch "$branch"; then
+        die "'$branch' is a release branch: open a pull request to $RELEASE (git shuttle pr), do not merge it into $INTEGRATION"
+    fi
     into=${into:-$INTEGRATION}
     [[ "$branch" != "$into" ]] || die "'$branch' is the branch to merge into: check out your feature branch"
     strategy=$(cfg mergeStrategy); strategy=${strategy:-noff}

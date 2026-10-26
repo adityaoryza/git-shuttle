@@ -107,7 +107,13 @@ t("syncPlan: the one button does what is next", () => {
   assert.strictEqual(syncPlan({ status: status({ "upstream.ahead": "3" }) }).label, "Push ↑3");
   assert.strictEqual(syncPlan({ status: status({ "integration.behind": "4" }) }).id, "sync");
   assert.strictEqual(syncPlan({ status: status({ "integration.behind": "4", protected: "1" }) }).id, "fetch");
+  assert.strictEqual(syncPlan({ status: status({ "integration.behind": "4", merged: "1" }) }).id, "fetch", "a branch that is merged already has nothing to update");
   assert.strictEqual(syncPlan({ status: status() }).id, "fetch");
+});
+t("sync: a branch that is merged already cannot be updated, and the reason says so", () => {
+  const ctx = { status: status({ merged: "1", "integration.ref": "origin/19.0", "integration.behind": "4" }) };
+  assert.ok(/already in origin\/19\.0/.test(reasonOf("sync", ctx)));
+  assert.strictEqual(reasonOf("sync", { status: status({ "integration.ref": "origin/19.0", "integration.behind": "4" }) }), "");
 });
 t("shortcuts: with modifiers anywhere, plain keys never while typing", () => {
   const e = (key, o = {}, tag = "BODY") => ({ key, target: { tagName: tag }, ...o });

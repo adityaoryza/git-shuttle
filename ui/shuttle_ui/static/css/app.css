@@ -642,4 +642,17 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .conflict-file { display: grid; gap: 2px; min-width: 0; } .conflict-file code { overflow-wrap: anywhere; } .conflict-note { font-size: 12px; }
 .conflict-actions { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
 .conflict-actions .btn, .conflict-actions button { flex: 0 1 auto; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (max-width: 520px) { .conflict-actions .btn, .conflict-actions button { flex: 1 1 100%; } }
+@media (max-width: 520px) { .conflict-actions .btn, .conflict-actions button { flex: 1 1 100%; } }/* the conflict dialog, in plain words */
+.rc-intro { display: grid; gap: 10px; margin: 0 0 12px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--info) 40%, var(--border)); border-radius: var(--radius); background: color-mix(in srgb, var(--info) 7%, transparent); }
+.rc-intro p { margin: 0; line-height: 1.5; }
+.rc.is-open { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); } .rc.is-decided { border-color: color-mix(in srgb, var(--ok) 45%, var(--border)); }
+.rc-ask { font-weight: 600; }
+.rc .choices { gap: 8px; } .rc .choice { padding: 8px 14px; font-weight: 600; } .rc .choices .order { align-items: center; }
+.side-name { color: var(--muted-foreground); font-size: 12px; overflow-wrap: anywhere; } .side-foot { text-align: right; }
+.code-line .mark { display: inline-grid; place-items: center; width: 16px; height: 16px; border: 1.5px solid var(--input); border-radius: 4px; align-self: center; font-size: 11px; line-height: 1; }
+.code-line.on .mark { background: var(--brand); border-color: var(--brand); color: var(--background); }
+.code-line:not(.on) code { opacity: .75; }
+.result-box { border-style: solid; border-color: color-mix(in srgb, var(--brand) 40%, var(--border)); background: color-mix(in srgb, var(--brand) 5%, transparent); }
+.result-title { font-size: 13px; }
+.hunk-more { margin-top: 2px; } .hunk-more summary { cursor: pointer; } .more-block { display: grid; gap: 6px; margin: 8px 0; justify-items: start; }
+.toasts { transition: none; } body:has(.modal-huge) .toasts { right: auto; left: 12px; }

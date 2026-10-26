@@ -37,6 +37,8 @@ update_remind() {
     [[ -z "${GIT_SHUTTLE_FROM_UI:-}" ]] || return 0
     file="${XDG_CONFIG_HOME:-$HOME/.config}/git-shuttle/update-notice.json"
     if [[ ! -f "$file" || -z "$(find "$file" -mmin -10 2>/dev/null)" ]]; then
+        # the file is touched first: the next command, while this look is on its way, sees a fresh file and makes none of its own
+        mkdir -p "$(dirname "$file")" 2>/dev/null && touch "$file" 2>/dev/null
         py=python3; "$py" -c '' >/dev/null 2>&1 || py=python
         if "$py" -c '' >/dev/null 2>&1; then
             ( "$py" -I -c 'import sys; sys.path.insert(0, sys.argv[1]); from shuttle_ui import updates; updates.notice()' "$ROOT/ui" >/dev/null 2>&1 </dev/null & ) 2>/dev/null

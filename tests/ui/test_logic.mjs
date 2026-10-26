@@ -167,6 +167,14 @@ t("releaseReady: the release branch that waits for its pull request", () => {
   assert.strictEqual(L.releaseReady({ "release.ready": "rel/x", "release.pushed": "0" }).pushed, false);
   for (const none of [{}, null, undefined]) assert.strictEqual(L.releaseReady(none), null);
 });
+t("plainSide: the sides of a conflict get plain titles, and an unknown role keeps the name", () => {
+  assert.deepStrictEqual(L.plainSide({ name: "origin/staging", role: "what you rebase onto" }).title, "What is already there");
+  assert.strictEqual(L.plainSide({ name: "feat/x", role: "your own work, being replayed" }).title, "Your change");
+  assert.strictEqual(L.plainSide({ name: "feat/x", role: "the branch you merge in" }).title, "The incoming branch");
+  assert.strictEqual(L.plainSide({ name: "abc1234 a commit", role: "the commit you pick" }).title, "The picked commit");
+  assert.strictEqual(L.plainSide({ name: "odd/name", role: "something new" }).title, "odd/name");
+  assert.strictEqual(L.plainSide(null).title, "");
+});
 t("conflictCode and hasMarkers: only a file written on both sides has places to choose from", () => {
   const status = { file: ["UU a.txt", "AA b/c.txt", "DU gone.txt", " M other.txt"] };
   assert.deepStrictEqual(["a.txt", "b/c.txt", "gone.txt", "nope.txt"].map(f => L.conflictCode(status, f)), ["UU", "AA", "DU", ""]);

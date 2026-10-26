@@ -267,6 +267,20 @@ export function hunkChoices(sides, hasBase) {
   if (hasBase) list.push({ id: "base", label: "What it was before", title: "Go back to what both sides started from" });
   return list;
 }
+// a side in plain words for the dialog (the CLI says it in git's words: ours, theirs, replayed): a title, and what it is
+const PLAIN_SIDE = {
+  "what you rebase onto": ["What is already there", "the version you update from"],
+  "your own work, being replayed": ["Your change", "your commit, being put on top"],
+  "the branch you are on": ["Your branch", "what you have now"],
+  "the branch you merge in": ["The incoming branch", "what you are merging in"],
+  "the commit you pick": ["The picked commit", "the change that is being copied"],
+  "the commit being undone": ["The change to undo", "the commit that is being undone"],
+  "the patch you apply": ["The patch", "the change you apply"],
+};
+export function plainSide(side) {
+  const known = PLAIN_SIDE[side && side.role];
+  return { title: known ? known[0] : shortName((side && side.name) || "", 28), hint: known ? known[1] : (side && side.role) || "", name: (side && side.name) || "" };
+}
 export const hunksDecided = (hunks, choices) => hunks.length > 0 && hunks.every(h => !!choices[h.n]);
 // choices: { placeNumber: choice }; the request for the preview that comes before anything is written
 export function resolveHunksRequest(file, choices) {

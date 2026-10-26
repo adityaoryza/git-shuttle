@@ -4,6 +4,23 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-26
+
+### Fixed
+- A **release branch** (a branch made with the release pattern of Settings, like `19.0-release/261023-v1.2`) is cut from the release branch, but it was
+  compared with the integration branch (staging): the top bar said "1226 behind origin/19.0-staging" and the main button said "Update from
+  origin/19.0-staging", which would have brought the whole of staging into the release. Now a release branch is compared with the release branch
+  and `git shuttle sync` rebases it on that one; a task branch is compared with the integration branch as before.
+- `git shuttle ship` and `git shuttle merge` on a release branch are refused (they would have rebased the release on staging, pushed it, and merged it
+  there): a release branch goes to the release branch with a pull request (`git shuttle ship --pr`). A pull request opened from a release branch goes
+  to the release branch by default, and `ship --pr` brings the branch up to date from the release branch, not from staging.
+- Commands that start while the look for a newer release is on its way no longer start a look each (six quick commands made thirteen requests).
+- The test run gives each file five minutes: a file that hangs no longer holds the whole run.
+- The dialog that resolves a conflict is in plain words: each change asks "Which version should the file keep?" with three answers (the version that is
+  already there, your change, or both), the two versions have plain titles instead of git's *ours* and *theirs*, the lines show real check boxes, the result
+  is shown in a box of its own, and the original and who changed the lines are folded under "More". The messages of the page no longer cover its buttons.
+- A branch that is merged already (the base it is compared with contains it) is no longer offered "Update from…": there is nothing to update.
+
 ## [0.9.1] - 2026-10-23
 
 ### Added

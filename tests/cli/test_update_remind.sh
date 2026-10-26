@@ -51,4 +51,28 @@ echo '{"latest": "99.0.0", "enabled": false}' >"$NOTICE"; touch "$NOTICE"
 with_tty "" "$SHUTTLE" status
 assert_not_contains "$OUT" "99.0.0 is out" "...nor when the reminder is turned off"
 
+# commands that start while the first look is on its way make no look of their own
+rm -f "$NOTICE"
+cat >"$SB/slow.py" <<'PY'
+import http.server, sys, time
+hits = open(sys.argv[2], "w")
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        hits.write("x\n"); hits.flush(); time.sleep(2)
+        if self.path.endswith("/tag/v9.9.9"):
+            self.send_response(200); self.end_headers(); return
+        self.send_response(302); self.send_header("Location", self.path + "/tag/v9.9.9"); self.end_headers()
+    def log_message(self, *a): pass
+http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()
+PY
+python3 "$SB/slow.py" 18772 "$SB/hits" & SLOW=$!
+for _ in {1..30}; do (echo >/dev/tcp/127.0.0.1/18772) 2>/dev/null && break; sleep 0.1; done
+export GIT_SHUTTLE_REPO="http://127.0.0.1:18772"
+for _ in 1 2 3 4 5; do shuttle status --porcelain; sleep 0.2; done
+sleep 5
+kill "$SLOW" 2>/dev/null
+hits=$(wc -l <"$SB/hits")
+(( hits <= 2 )) && few=yes || few=no
+assert_eq "yes" "$few" "five quick commands make one look, not five (the release server got $hits requests)"
+
 finish
