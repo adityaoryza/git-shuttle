@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.11.2] - 2026-10-26
+
+### Changed
+
+- The texts of the Customer report (Add-ons, Tasks, `git shuttle addon report`, docs/addons.md) say that the add-on changes only its own block of steps and keeps the rest, because odoo-task 0.6.0 keeps the steps in one block at the start of the field.
+
 ## [0.11.1] - 2026-10-26
 
 ### Fixed
