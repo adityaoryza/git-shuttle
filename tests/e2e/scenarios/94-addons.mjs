@@ -56,6 +56,14 @@ export const scenarios = {
     await page.getByText("Include done and closed").click();
     t.ok("...the button waits for a task", (await page.getByRole("button", { name: "Create the branch from the task" }).count()) === 0);
     await page.getByPlaceholder("pick one above, or type the number or the link of the task").fill("15607");
+    const nameField = page.getByLabel("Name of the branch (optional)");
+    t.ok("once a task is chosen, the name of the branch can be fixed by hand (empty: the name from the task)", (await nameField.count()) === 1 && (await page.getByText("Leave it empty to use the name from the task").count()) === 1);
+    await nameField.fill("renamed by hand");
+    await page.getByRole("button", { name: "Preview" }).last().click();
+    await page.locator(".preview").waitFor();
+    const typedPreview = await page.locator(".preview").innerText();
+    t.ok("a name that is typed wins over the name of the task, and the task is still the one that was chosen", typedPreview.includes("renamed_by_hand") && !typedPreview.includes("keep_manual_order_date") && typedPreview.includes("task #15607"), typedPreview);
+    await nameField.fill("");
     await page.getByRole("button", { name: "Preview" }).last().click();
     await page.locator(".preview").waitFor();
     const text = await page.locator(".preview").innerText();
@@ -140,6 +148,9 @@ export const scenarios = {
     t.ok("an enabled add-on shows its card in the Ship tab", (await card.innerText()).includes("the order date"));
     t.ok("...the title is text: HTML in it is not made into elements", (await page.locator(".addon-card b, .addon-card img").count()) === 0 && (await card.innerText()).includes("<b>Keep</b>"));
     t.ok("...a field and the text", (await card.innerText()).includes("Project") && (await card.innerText()).includes("The order date stays."));
+    await card.getByRole("button", { name: "Refresh" }).click();
+    await page.locator(".addon-card", { hasText: "read again from the source" }).waitFor({ timeout: 15000 });
+    t.ok("a card can be refreshed: the add-on is asked to read its source again, and the card shows what it says now", true);
     const link = card.locator("a.addon-link");
     t.ok("...the link opens a new tab without opener or referrer", (await link.getAttribute("target")) === "_blank" && /noopener/.test(await link.getAttribute("rel")) && /noreferrer/.test(await link.getAttribute("rel")));
     t.ok("the card has one link: the one of the add-on", (await page.locator(".addon-card a").count()) === 1);

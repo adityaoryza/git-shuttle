@@ -134,7 +134,9 @@ case "\${1:-}" in
         if [[ "$2" == setup ]]; then if grep -q '"action": "save"' <<<"$input"; then echo '{"ok":true,"message":"Connected to the tracker as me"}'; else echo '{"ready":false,"note":"No key yet","fields":[{"key":"login","kind":"text","label":"Login","value":"me","required":true},{"key":"token","kind":"secret","label":"API token","required":true,"help":"from your profile"}]}'; fi; exit 0; fi
         if [[ "$2" == start ]]; then echo '{"branch":"Keep manual Order Date","reference":{"id":"15607","title":"Keep manual Order Date on confirmation","link":"https://odoo.example/web#id=15607"},"note":"task found"}'; exit 0; fi
         if [[ "$(cat "$(dirname "$0")/mode" 2>/dev/null)" == bad ]]; then echo '{"cards":[{"title":"A link that must not be one","link":"javascript:alert(1)"}]}'
-        else echo '{"cards":[{"title":"<b>Keep</b> the order date <img src=x onerror=alert(1)>","subtitle":"Running","link":"https://odoo.example/web#id=15607","text":"The order date stays.","fields":[{"label":"Project","value":"Confort et eau"}]}]}'; fi ;;
+        else
+          text="The order date stays."; grep -q '"refresh": "1"' <<<"$input" && text="The order date stays. (read again from the source)"
+          echo '{"cards":[{"title":"<b>Keep</b> the order date <img src=x onerror=alert(1)>","subtitle":"Running","link":"https://odoo.example/web#id=15607","text":"'"$text"'","fields":[{"label":"Project","value":"Confort et eau"}]}]}'; fi ;;
 esac
 `, { mode: 0o755 });
   // somebody else pushes to the remote: a commit on `branch`, made in a separate clone

@@ -406,8 +406,14 @@ for f in d["fields"]:
 
 # addon_cards [PORCELAIN] — what the enabled add-ons that have a status hook show for the branch you are on.
 addon_cards() {
-    local porcelain=${1:-0} branch name json any=0 root ref_addon ref_id ref_title ref_link title
+    local porcelain=${1:-0} refresh=${2:-0} branch name json any=0 root ref_addon ref_id ref_title ref_link title extra=()
     need_repo
+    # refresh: the add-on is asked to read its source again (odoo-task: fetch the task from Odoo, a read), which takes longer than a look at a file
+    if (( refresh )); then
+        extra=("arg.refresh=1")
+        # shellcheck disable=SC2034  # read by addon_run
+        ADDON_RUN_TIMEOUT=${GIT_SHUTTLE_ADDON_TASKS_TIMEOUT:-45}
+    fi
     branch=$(git symbolic-ref -q --short HEAD 2>/dev/null || true)
     root=$REPO_ROOT
     ref_addon=$(git config --get "branch.$branch.shuttle-ref-addon" 2>/dev/null || true)
@@ -420,7 +426,7 @@ addon_cards() {
         addon_need_python
         addon_cleanup
         local input; input=$(mktemp)
-        addon_proto input status "repo.root=$root" "repo.name=$REPO_NAME" "branch=$branch" "ref-addon=$ref_addon" "ref-id=$ref_id" "ref-title=$ref_title" "ref-link=$ref_link" >"$input"
+        addon_proto input status "repo.root=$root" "repo.name=$REPO_NAME" "branch=$branch" "ref-addon=$ref_addon" "ref-id=$ref_id" "ref-title=$ref_title" "ref-link=$ref_link" "${extra[@]}" >"$input"
         if addon_run "$name" "$input" hook status && addon_validate status; then
             any=1
             json=$(cat "$ADDON_NORM")
@@ -441,12 +447,13 @@ for c in json.load(sys.stdin)["cards"]:
         rm -f "$input"
         addon_cleanup
     done < <(addon_names)
+    unset ADDON_RUN_TIMEOUT
     (( any || porcelain )) || info "No add-on has anything to show for '${branch:-this HEAD}' (git shuttle addon list)."
     return 0
 }
 
 cmd_addon() {
-    local sub=${1:-list} scope="" porcelain=0 name="" version="" save=0 all=0 state=""
+    local sub=${1:-list} scope="" porcelain=0 name="" version="" save=0 all=0 refresh=0 state=""
     shift || true
     if [[ "$sub" == report ]]; then name=${1:-}; state=${2:-}; [[ -n "$name" ]] || die "addon report needs a name and on or off"; addon_report_toggle "$name" "$state"; return 0; fi
     while (( $# )); do
@@ -455,6 +462,7 @@ cmd_addon() {
             --porcelain) porcelain=1; shift ;;
             --save) save=1; shift ;;
             --all) all=1; shift ;;
+            --refresh) refresh=1; shift ;;
             --version) [[ $# -ge 2 ]] || die "--version needs a tag, for example v0.2.0"; version=$2; shift 2 ;;
             -*) die "addon: unknown option '$1'" ;;
             *) [[ -z "$name" ]] || die "addon: one name at a time ('$name' and '$1')"; name=$1; shift ;;
@@ -466,7 +474,7 @@ cmd_addon() {
         enable)  [[ -n "$name" ]] || die "addon enable needs a name"; addon_enable "$name" "$scope" ;;
         disable) [[ -n "$name" ]] || die "addon disable needs a name"; addon_disable "$name" ;;
         check)   [[ -n "$name" ]] || die "addon check needs a name"; addon_check "$name" ;;
-        cards)   [[ -z "$name" ]] || die "addon cards takes no name"; addon_cards "$porcelain" ;;
+        cards)   [[ -z "$name" ]] || die "addon cards takes no name"; addon_cards "$porcelain" "$refresh" ;;
         tasks)   [[ -z "$name" ]] || die "addon tasks takes no name"; addon_tasks "$porcelain" "$all" ;;
         setup)   [[ -n "$name" ]] || die "addon setup needs a name"; addon_setup "$name" "$save" "$porcelain" ;;
         available) [[ -z "$name" ]] || die "addon available takes no name"; addon_available "$porcelain" ;;

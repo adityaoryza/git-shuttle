@@ -37,6 +37,12 @@ An add-on that needs a login or a key says so with the `setup` hook, and the web
 standard input (`git shuttle addon setup NAME --save` reads them from standard input, never from the command line, where others could see
 them), are not written to any log, and a value that the add-on repeats in its message is hidden. The add-on must be enabled first.
 
+### `status` hook and the refresh
+
+`git shuttle addon cards --refresh` (the Refresh button of a card) calls the `status` hook with `args.refresh = "1"`: the add-on reads its source again
+before it answers (odoo-task: fetches the task from Odoo, which is a read; the hook has the longer time of `tasks`). An add-on that does not know the
+argument just answers as always. A card's `text` may have up to 5000 characters; the page shows the first lines and "Show all".
+
 ### `report` hook: the pull request and the commits, for the people who follow the task
 
 After `git shuttle pr`, an add-on may add the pull request and the commits of the branch to the task it is for (odoo-task: the Customer report,

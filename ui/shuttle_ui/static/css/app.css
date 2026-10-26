@@ -276,6 +276,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .diff.wrap .dc { white-space: pre-wrap; overflow-wrap: anywhere; }
 .dl-add { background: var(--diff-add); } .dl-del { background: var(--diff-del); } .dl-empty { background: var(--muted); }
 .dl-note .dc { color: var(--muted-foreground); }
+.tok-fn { color: var(--syn-fn); } .tok-cls { color: var(--syn-cls); } .tok-self { color: var(--syn-self); font-style: italic; } .tok-dec { color: var(--syn-dec); } .tok-const { color: var(--syn-const); } .tok-attr { color: var(--syn-attr); }
 .tok-kw { color: var(--syn-kw); } .tok-str { color: var(--syn-str); } .tok-com { color: var(--syn-com); font-style: italic; } .tok-num { color: var(--syn-num); } .tok-tag { color: var(--syn-tag); }
 .theme-btn { color: var(--muted-foreground); }
 @media (max-width: 900px) {
@@ -656,3 +657,46 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .result-title { font-size: 13px; }
 .hunk-more { margin-top: 2px; } .hunk-more summary { cursor: pointer; } .more-block { display: grid; gap: 6px; margin: 8px 0; justify-items: start; }
 .toasts { transition: none; } body:has(.modal-huge) .toasts { right: auto; left: 12px; }
+.addon-refresh { margin-left: auto; } .addon-text-wrap { display: grid; gap: 4px; justify-items: start; }
+
+/* the conflict dialog: one colour for each version (blue and orange: they stay apart for people who do not see red and green), kept lines are tinted and
+ * marked, left-out lines are plain grey (and struck through once the change is decided), the result carries the colour of where each line comes from. */
+.modal-huge { --side-o: #6cb6ff; --side-t: #ffa657; --side-b: #b8c2cc; }
+:root[data-theme="light"] .modal-huge { --side-o: #0b5cad; --side-t: #a94a06; --side-b: #55616b; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) .modal-huge { --side-o: #0b5cad; --side-t: #a94a06; --side-b: #55616b; } }
+.modal-huge .side-ours { --c: var(--side-o); } .modal-huge .side-theirs { --c: var(--side-t); }
+.modal-huge .side { border: 1px solid var(--border); border-top: 4px solid var(--c, var(--border)); background: var(--card); }
+.modal-huge .side.picked { border-color: var(--c); border-top-color: var(--c); background: color-mix(in srgb, var(--c) 6%, var(--card)); }
+.modal-huge .side-head strong { color: var(--c); font-size: 14px; }
+.modal-huge .side-name { color: var(--foreground); opacity: .8; }
+.modal-huge .code { font-size: 13px; line-height: 1.5; }
+.modal-huge .code-line { border-left: 3px solid transparent; color: var(--muted-foreground); }
+.modal-huge .code-line:hover { background: color-mix(in srgb, var(--c) 10%, transparent); }
+.modal-huge .code-line.on { color: var(--foreground); border-left-color: var(--c); background: color-mix(in srgb, var(--c) 20%, transparent); }
+.modal-huge .code-line:not(.on) code { opacity: 1; }
+.modal-huge .rc.is-decided .code-line:not(.on) code { text-decoration: line-through; text-decoration-thickness: 1px; }
+.modal-huge .code-line .mark { border-color: var(--muted-foreground); background: var(--background); }
+.modal-huge .code-line.on .mark { background: var(--c); border-color: var(--c); color: var(--background); font-weight: 800; }
+.modal-huge .hunk-ctx { color: var(--muted-foreground); font-size: 13px; }
+.modal-huge .rc .choice { --c: var(--brand); border: 2px solid color-mix(in srgb, var(--c) 55%, var(--input)); background: var(--card); color: var(--foreground); }
+.modal-huge .rc .choice[data-side="ours"] { --c: var(--side-o); } .modal-huge .rc .choice[data-side="theirs"] { --c: var(--side-t); }
+.modal-huge .rc .choice:hover { background: color-mix(in srgb, var(--c) 14%, var(--card)); }
+.modal-huge .rc .choice.on { background: color-mix(in srgb, var(--c) 26%, var(--card)); border-color: var(--c); color: var(--foreground); }
+.modal-huge .rc .choice { display: inline-flex; align-items: center; gap: 6px; }
+.modal-huge .rc .choice.on::before { content: "✓"; font-weight: 800; color: var(--c); }
+.modal-huge .result-box { border: 2px solid var(--border); background: var(--card); }
+.modal-huge .rc.is-decided .result-box { border-color: color-mix(in srgb, var(--ok) 55%, var(--border)); }
+.result-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; } .legend { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted-foreground); }
+.legend .dot { width: 10px; height: 10px; border-radius: 2px; display: inline-block; margin-left: 6px; } .legend .dot:first-child { margin-left: 0; }
+.legend .dot.o, .result-lines li.from-o { --c: var(--side-o); } .legend .dot.t, .result-lines li.from-t { --c: var(--side-t); } .result-lines li.from-b { --c: var(--side-b); }
+.legend .dot.o { background: var(--side-o); } .legend .dot.t { background: var(--side-t); }
+.modal-huge .result-lines { font-size: 13px; line-height: 1.5; } .modal-huge .result-lines li { border-left: 3px solid var(--c, var(--border)); padding-left: 6px; background: color-mix(in srgb, var(--c, transparent) 10%, transparent); color: var(--foreground); }
+.modal-huge .result-lines .src { color: var(--c); }
+.modal-huge .hunk { background: var(--background); } .modal-huge .rc.is-open { border-width: 2px; }
+.modal-huge .hunk-head .hint, .modal-huge .rc-ask { color: var(--foreground); }
+.modal-huge .rc-intro { border-color: var(--info); background: color-mix(in srgb, var(--info) 10%, var(--background)); }
+
+/* the colours of code: the scheme of an editor in its dark and light form (keywords purple, functions yellow, classes teal, strings orange, numbers green) */
+:root, :root[data-theme="dark"] { --syn-kw: #c586c0; --syn-str: #ce9178; --syn-com: #7ca668; --syn-num: #b5cea8; --syn-tag: #569cd6; --syn-fn: #dcdcaa; --syn-cls: #4ec9b0; --syn-self: #9cdcfe; --syn-dec: #dcdcaa; --syn-const: #569cd6; --syn-attr: #9cdcfe; }
+:root[data-theme="light"] { --syn-kw: #a100c4; --syn-str: #a31515; --syn-com: #2e6b1f; --syn-num: #0b6b4a; --syn-tag: #0b4fc7; --syn-fn: #795e26; --syn-cls: #0f6a82; --syn-self: #0b5394; --syn-dec: #795e26; --syn-const: #0b4fc7; --syn-attr: #0451a5; }
+@media (prefers-color-scheme: light) { :root:not([data-theme]) { --syn-kw: #a100c4; --syn-str: #a31515; --syn-com: #2e6b1f; --syn-num: #0b6b4a; --syn-tag: #0b4fc7; --syn-fn: #795e26; --syn-cls: #0f6a82; --syn-self: #0b5394; --syn-dec: #795e26; --syn-const: #0b4fc7; --syn-attr: #0451a5; } }
