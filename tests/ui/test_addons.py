@@ -339,6 +339,9 @@ class TestReportSteps(unittest.TestCase):
             self.assertEqual((pr["url"], pr["ref"]), ("https://github.example/a/b/pull/286",) * 2)
             started = [p for p in doc["phases"] if p["title"] == "Started"][0]["items"]
             self.assertIn("Project: Preaucess", [i["text"] for i in started])
+            for phase in doc["phases"]:  # a ref that the field does not show can never match: the step would be written on every run
+                for item in phase["items"]:
+                    self.assertTrue(not item.get("ref") or item["ref"] in item["text"] or item["ref"] == item.get("url"), item)
             # a task without a trace keeps the report of the pull request and its commits
             doc2 = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
             self.assertNotIn("phases", doc2)

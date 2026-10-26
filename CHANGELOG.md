@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-26
+
+### Fixed
+
+- The step **Pushed** of the Customer Report was written again on every `git shuttle trace report`, because the add-on could not find it in the field. It is written once for each push now.
+
 ## [0.11.0] - 2026-10-26
 
 ### Added
