@@ -4,6 +4,20 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-10-26
+
+### Added
+- The **Customer Report** shows the steps of the task, from the trace (git shuttle trace report): Started, Linked to the task, Commits (those of the pull request, or the
+  ones of the branch that are still in it, not the ones that were rewritten), Pushed, Pull request, Merged, Released, Deployed, each with its date and its links. Each step is
+  written once: a later `git shuttle trace report` adds only the steps that are new (a task without a trace keeps the report of the pull request and its commits).
+
+### Fixed
+- A branch made with `git shuttle branch` (the Branch button) from a branch of a task is for the same task: it takes the link, the trace says "Branch made", and
+  its commits get the badge of the task at once. A branch that is made with plain git is not seen: link it in Tasks, Branches.
+- The web addresses in the text of a card (http and https only) are links that open in a new tab, without opener or referrer.
+- The commits that the Customer Report lists are the commits of the task: those of its pull request when there is one (a branch can also hold merges of staging and the
+  work of another task, which are not the task's), else the commits of the branch without its merges.
+
 ## [0.10.0] - 2026-10-26
 
 ### Added

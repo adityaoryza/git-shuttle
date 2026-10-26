@@ -56,7 +56,8 @@ the custom field `x_customer_report`), so that the PM can check them on GitHub. 
   of one task, and nothing else.
 - **A failure never undoes the pull request**: it is a warning, with the way to try again.
 
-The input has `branch`, `ref_id`, `pr` (`url`, `title`, `base`), `commits` (`sha`, `subject`, `url`) and `repo.web` (the address of the repository
+The input may also have `phases`: the steps of the task from its trace, `[{title, when, items: [{text, url, ref, at}]}]` (`ref` is a text that stays visible in the
+report, and an item whose ref is there already is not written again; `at` is a time that the add-on shows in the time of the user). The input has `branch`, `ref_id`, `pr` (`url`, `title`, `base`), `commits` (`sha`, `subject`, `url`) and `repo.web` (the address of the repository
 without anything that comes before the `@` of a remote); the answer is `{"ok", "message", "text", "field", "skipped"}`.
 
 ### `tasks` hook, `details`, and the trace

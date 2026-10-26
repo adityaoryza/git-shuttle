@@ -153,7 +153,7 @@ cmd_trace() {
             [[ -n "$rtarget" ]] || die "report: you are not on a branch: name it with --branch"
             report_applicable "$rtarget" || die "report: '$rtarget' is not for a task whose add-on has the report turned on (git shuttle addon report NAME on)"
             rpr=$(mktemp)
-            "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName >"$rpr" 2>/dev/null || { rm -f "$rpr"; die "report: there is no pull request for '$rtarget' yet (git shuttle pr)"; }
+            "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName,commits >"$rpr" 2>/dev/null || { rm -f "$rpr"; die "report: there is no pull request for '$rtarget' yet (git shuttle pr)"; }
             task_report_flow "$rtarget" "$INTEGRATION" "$rpr"
             rm -f "$rpr"
             return 0 ;;

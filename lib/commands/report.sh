@@ -19,7 +19,7 @@ report_call() {
     addon_need_python
     addon_cleanup
     input=$(mktemp)
-    if ! "$ADDON_PY" -I "$ROOT/lib/addons/report.py" input "$action" "$REPO_ROOT" "$branch" "$base" "$REPO_NAME" "$REPORT_ID" ${pr_file:+"$pr_file"} >"$input" 2>/dev/null; then
+    if ! REPORT_TRACE_FILE=$(trace_file 2>/dev/null || true) REPORT_ADDON=$REPORT_ADDON "$ADDON_PY" -I "$ROOT/lib/addons/report.py" input "$action" "$REPO_ROOT" "$branch" "$base" "$REPO_NAME" "$REPORT_ID" ${pr_file:+"$pr_file"} >"$input" 2>/dev/null; then
         rm -f "$input"; ADDON_PROBLEM="the information for the report could not be put together"; return 1
     fi
     # shellcheck disable=SC2034  # read by addon_run
@@ -72,7 +72,7 @@ task_report_after_pr() {
     if (( DRY_RUN )); then
         "$ADDON_PY" -I -c 'import json, sys; print(json.dumps({"title": sys.argv[1], "baseRefName": sys.argv[2]}))' "$title" "$base" >"$pr_file"
     else
-        "$gh" pr view "$branch" --json url,number,title,baseRefName >"$pr_file" 2>/dev/null || : >"$pr_file"
+        "$gh" pr view "$branch" --json url,number,title,baseRefName,commits >"$pr_file" 2>/dev/null || : >"$pr_file"
     fi
     task_report_flow "$branch" "$base" "$pr_file"
     rm -f "$pr_file"
