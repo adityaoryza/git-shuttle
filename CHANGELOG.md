@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.11.3] - 2026-10-26
+
+### Fixed
+
+- The trace of a task shows the deploy of its release branch: a release branch holds cherry-picks (other hashes), so the merge of the task was never in what was deployed to production. A deploy of the release branch of the task, after its release, is now part of its trace.
+
+### Changed
+
+- The Customer Report names a deploy of a branch with `release` in its name `Deployed to prod`; the other deploys stay `Deployed`.
+
 ## [0.11.2] - 2026-10-26
 
 ### Changed
