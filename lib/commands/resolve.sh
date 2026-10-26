@@ -64,7 +64,9 @@ resolve_hunks() {
     local shape='^([1-9][0-9]{0,3})=(ours|theirs|both|both-reverse|base|pick:([otb][1-9][0-9]{0,3}(\+[otb][1-9][0-9]{0,3})*)?)$'
     shift
     for spec in "$@"; do
-        (( ${#spec} <= 20000 )) && [[ "$spec" =~ $shape ]] || die "resolve: '${spec:0:60}' is not  N=ours|theirs|both|both-reverse|base|pick:o1+t2"
+        if (( ${#spec} > 20000 )) || [[ ! "$spec" =~ $shape ]]; then
+            die "resolve: '${spec:0:60}' is not  N=ours|theirs|both|both-reverse|base|pick:o1+t2"
+        fi
         n=${BASH_REMATCH[1]}
         [[ ",$choices," != *",$n="* ]] || die "resolve: place $n is given twice"
         choices+="${choices:+,}$n=${BASH_REMATCH[2]}"
