@@ -133,11 +133,16 @@ def is_ancestor(repo, older, newer):
 def show(path, addon, task_id, repo=None):
     mine = [e for e in events(path) if e.get("task") == task_id and e.get("addon", "") == addon]
     merges = [e["sha"] for e in mine if e["type"] == "merge" and e.get("sha")]
+    released = {e["release_branch"]: e["time"] for e in mine if e["type"] == "release" and e.get("release_branch")}
     derived = []
-    if repo and merges:
-        for event in events(path):
-            if event["type"] == "deploy" and not event.get("task") and any(is_ancestor(repo, m, event.get("tip", "")) for m in merges):
-                derived.append(dict(event, derived="the merge of this task is in what was deployed"))
+    for event in events(path):
+        if event["type"] != "deploy" or event.get("task"):
+            continue
+        if repo and any(is_ancestor(repo, m, event.get("tip", "")) for m in merges):
+            derived.append(dict(event, derived="the merge of this task is in what was deployed"))
+        # a release branch holds cherry-picks (other hashes): the deploy of that branch, after the release, carries the task
+        elif event.get("branch") in released and event["time"] >= released[event["branch"]]:
+            derived.append(dict(event, derived="the release of this task was deployed"))
     rows = sorted(mine + derived, key=lambda e: e["time"])
     head = {"addon": addon, "id": task_id, "title": "", "link": "", "branches": []}
     for event in mine:
