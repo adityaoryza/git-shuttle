@@ -86,10 +86,10 @@ addon_report_toggle() {
     addon_usable "$name" report || die "the add-on '$name' is not enabled, or has no report (git shuttle addon list)"
     if (( DRY_RUN )); then
         info "the report of '$name' would be turned $state for this repository"
-        [[ "$state" == off ]] || info "after a pull request it shows what it would add to the Customer report of the task, and asks; it only adds, what is there is kept"
+        [[ "$state" == off ]] || info "after a pull request it shows what it would add to the Customer report of the task, and asks; it changes only its own block of steps, what else is there is kept"
         return 0
     fi
     git config "shuttle.addon.$name.report" "$state"
     step "the report of '$name' is $state for this repository"
-    [[ "$state" == off ]] || info "after a pull request it shows what it would add to the Customer report of the task, and asks; it only adds, what is there is kept"
+    [[ "$state" == off ]] || info "after a pull request it shows what it would add to the Customer report of the task, and asks; it changes only its own block of steps, what else is there is kept"
 }

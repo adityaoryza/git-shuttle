@@ -51,8 +51,9 @@ the custom field `x_customer_report`), so that the PM can check them on GitHub. 
 - **Shown first, asked, then written**: the hook is called with `{"action":"preview"}` (the add-on says what it would add) and, after your
   answer (or `--yes`, which the web UI gives after its own preview), with `{"action":"post"}`. `git shuttle trace report` does the same for a pull
   request that is already open.
-- **Only adds**: the add-on keeps the text that is there and puts its entry after it; it adds one entry for each pull request; it reads the
-  field again and puts the old value back if the old text is not all there. odoo-task writes only a custom field (`x_...`) of text or html type
+- **Only adds, except its own block**: the add-on keeps the text that is there. The steps of the task are one block (`<div id="git-shuttle-flow">`) at the
+  start of an html field, and a later run replaces that block and nothing else; it reads the
+  field again and puts the old value back if the text that is not the block is not all there. odoo-task writes only a custom field (`x_...`) of text or html type
   of one task, and nothing else.
 - **A failure never undoes the pull request**: it is a warning, with the way to try again.
 
