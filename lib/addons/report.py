@@ -82,7 +82,7 @@ def phases_of(trace_file, addon, task, repo, web, pr_commits, branch):
     pushes = [e for e in events if e["type"] == "push" and SHA_RE.match(e.get("sha", ""))]
     if pushes:
         last = pushes[-1]
-        out.append({"title": "Pushed", "when": when(last), "items": [{"text": "%s · %s" % (last.get("branch", ""), last["sha"][:8]), "ref": "pushed %s" % last["sha"][:8]}]})
+        out.append({"title": "Pushed", "when": when(last), "items": [{"text": "%s · %s" % (last.get("branch", ""), last["sha"][:8])}]})
     prs = [e for e in events if e["type"] == "pr" and re.match(r"^https?://", e.get("url", ""))]
     for event in prs:
         out.append({"title": "Pull request", "when": when(event), "items": [{"text": "%s → %s" % (event.get("title", "") or "pull request", event.get("base", "")), "url": event["url"], "ref": event["url"]}]})
