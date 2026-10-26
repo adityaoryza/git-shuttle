@@ -42,11 +42,15 @@ cmd_ship() {
     require_clean_tree_unless_committing "$message"
     (( pr )) || (( ${#pr_args[@]} == 0 )) || die "--title, --body, --body-file, --base and --draft go with --pr"
     (( pr )) && (( ${#merge_args[@]} )) && die "--pr opens a pull request: it does not take the merge options"
+    # a release branch goes to the release branch with a pull request: a merge into staging would bring the release into it
+    if (( ! pr )) && is_release_branch "$branch"; then
+        die "'$branch' is a release branch: open a pull request to $RELEASE (git shuttle ship --pr), do not merge it into $INTEGRATION"
+    fi
 
     show_where "$branch"
     [[ -z "$message" ]] || info "commit:     $message"
     if (( pr )); then
-        info "then:       sync on $INTEGRATION, push, open a pull request"
+        info "then:       sync on $(reference_branch "$branch"), push, open a pull request"
     else
         info "then:       ship to ${merge_args[1]:-$INTEGRATION} (sync, push, merge, push, back)"
     fi
@@ -63,7 +67,7 @@ cmd_ship() {
     fi
     if (( pr )); then
         fetch_remote
-        sync_branch "$branch" "$INTEGRATION"
+        sync_branch "$branch" "$(reference_branch "$branch")"
         cmd_pr "${pr_args[@]}"
     else
         cmd_merge "${merge_args[@]}"

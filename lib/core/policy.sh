@@ -21,6 +21,23 @@ is_protected() { # branch
     return 1
 }
 
+# is_release_branch NAME — a branch that was made with shuttle.releasePattern (release/{date}-v1.{n}).
+is_release_branch() {
+    local pattern glob
+    pattern=$(cfg releasePattern); pattern=${pattern:-release/\{date\}-v1.\{n\}}
+    glob=${pattern//\{date\}/\*}; glob=${glob//\{yymmdd\}/\*}; glob=${glob//\{n\}/\*}
+    # shellcheck disable=SC2053  # the pattern is meant as a pattern
+    [[ "$1" == $glob ]]
+}
+
+# reference_branch BRANCH — the remote branch that BRANCH is compared with and brought up to date from: a release branch is cut from the release
+# branch, and the integration branch (staging) must not come into it; any other branch is compared with the integration branch.
+reference_branch() {
+    local ref
+    if is_release_branch "$1"; then ref=$(cfg release); else ref=$(cfg integration); fi
+    printf '%s' "${ref:-$(detect_base)}"
+}
+
 # refuse_protected BRANCH WHAT — the work goes on a feature branch.
 refuse_protected() {
     is_protected "$1" || return 0

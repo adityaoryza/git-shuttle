@@ -26,7 +26,7 @@ cmd_status() {
         if is_protected "$branch"; then is_protected=1; fi
         upstream=$(upstream_of "$branch")
         if [[ -n "$upstream" ]]; then read -r up_ahead up_behind < <(git rev-list --left-right --count "$branch...$upstream"); fi
-        into=$(cfg integration); into=${into:-$(detect_base)}
+        into=$(reference_branch "$branch")
         if [[ -n "$into" ]] && have_ref "refs/remotes/$remote/$into"; then
             read -r into_ahead into_behind < <(git rev-list --left-right --count "$branch...$remote/$into")
             if [[ "$branch" != "$into" ]] && git merge-base --is-ancestor "$branch" "$remote/$into"; then merged=1; fi

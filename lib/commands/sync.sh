@@ -45,7 +45,7 @@ cmd_sync() {
     refuse_protected "$branch" "sync"
     require_clean_tree
     load_branches
-    onto=${onto:-$INTEGRATION}
+    onto=${onto:-$(reference_branch "$branch")}
     [[ "$branch" != "$onto" ]] || die "'$branch' is the branch to rebase on: check out your feature branch"
     show_where "$branch"
     info "$how:     $(cfg_remote)/$onto into '$branch'"

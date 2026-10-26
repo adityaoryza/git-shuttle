@@ -23,6 +23,7 @@ export function busy(ctx) {
 const onBranch = ctx => (branchOf(ctx) ? "" : "you are not on a branch");
 const unprotected = ctx => (isProtected(ctx) ? branchOf(ctx) + " is protected: work on a feature branch" : "");
 const cleanTree = ctx => (dirtyTracked(ctx) ? "commit or stash your changes first" : "");
+const notMerged = ctx => (ctx.status && ctx.status.merged === "1" ? "this branch is already in " + ctx.status["integration.ref"] + ": there is nothing to update" : "");
 const first = (...checks) => ctx => { for (const check of checks) { const reason = check(ctx); if (reason) return reason; } return ""; };
 const rewriting = first(busy, onBranch, unprotected, cleanTree);
 
@@ -99,12 +100,12 @@ export const OPS = {
   },
   "sync": {
     label: ctx => "Update from " + ((ctx.status && ctx.status["integration.ref"]) || "the integration branch"),
-    reason: first(busy, onBranch, unprotected, cleanTree, ctx => (ctx.status["integration.ref"] ? "" : "no integration branch is set: see Settings")),
+    reason: first(busy, onBranch, unprotected, cleanTree, notMerged, ctx => (ctx.status["integration.ref"] ? "" : "no integration branch is set: see Settings")),
     request: ctx => ({ action: "sync", params: {}, label: "Rebase " + branchOf(ctx) + " on " + ctx.status["integration.ref"], verb: "Rebase" }),
   },
   "sync-merge": {
     label: ctx => "Merge " + ((ctx.status && ctx.status["integration.ref"]) || "the integration branch") + " into this branch",
-    reason: first(busy, onBranch, unprotected, cleanTree, ctx => (ctx.status["integration.ref"] ? "" : "no integration branch is set: see Settings")),
+    reason: first(busy, onBranch, unprotected, cleanTree, notMerged, ctx => (ctx.status["integration.ref"] ? "" : "no integration branch is set: see Settings")),
     request: ctx => ({ action: "sync", params: { merge: true }, label: "Merge " + ctx.status["integration.ref"] + " into " + branchOf(ctx), verb: "Merge" }),
   },
   "push": { label: "Push", special: "push", reason: busy },
@@ -334,7 +335,7 @@ export function syncPlan(ctx) {
   if (behind > 0 && ahead > 0) return { id: "pull-rebase", label: "Rebase on " + s.upstream };
   if (behind > 0) return { id: "pull", label: "Pull ↓" + behind };
   if (ahead > 0) return { id: "push", label: "Push ↑" + ahead };
-  if (num(s["integration.behind"]) > 0 && s.protected !== "1") return { id: "sync", label: "Update from " + s["integration.ref"] };
+  if (num(s["integration.behind"]) > 0 && s.protected !== "1" && s.merged !== "1") return { id: "sync", label: "Update from " + s["integration.ref"] };
   return { id: "fetch", label: "Fetch" };
 }
 
