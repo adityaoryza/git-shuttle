@@ -184,6 +184,10 @@ def merged_commits(repo, base, branch):
         merge = path[0] if path else ""
     if not SHA_RE.match(merge):
         return None
+    # a new branch made at the tip of the base is at a merge too, and that merge is nobody's work but the one it names: "Merge branch 'x'",
+    # "Merge pull request #1 from owner/x"
+    if branch not in (git_lines(repo, "log", "-n", "1", "--format=%s", merge) or [""])[0]:
+        return None
     parents = (git_lines(repo, "rev-list", "--parents", "-n", "1", merge) or [""])[0].split()
     if len(parents) != 3:
         return None

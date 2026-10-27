@@ -166,6 +166,20 @@ assert_contains "$(cat "$TRACE")" '"type": "bind"' "...and the link itself is a 
 after=$(wc -l <"$TRACE")
 FAKE_MODE=ok shuttle -y trace bind 15607
 assert_eq "$after" "$(wc -l <"$TRACE")" "linking again adds nothing that is already there"
+# a new branch made at the tip of the base, which is a merge of somebody else's branch, did not do that work
+git checkout -q develop
+git checkout -q -b someone-else develop
+echo else >else.txt; git add else.txt; git commit -q -m "[FEAT] else: the work of somebody"
+git checkout -q develop
+git merge -q --no-ff someone-else -m "Merge branch 'someone-else' into develop"
+git branch -q -D someone-else
+git push -q origin develop
+git checkout -q -b fresh-at-the-tip develop
+FAKE_MODE=ok shuttle -y trace bind 15607
+assert_status 0 "$RC" "a new branch at the tip of the base can be linked"
+assert_not_contains "$(cat "$TRACE")" "the work of somebody" "...and the work of the merge at the tip is not written as its own"
+assert_not_contains "$(cat "$TRACE")" "$(git rev-parse develop)" "...nor the merge itself"
+git checkout -q plain-branch
 shuttle trace show 15607 --addon task
 assert_contains "$OUT" "an old commit" "trace show lists what was added afterwards"
 shuttle trace map
