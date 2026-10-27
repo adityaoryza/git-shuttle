@@ -7,6 +7,7 @@ import { fullDate } from "../format.js";
 import { parseRefs, relativeTime } from "../graph.js";
 import { shortHash } from "../logic.js";
 import { ContextMenu } from "./context-menu.js";
+import { StateChip } from "./state-chip.js";
 import { DiffView } from "./diff-view.js";
 import { Splitter, useSize, useSplit } from "./splitter.js";
 import { ResizableTable } from "./table.js";
@@ -67,7 +68,7 @@ function pickFocus(files, focus) {
   return files.find(f => f.path === focus.path && f.group === focus.group) || files.find(f => f.path === focus.path) || null;
 }
 
-export function CommitPanel({ repoId, selected, remotes, height, onSelectCommit, onClose, onCopy, actions }) {
+export function CommitPanel({ repoId, selected, remotes, height, stages, names, onSelectCommit, onClose, onCopy, actions }) {
   const worktree = selected.type === "worktree";
   const key = worktree ? "worktree" : selected.sha;
   const [details, setDetails] = useState({ loading: true });
@@ -186,6 +187,7 @@ export function CommitPanel({ repoId, selected, remotes, height, onSelectCommit,
     <header class="detail-head">
       ${worktree ? html`<strong>Working tree</strong><span class="hint">${files.length} changed ${files.length === 1 ? "file" : "files"}, not committed yet</span>` : data ? html`
         <button type="button" class="sha" onClick=${() => onCopy(data.sha)} title="Copy the full commit id" aria-label=${"Copy commit id " + data.sha}><code>${shortHash(data.sha)}</code> <span aria-hidden="true">⧉</span></button>
+        <${StateChip} stage=${stages && stages.get(data.sha)} release=${names && names.release} integration=${names && names.integration} />
         <span class="who" title=${data.email}>${data.author}${data.committer && data.committer !== data.author ? html` <span class="hint">(committed by ${data.committer})</span>` : null}</span>
         <span class="hint" title=${fullDate(data.time)}>${relativeTime(data.time)} · ${fullDate(data.time)}</span>
         ${refs.slice(0, 4).map(r => html`<span class=${"ref ref-" + r.kind + (r.current ? " ref-current" : "")} title=${r.name}>${r.name}</span>`)}

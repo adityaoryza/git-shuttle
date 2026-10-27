@@ -24,6 +24,11 @@ t("filterMerges: the search looks in the message, the hash and the title of the 
   assert.deepStrictEqual(filterMerges(merges, "ccccccc", false).map(m => m.commits[0].hash), ["ccccccc333"]);
   assert.deepStrictEqual(filterMerges(merges, "billing_rounding", false)[0].commits.length, 2, "the title of the merge brings its commits");
 });
+t("filterMerges: the search also finds the author", () => {
+  const withAuthors = merges.map(m => ({ ...m, commits: m.commits.map(c => ({ ...c, author: c.hash.startsWith("a") ? "Sam Lee" : "Jordan Kim" })) }));
+  assert.deepStrictEqual(filterMerges(withAuthors, "sam", false).map(m => m.commits.map(c => c.hash)), [["aaaaaaa111"]]);
+  assert.strictEqual(filterMerges(withAuthors, "jordan", false).reduce((n, m) => n + m.commits.length, 0), 3);
+});
 t("filterMerges: every word has to match, case does not matter", () => {
   assert.strictEqual(filterMerges(merges, "BILLING round", false)[0].commits.length, 2);
   assert.strictEqual(filterMerges(merges, "billing coupon", false).length, 0);

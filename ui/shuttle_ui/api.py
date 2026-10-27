@@ -10,6 +10,7 @@ from .errors import BadRequest
 from .diffs import commit_details, file_diff, worktree_files
 from .graph import branch_list, commit_graph
 from . import prefs, updates, vault
+from .release_state import release_state
 from .runner import NO_TERMINAL, child_env, git_output, limited, run_shuttle, shuttle_porcelain, shuttle_records, shuttle_stdin, shuttle_text
 from .validate import HASH_RE, build_commands, display_name, name as branch_name, relative_path, text
 from .validate_ops import commitish
@@ -89,7 +90,14 @@ def candidates(repo):
     for rec in raw["commit"]:
         merge, h, mark, subject, queued = (rec.split("\x1f") + ["", "", "", ""])[:5]
         if merge in by_merge:
-            by_merge[merge]["commits"].append({"hash": h, "pending": mark == "+", "subject": subject, "in_release": queued if mark == "~" else ""})
+            by_merge[merge]["commits"].append({"hash": h, "pending": mark == "+", "subject": subject, "in_release": queued if mark == "~" else "", "author": ""})
+    hashes = [commit["hash"] for item in merges for commit in item["commits"] if HASH_RE.match(commit["hash"])]
+    if hashes:      # the author as the graph shows it (.mailmap applied), one read for all the commits
+        done = git_output(repo["path"], "show", "-s", "--format=%H%x1f%aN", *hashes)
+        names = dict(line.split("\x1f", 1) for line in done.stdout.decode("utf-8", "replace").splitlines() if "\x1f" in line) if done.returncode == 0 else {}
+        for item in merges:
+            for commit in item["commits"]:
+                commit["author"] = names.get(commit["hash"], "")
     return merges
 
 
@@ -405,6 +413,8 @@ def handle(server, method, route, body):
             return conflict_hunks(repo, body.get("path"))
         if method == "GET" and rest == ["candidates"]:
             return {"candidates": candidates(repo)}
+        if method == "GET" and rest == ["release-state"]:
+            return {"state": release_state(repo["path"])}
         if method == "POST" and rest == ["fetch"]:
             return fetch(repo)
         if method == "POST" and rest == ["preview"]:

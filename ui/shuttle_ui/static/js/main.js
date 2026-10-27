@@ -7,6 +7,7 @@ import { ConfirmDialog } from "./components/confirm.js";
 import { ToastHost, useToasts } from "./components/toast-host.js";
 import { describeJob, fetchToast, toToast } from "./feedback.js";
 import { GH_MISSING, branchTemplates, ghMissing, releaseReady, resolveRequest } from "./logic.js";
+import { commitStages } from "./release-state.js";
 import { isPreviewSkipped } from "./skip-preview.js";
 import { GraphView } from "./components/graph-view.js";
 import { DeployTab } from "./components/deploy-tab.js";
@@ -51,6 +52,15 @@ function App() {
     api("GET", "repos/" + repoId + "/trace/map").then(d => { if (alive) setTaskMap(d); }, () => { if (alive) setTaskMap(null); });
     return () => { alive = false; };
   }, [repoId, graph]);
+  const [releaseState, setReleaseState] = useState(null);   // where the commits are on their way to production: marked in the graph and the details
+  useEffect(() => {
+    if (!repoId || !graph) return undefined;
+    let alive = true;
+    api("GET", "repos/" + repoId + "/release-state").then(d => { if (alive) setReleaseState(d.state); }, () => { if (alive) setReleaseState(null); });
+    return () => { alive = false; };
+  }, [repoId, graph]);
+  const stages = useMemo(() => commitStages(releaseState), [releaseState]);
+  const branchNames = useMemo(() => { const c = settings(status); return { release: c.release, integration: c.integration }; }, [status]);
   const [tab, setTab] = useState("start");
   const [dialog, setDialog] = useState(null);
   const [modal, setModal] = useState(null);           // the dialogs of the actions: { name, ... }
@@ -396,9 +406,9 @@ function App() {
     ${!repos.length ? html`<main class="onboarding"><${BrandMark} size=${56} class="onboarding-mark" /><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
       <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split" ref=${mainRef} style=${{ "--panel-w": panelSplit.size + "px" }}>
       <section class="graph-pane" aria-label="Commit graph" ref=${paneRef}>
-        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} tasks=${taskMap} taskFilter=${activeTask} onClearTask=${() => setTaskFilter("")} /></div>
+        <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} tasks=${taskMap} stages=${stages} names=${branchNames} taskFilter=${activeTask} onClearTask=${() => setTaskFilter("")} /></div>
         ${selected && repoId ? html`<${Splitter} split=${detailSplit} axis="y" grow=${-1} label="Resize the details" />
-          <${CommitPanel} key=${selected.type === "worktree" ? "worktree" : selected.sha} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} height=${detailSplit.size} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} actions=${fileActions} />` : null}
+          <${CommitPanel} key=${selected.type === "worktree" ? "worktree" : selected.sha} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} height=${detailSplit.size} stages=${stages} names=${branchNames} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} actions=${fileActions} />` : null}
       </section>
       <${Splitter} split=${panelSplit} axis="x" grow=${-1} label="Resize the side panel" />
       <aside class="panel" aria-label="Next step">

@@ -1,11 +1,11 @@
 /* The Release tab: finding things in what was merged, picking them in order, naming the branch, and the notes for the pull request.
  * Pure, tested with node. */
 
-// A merge is { subject, date, commits: [{ hash, subject, pending }] } as GET /candidates answers (newest first).
+// A merge is { subject, date, commits: [{ hash, subject, author, pending }] } as GET /candidates answers (newest first).
 
 const lower = text => String(text || "").toLowerCase();
 
-// The commits that match the search (in the message, the hash, or the title of the merge they came with), and not the released
+// The commits that match the search (in the message, the hash, the author, or the title of the merge they came with), and not the released
 // ones when asked; a merge with nothing left is not listed.
 // tasks (optional): GET /trace/map ({commits: {sha: [addon, id]}, tasks: {"addon:id": {title}}}); task: "" for any, "none" for the commits of no task,
 // or "addon:id" for the commits of that task (a commit is for a task when the trace says so, else when the merge it came with is).
@@ -20,7 +20,7 @@ export function filterMerges(merges, query, hideReleased, tasks, task) {
       const own = taskOf(tasks, merge, commit);
       if (task === "none" ? own : task && (!own || own.join(":") !== task)) return false;
       const info = own && tasks.tasks ? tasks.tasks[own.join(":")] || {} : {};
-      const haystack = lower(commit.subject) + " " + lower(commit.hash) + " " + lower(merge.subject) + (own ? " #" + lower(own[1]) + " " + lower(info.title) : "");
+      const haystack = lower(commit.subject) + " " + lower(commit.hash) + " " + lower(commit.author) + " " + lower(merge.subject) + (own ? " #" + lower(own[1]) + " " + lower(info.title) : "");
       return words.every(word => haystack.includes(word));
     });
     if (commits.length) out.push({ ...merge, commits });

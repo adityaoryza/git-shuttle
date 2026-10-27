@@ -2,6 +2,8 @@ import { lowContrast, overflowsHorizontally } from "../lib/checks.mjs";
 
 const release = page => page.getByRole("tab", { name: "Release" });
 const picks = page => page.locator(".release .pick input:not([disabled])");
+const showAll = page => page.locator(".release-tools .segmented").getByRole("tab", { name: /^All/ }).click();
+const showOpen = page => page.locator(".release-tools .segmented").getByRole("tab", { name: /^Not released/ }).click();
 const open = async page => { await release(page).click(); await page.locator(".release-groups .group").first().waitFor(); };
 const run = async (page, label) => {
   await page.getByRole("button", { name: "Preview" }).click();
@@ -30,11 +32,12 @@ export const scenarios = {
 
     const all = await page.locator(".release .pick").count();
     const counter = page.locator(".release-count .hint").first();
-    t.ok("released commits are hidden by default", (await page.locator(".release .pick .badge").count()) === 0);
-    const unchecked = page.getByLabel("Hide released");
-    await unchecked.uncheck();
-    t.ok("...and can be shown, with their badge", (await page.locator(".release .pick").count()) >= all);
-    await unchecked.check();
+    t.ok("released commits are hidden by default", (await page.locator(".release .pick .stage").count()) === 0);
+    t.ok("...the two choices say how many commits each lists", /Not released · \d+/.test(await page.locator(".release-tools .segmented").innerText()) && /All · \d+/.test(await page.locator(".release-tools .segmented").innerText()));
+    await showAll(page);
+    t.ok("...and can be shown, each with where it is", (await page.locator(".release .pick").count()) >= all && (await page.locator(".release .pick .stage").count()) === (await page.locator(".release .pick").count()));
+    await showOpen(page);
+    t.ok("every commit says who made it", (await page.locator(".release .pick .pick-author").allInnerTexts()).every(name => name.trim().length > 0));
 
     await page.getByRole("searchbox", { name: "Search the commits" }).fill("coupon");
     t.ok("the search narrows the list", (await page.locator(".release .pick").count()) >= 1 && (await page.locator(".release .pick").count()) < all, await counter.innerText());
@@ -95,13 +98,13 @@ export const scenarios = {
     await page.getByText("Done:", { exact: false }).first().waitFor();
     t.ok("the tab says it is done and what comes next", (await page.locator(".release").innerText()).includes("until its pull request is merged") && (await page.getByRole("button", { name: "Open the pull request" }).count()) >= 1);
     t.ok("what was picked is cleared", (await page.locator(".pickrow").count()) === 0 && (await picks(page).evaluateAll(list => list.filter(i => i.checked).length)) === 0);
-    await page.getByLabel("Hide released").uncheck();
-    const queued = page.locator(".release .pick .badge", { hasText: "in " + name });
+    await showAll(page);
+    const queued = page.locator(".release .pick .stage-queued", { hasText: name });
     await queued.first().waitFor();
-    t.ok("the commit shows the release branch it is in, not \"released\"", (await queued.count()) === 1, await page.locator(".release .pick .badge").allInnerTexts());
-    t.ok("...and cannot be picked again", await page.locator(".release .pick", { has: page.locator(".badge", { hasText: "in " + name }) }).locator("input").isDisabled());
-    await page.getByLabel("Hide released").check();
-    t.ok("...and \"Hide released\" hides it", (await page.locator(".release .pick .badge", { hasText: "in " + name }).count()) === 0);
+    t.ok("the commit shows the release branch it is in, not \"released\"", (await queued.count()) === 1, await page.locator(".release .pick .stage").allInnerTexts());
+    t.ok("...and cannot be picked again", await page.locator(".release .pick", { has: page.locator(".stage-queued", { hasText: name }) }).locator("input").isDisabled());
+    await showOpen(page);
+    t.ok("...and \"Not released\" hides it", (await page.locator(".release .pick .stage-queued", { hasText: name }).count()) === 0);
   },
 
   async "release tab: small screens and contrast"(t) {
