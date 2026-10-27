@@ -4,6 +4,22 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-27
+
+### Added
+
+- Where a commit is on its way to production: a new **Prod** column in the graph, and the same mark in the details of a commit. *In prod* is a commit
+  that the release branch has, or has with the same patch under another hash (a cherry-pick); *On its way* is in a release branch whose pull request is
+  not merged yet (the pointer says which); *Not in prod* is merged into the integration branch and nowhere else. Other commits say nothing. The search
+  box of the graph finds them by those words. The answer of `GET /repos/<id>/release-state` is read-only and kept until a branch moves.
+
+### Changed
+
+- The Release tab: the choice between the commits not released and all of them is two buttons with their counts (it was a check box), every commit
+  is in the same columns (box, id, task, message, author), and with *All* each commit says where it is, with the same mark as the graph. The search
+  finds a commit by its author too. A merge says how many of its commits are not released yet.
+- The API level is 13: the page needs `release-state`; an older server says so.
+
 ## [0.12.0] - 2026-10-27
 
 ### Changed
