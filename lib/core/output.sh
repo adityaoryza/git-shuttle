@@ -4,7 +4,7 @@
 # Sourced by bin/git-shuttle: it only defines functions and constants.
 
 # shellcheck disable=SC2034  # printed by bin/git-shuttle
-readonly SHUTTLE_VERSION="0.13.0"
+readonly SHUTTLE_VERSION="0.13.1"
 
 # Flags set by the command line (see bin/git-shuttle).
 YES=${GIT_SHUTTLE_YES:-0}

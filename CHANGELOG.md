@@ -4,6 +4,14 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.13.1] - 2026-10-27
+
+### Fixed
+
+- `git shuttle trace bind` took a new branch for a merged one: a branch made at the tip of the base, which is the merge of somebody else's pull request,
+  was given that merge and the commits of the other person, and they showed under its task in the graph and the Release tab. A branch with no commit
+  of its own is now taken for a merged branch only when the merge names it ("Merge branch 'x'", "Merge pull request #1 from owner/x").
+
 ## [0.13.0] - 2026-10-27
 
 ### Added
