@@ -525,4 +525,57 @@ assert_status 1 "$RC" "trace report for a branch that is not for a task"
 shuttle -y addon report reporter off
 assert_eq "off" "$(git config shuttle.addon.reporter.report)" "the report can be turned off again"
 
+# --- the report without a pull request: a branch merged by git shuttle, or already merged -----------------------------------------------
+cat >"$SB/gh-nopr" <<'EOF'
+#!/bin/sh
+exit 1
+EOF
+chmod +x "$SB/gh-nopr"
+export GIT_SHUTTLE_GH="$SB/gh-nopr"
+git checkout -q -b rpt2 develop
+git config branch.rpt2.shuttle-ref-addon reporter
+git config branch.rpt2.shuttle-ref-id 77
+echo r2 >r2.txt; git add r2.txt
+shuttle -y commit -m "[FEAT] shop: merged without a pull request" -- r2.txt
+shuttle -y push
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=ok shuttle -y merge
+assert_status 0 "$RC" "a merge of a task whose report is off"
+[[ -e "$FAKE_LOG.reporter" ]] && called=yes || called=no
+assert_eq "no" "$called" "...does not call the add-on"
+shuttle -y addon report reporter on
+git checkout -q -b rpt3 develop
+git config branch.rpt3.shuttle-ref-addon reporter
+git config branch.rpt3.shuttle-ref-id 77
+echo r3 >r3.txt; git add r3.txt
+shuttle -y commit -m "[FEAT] shop: the second one" -- r3.txt
+shuttle -y push
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=ok shuttle -n merge
+assert_status 0 "$RC" "merge --dry-run with the report on"
+assert_not_contains "$(cat "$FAKE_LOG.reporter" 2>/dev/null)" "post" "...writes nothing"
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=ok shuttle -y merge
+assert_status 0 "$RC" "a merge, no pull request, the report on"
+assert_contains "$OUT" "Customer report of task #77: Added to x_customer_report of task 77" "the report is written after the merge"
+POST=$(cat "$FAKE_LOG.reporter.post")
+assert_contains "$POST" '"title": "Commits"' "...with the commits of the trace as a step"
+assert_contains "$POST" "[FEAT] shop: the second one" "...(the commit that was merged)"
+assert_contains "$POST" '"title": "Merged"' "...and the merge as a step"
+assert_contains "$POST" '"url": ""' "...and no address of a pull request"
+# a report on demand for a branch with steps but no pull request
+rm -f "$FAKE_LOG.reporter" "$FAKE_LOG.reporter.post"
+FAKE_MODE=ok shuttle -y trace report --branch rpt3
+assert_status 0 "$RC" "trace report without a pull request, with steps in the trace"
+assert_contains "$(cat "$FAKE_LOG.reporter")" "post" "...writes the steps"
+# a task that has no step at all has nothing to report without a pull request
+git checkout -q -b rpt4 develop
+git config branch.rpt4.shuttle-ref-addon reporter
+git config branch.rpt4.shuttle-ref-id 88
+FAKE_MODE=ok shuttle -y trace report
+assert_status 1 "$RC" "trace report without a pull request and without a step"
+assert_contains "$OUT" "no step of the task" "...says why"
+git checkout -q develop
+shuttle -y addon report reporter off
+
 finish

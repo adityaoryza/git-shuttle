@@ -146,14 +146,18 @@ cmd_trace() {
             TRACE_SHARED="$BASE $INTEGRATION $RELEASE" TRACE_BASE=${remote_ref:-HEAD} "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" map "$file" "$REPO_ROOT"
             return 0 ;;
         report)
-            # the pull request and the commits of the branch, added to the Customer report of its task (the same as after `git shuttle pr`)
+            # the pull request (when there is one) and the steps of the branch, added to the Customer report of its task (the same as after `git shuttle pr`)
             local rtarget rpr
             load_branches
             rtarget=${branch:-$(git symbolic-ref -q --short HEAD || true)}
             [[ -n "$rtarget" ]] || die "report: you are not on a branch: name it with --branch"
             report_applicable "$rtarget" || die "report: '$rtarget' is not for a task whose add-on has the report turned on (git shuttle addon report NAME on)"
             rpr=$(mktemp)
-            "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName,commits >"$rpr" 2>/dev/null || { rm -f "$rpr"; die "report: there is no pull request for '$rtarget' yet (git shuttle pr)"; }
+            # without a pull request (a merge made by git shuttle, or by hand) the report is the steps of the task in the trace
+            "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName,commits >"$rpr" 2>/dev/null || : >"$rpr"
+            if [[ ! -s "$rpr" ]] && ! report_has_steps "$REPORT_ADDON" "$REPORT_ID"; then
+                rm -f "$rpr"; die "report: there is no pull request for '$rtarget' and the trace has no step of the task (git shuttle pr, or git shuttle trace bind)"
+            fi
             task_report_flow "$rtarget" "$INTEGRATION" "$rpr"
             rm -f "$rpr"
             return 0 ;;

@@ -4,6 +4,15 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-10-27
+
+### Changed
+
+- The Customer report of a task no longer needs a pull request. After `git shuttle merge` (and `ship`) of a branch that is for a task, whose add-on has
+  the report turned on, git shuttle shows the steps of the task from its trace (started, commits, pushed, merged) and asks, the same way as after
+  `git shuttle pr`; a pull request that exists is added to them. `git shuttle trace report` works for a branch without a pull request when the trace
+  has steps of the task (it said "there is no pull request" before); without a pull request and without a step it says so.
+
 ## [0.13.1] - 2026-10-27
 
 ### Fixed
