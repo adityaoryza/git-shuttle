@@ -37,6 +37,7 @@ export const scenarios = {
     t.ok("...with how many there are", (await page.getByText("2 of 2 tasks").count()) === 1);
     await page.getByLabel("All stages").selectOption("To Validate");
     t.ok("a stage filters them", (await rows().count()) === 1 && (await rows().first().innerText()).includes("15490"));
+    t.ok("a stage that waits for someone is yellow, and each filter has a caption", (await rows().first().locator(".badge-warn").count()) === 1 && (await page.locator(".task-filter .hint").allInnerTexts()).join() === "Stage,Project,Fetched,Order");
     await page.getByRole("button", { name: "Clear filters" }).click();
     await page.getByLabel("Fetched or not").selectOption("yes");
     t.ok("fetched or not filters them", (await rows().count()) === 1 && (await rows().first().innerText()).includes("15607"));

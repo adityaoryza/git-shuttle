@@ -6,12 +6,18 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { gitEnv } from "./demo.mjs";
 
+// An add-on that is installed on the machine that runs the tests (git-shuttle-odoo-task, in ~/.local/bin) must not turn up next to the
+// stand-in: the folders of the PATH that hold a git-shuttle-NAME program are left out.
+const pathWithoutAddons = () => (process.env.PATH || "").split(path.delimiter).filter(dir => {
+  try { return !fs.readdirSync(dir).some(f => f.startsWith("git-shuttle-")); } catch { return true; }
+}).join(path.delimiter);
+
 const UI_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "ui");
 
 export async function startServer(demo, extraArgs = []) {
   const config = fs.mkdtempSync(path.join(os.tmpdir(), "shuttle-e2e-cfg-"));
   const proc = spawn("python3", ["-m", "shuttle_ui", "--port", "0", "--no-open", "--repo", demo.work, ...extraArgs], {
-    env: { ...gitEnv(), PYTHONPATH: UI_DIR, XDG_CONFIG_HOME: config, GIT_SHUTTLE_GH: demo.gh, GIT_SHUTTLE_NO_UPDATE_CHECK: "1", GIT_SHUTTLE_SSH: demo.ssh, GIT_SHUTTLE_SECRET_TOOL: demo.secretTool, GIT_SHUTTLE_ADDON_PATH: demo.addons, GIT_SHUTTLE_ADDON_HOME: path.join(demo.root, "addon-home"), PYTHONUNBUFFERED: "1" },
+    env: { ...gitEnv(), PATH: pathWithoutAddons(), PYTHONPATH: UI_DIR, XDG_CONFIG_HOME: config, GIT_SHUTTLE_GH: demo.gh, GIT_SHUTTLE_NO_UPDATE_CHECK: "1", GIT_SHUTTLE_SSH: demo.ssh, GIT_SHUTTLE_SECRET_TOOL: demo.secretTool, GIT_SHUTTLE_ADDON_PATH: demo.addons, GIT_SHUTTLE_ADDON_HOME: path.join(demo.root, "addon-home"), PYTHONUNBUFFERED: "1" },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "", err = "";

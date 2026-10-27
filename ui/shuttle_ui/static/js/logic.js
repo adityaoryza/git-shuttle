@@ -358,3 +358,8 @@ export function pickChoice(h, pick) {
   for (const id of ["ours", "theirs", "both", "both-reverse"]) if (tokens(pickResult(h, presetPick(h, id))) === mine) return id;
   return "pick:" + mine;
 }
+
+// The colour of a stage pill, from what the stage says (done, waiting, running); a stage it does not know stays neutral.
+export const stageTone = stage => (/done|closed|approved|validated|released|shipped/i.test(stage) ? "ok"
+  : /valid|wait|pending|review|block|hold/i.test(stage) ? "warn"
+    : /run|progress|doing|assign|develop|test/i.test(stage) ? "info" : "neutral");

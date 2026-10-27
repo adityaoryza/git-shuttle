@@ -2,7 +2,7 @@
  * What an add-on says was checked by the command (a size, a safe alphabet, http or https for a link); it is shown as text, never as HTML. */
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
-import { linkify } from "../logic.js";
+import { linkify, stageTone } from "../logic.js";
 import { ExternalLink } from "./links.js";
 import { Alert, Badge, Button, Field, Input, Modal, Segmented, Skeleton } from "./ui.js";
 import { Combobox } from "./combobox.js";
@@ -151,25 +151,26 @@ export function TaskPicker({ repoId, version, onPick, picked }) {
     .sort(SORTS[f.sort][1]);
   const set = patch => setF({ ...f, ...patch });
   const active = f.text || f.stage || f.project || f.fetched || f.sort !== "newest";
-  const pick = (label, key, values, name) => html`<select class="input" aria-label=${label} value=${f[key]} onChange=${e => set({ [key]: e.target.value })}><option value="">${label}</option>${values.map(v => html`<option value=${v}>${name ? name(v) : v}</option>`)}</select>`;
+  const pick = (label, key, values, name, caption) => html`<label class="task-filter"><span class="hint">${caption}</span><select class="input" aria-label=${label} value=${f[key]} onChange=${e => set({ [key]: e.target.value })}><option value="">${label}</option>${values.map(v => html`<option value=${v}>${name ? name(v) : v}</option>`)}</select></label>`;
   return html`<div class="task-picker">
     <div class="task-bar"><${Input} value=${f.text} placeholder="Search my tasks (number, title, project)" onInput=${e => set({ text: e.target.value })} /><${Button} size="sm" variant="ghost" onClick=${load} busy=${state.loading}>Refresh<//></div>
     <div class="task-filters">
-      ${pick("All stages", "stage", options(t => t.subtitle))}
-      ${pick("All projects", "project", options(t => fieldOf(t, "Project")))}
-      ${pick("Fetched or not", "fetched", ["yes", "no"], v => (v === "yes" ? "Fetched" : "Not fetched"))}
-      <select class="input" aria-label="Sort" value=${f.sort} onChange=${e => set({ sort: e.target.value })}>${Object.entries(SORTS).map(([k, [label]]) => html`<option value=${k}>${label}</option>`)}</select>
+      ${pick("All stages", "stage", options(t => t.subtitle), null, "Stage")}
+      ${pick("All projects", "project", options(t => fieldOf(t, "Project")), null, "Project")}
+      ${pick("Fetched or not", "fetched", ["yes", "no"], v => (v === "yes" ? "Fetched" : "Not fetched"), "Fetched")}
+      <label class="task-filter"><span class="hint">Order</span><select class="input" aria-label="Sort" value=${f.sort} onChange=${e => set({ sort: e.target.value })}>${Object.entries(SORTS).map(([k, [label]]) => html`<option value=${k}>${label}</option>`)}</select></label>
     </div>
     <div class="task-bar">
       <label class="check"><input type="checkbox" checked=${closed} onChange=${e => setClosed(e.target.checked)} /><span>Include done and closed</span></label>
       <span class="hint grow">${state.loading ? "Loading…" : shown.length + " of " + all.length + " tasks"}</span>
       ${active ? html`<${Button} size="sm" variant="ghost" onClick=${() => setF(NO_FILTER)}>Clear filters<//>` : null}
     </div>
-    ${state.problems.map(p => html`<p class="hint addon-problem">The add-on <strong>${p.addon}</strong> lists no task: ${p.problem}</p>`)}
-    ${state.groups.filter(g => g.note).map(g => html`<p class="hint">${g.note}</p>`)}
+    ${state.problems.map(p => html`<${Alert} tone="warn"><span>The add-on <strong>${p.addon}</strong> lists no task: ${p.problem}</span><div class="actions"><${Button} size="sm" variant="secondary" onClick=${load} busy=${state.loading}>Try again<//></div><//>`)}
+    ${state.groups.filter(g => g.note).map(g => html`<${Alert} tone="warn"><span>${g.note}</span><div class="actions"><${Button} size="sm" variant="secondary" onClick=${load} busy=${state.loading}>Try again<//></div><//>`)}
     ${shown.length ? html`<ul class="task-list">${shown.map(t => html`<li class=${(picked && picked.id === t.id && picked.addon === t.addon ? "picked " : "") + (newest.has(t.addon + ":" + t.id) ? "is-new" : "")}>
       <button type="button" class="task-row" aria-pressed=${!!(picked && picked.id === t.id && picked.addon === t.addon)} onClick=${() => onPick(t.addon, t)}>
-        <span class="task-check" aria-hidden="true">${picked && picked.id === t.id && picked.addon === t.addon ? "✓" : ""}</span><span class="mono">${t.id}</span><strong>${t.title}</strong>${newest.has(t.addon + ":" + t.id) ? html`<${Badge} tone="info">new<//>` : null}${t.subtitle ? html`<${Badge}>${t.subtitle}<//>` : null}
+        <span class="task-check" aria-hidden="true">${picked && picked.id === t.id && picked.addon === t.addon ? "✓" : ""}</span><span class="mono">${t.id}</span><strong>${t.title}</strong>
+        <span class="task-pills">${newest.has(t.addon + ":" + t.id) ? html`<${Badge} tone="brand">new<//>` : null}${t.subtitle ? html`<${Badge} tone=${stageTone(t.subtitle)}>${t.subtitle}<//>` : null}</span>
         ${(t.fields || []).length ? html`<span class="hint">${t.fields.map(x => x.label + ": " + x.value).join(" · ")}</span>` : null}
       </button></li>`)}</ul>` : null}
     ${!state.loading && !state.problems.length && !shown.length ? html`<p class="hint">${all.length ? "No task matches the filters." : "No task listed."}</p>` : null}
