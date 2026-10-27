@@ -53,8 +53,9 @@ export function Toolbar({ ctx, perform, search, setSearch, searchRef, push, task
     <span class="grow"></span>
     <${Tool} id="log" ctx=${ctx} perform=${perform} label="Log" glyph="☰" always />
     <${Button} variant="ghost" size="sm" class="tool" data-tool="palette" title="Every action (Ctrl+K)" aria-label="Every action (Ctrl+K)" onClick=${() => perform("palette")}><span class="glyph" aria-hidden="true">⌘</span><span class="tool-label">Actions</span><//>
-    ${taskList && taskList.length ? html`<select class="input tool-task" aria-label="Show the work of one task" title="Only the commits and branches of one task" value=${taskFilter} onChange=${e => setTaskFilter(e.target.value)}>
-      <option value="">All tasks</option>${taskList.map(t => html`<option value=${t.key}>#${t.id} ${t.title} (${t.count})</option>`)}</select>` : null}
+    ${taskList && taskList.length ? html`<select class=${cn("input tool-task", taskFilter && "is-filtered")} aria-label="Show the work of one task" title="Only the commits and branches of one task" value=${taskFilter} onChange=${e => setTaskFilter(e.target.value)}>
+      <option value="">All tasks</option>${taskList.map(t => html`<option value=${t.key}>#${t.id} ${t.title} (${t.count})</option>`)}</select>
+      ${taskFilter ? html`<${Button} variant="ghost" size="icon" class="tool-task-clear" aria-label="Clear the task filter" title="Clear the task filter" onClick=${() => setTaskFilter("")}>✕<//>` : null}` : null}
     <${Search} class="tool-search" wrapClass="tool-search-wrap" inputRef=${searchRef} placeholder="Search commits (Ctrl+F)" aria-label="Search commits" value=${search} onInput=${e => setSearch(e.target.value)} onKeyDown=${e => e.key === "Escape" && (setSearch(""), e.target.blur())} />
   </div>`;
 }

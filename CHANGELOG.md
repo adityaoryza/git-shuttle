@@ -4,6 +4,18 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-27
+
+### Changed
+
+- The task picker (Start tab, Tasks dialog): every filter has a caption (Stage, Project, Fetched, Order); each task is two lines (number, title and pills, then its project and fetch state); the stage is coloured by what it says (done, waiting, running); the list scrolls by itself and no longer passes the scroll on to the panel.
+- When the add-on does not answer (Odoo is slow or off), the picker shows a warning with a *Try again* button instead of a grey line.
+- The task filter of the toolbar is marked when it is on (a teal frame) and has a button to clear it.
+
+### Fixed
+
+- The browser tests no longer see an add-on that is installed on the machine (`git-shuttle-odoo-task`) next to the stand-in they use.
+
 ## [0.11.3] - 2026-10-26
 
 ### Fixed

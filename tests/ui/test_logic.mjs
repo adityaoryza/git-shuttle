@@ -271,4 +271,9 @@ t("line by line: lines are kept or left out, a side or both is one click, what i
   assert.strictEqual(L.pickChoice(lonely, L.presetPick(lonely, "theirs")), "theirs");
   assert.strictEqual(L.pickChoice(lonely, L.presetPick(lonely, "both")), "theirs", "both of nothing and one line is the one line: the first name that fits");
 });
+t("stageTone: what the stage says gives its colour, an unknown stage stays neutral", () => {
+  for (const [stage, tone] of [["Approved", "ok"], ["Done", "ok"], ["To Validate", "warn"], ["Waiting for the client", "warn"], ["Running", "info"], ["Assigned", "info"], ["Meetings", "neutral"], ["", "neutral"], [undefined, "neutral"]]) {
+    assert.strictEqual(L.stageTone(stage), tone, String(stage));
+  }
+});
 console.log("  " + n + " passed, 0 failed");
