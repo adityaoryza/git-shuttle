@@ -45,12 +45,12 @@ argument just answers as always. A card's `text` may have up to 5000 characters;
 
 ### `report` hook: the pull request and the commits, for the people who follow the task
 
-After `git shuttle pr`, an add-on may add the pull request and the commits of the branch to the task it is for (odoo-task: the Customer report,
+After `git shuttle pr`, and after `git shuttle merge` or `ship` (a merge without a pull request), an add-on may add the steps of the branch (and its pull request, when it has one) to the task it is for (odoo-task: the Customer report,
 the custom field `x_customer_report`), so that the PM can check them on GitHub. It is the only way an add-on can write, and it has rules:
 - **Off until you turn it on, for one repository**: `git shuttle addon report NAME on` (the button *Customer report* in the Add-ons dialog).
 - **Shown first, asked, then written**: the hook is called with `{"action":"preview"}` (the add-on says what it would add) and, after your
-  answer (or `--yes`, which the web UI gives after its own preview), with `{"action":"post"}`. `git shuttle trace report` does the same for a pull
-  request that is already open.
+  answer (or `--yes`, which the web UI gives after its own preview), with `{"action":"post"}`. `git shuttle trace report` does the same for a branch that already has a pull
+  request or steps in the trace (a merge made by hand is not in the trace: link the branch with `git shuttle trace bind`).
 - **Only adds, except its own block**: the add-on keeps the text that is there. The steps of the task are one block (`<div id="git-shuttle-flow">`) at the
   start of an html field, and a later run replaces that block and nothing else; it reads the
   field again and puts the old value back if the text that is not the block is not all there. odoo-task writes only a custom field (`x_...`) of text or html type

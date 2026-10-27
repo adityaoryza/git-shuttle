@@ -73,4 +73,5 @@ cmd_merge() {
     trace_event merge "$branch" "sha=$(trace_sha HEAD)" "into=$into"
     run git checkout "$branch" || stop "merged and pushed, but cannot go back to '$branch'."
     step "done: '$branch' is in '$into' on $remote"
+    task_report_after_merge "$branch" "$into"
 }

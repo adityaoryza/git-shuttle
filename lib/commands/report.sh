@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# The report of a task: after a pull request is opened, the add-on of the task may add the pull request and the commits to the Customer
+# The report of a task: after a pull request is opened or a branch is merged, the add-on of the task may add the steps of the task to the Customer
 # report of the task (odoo-task: the field x_customer_report), for the people who follow the work. It is off until the user turns it on for the
 # repository (git shuttle addon report NAME on), it only ever ADDS (the add-on keeps what is there), the text is shown before it is written, and
 # a failure never undoes the pull request: it says so, and `git shuttle trace report` tries again.
@@ -63,6 +63,32 @@ task_report_flow() {
     return 0
 }
 
+# report_has_steps ADDON ID — the trace has a step of the task (a report without a pull request is made of the steps).
+report_has_steps() {
+    local file
+    file=$(trace_file 2>/dev/null) || return 1
+    trace_python || return 1
+    "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" show "$file" "$1" "$2" --repo "$REPO_ROOT" 2>/dev/null \
+        | "$TRACE_PY" -I -c 'import json, sys; sys.exit(0 if json.load(sys.stdin).get("events") else 1)' 2>/dev/null
+}
+
+# task_report_after_merge BRANCH INTO — called by `git shuttle merge` (and ship) once the branch is merged without a pull request: the steps of the
+# task from its trace go to the report, the same way as after a pull request. A pull request that exists is added to them.
+task_report_after_merge() {
+    local branch=$1 into=$2 pr_file gh=${GIT_SHUTTLE_GH:-gh}
+    report_applicable "$branch" || return 0
+    report_has_steps "$REPORT_ADDON" "$REPORT_ID" || return 0
+    addon_need_python
+    pr_file=$(mktemp)
+    if (( DRY_RUN )); then
+        : >"$pr_file"
+    else
+        "$gh" pr view "$branch" --json url,number,title,baseRefName,commits >"$pr_file" 2>/dev/null || : >"$pr_file"
+    fi
+    task_report_flow "$branch" "$into" "$pr_file"
+    rm -f "$pr_file"
+}
+
 # task_report_after_pr BRANCH BASE TITLE — called by `git shuttle pr` once the pull request is open (in a dry run: what would be added).
 task_report_after_pr() {
     local branch=$1 base=$2 title=$3 pr_file gh=${GIT_SHUTTLE_GH:-gh}
@@ -86,10 +112,10 @@ addon_report_toggle() {
     addon_usable "$name" report || die "the add-on '$name' is not enabled, or has no report (git shuttle addon list)"
     if (( DRY_RUN )); then
         info "the report of '$name' would be turned $state for this repository"
-        [[ "$state" == off ]] || info "after a pull request it shows what it would add to the Customer report of the task, and asks; it changes only its own block of steps, what else is there is kept"
+        [[ "$state" == off ]] || info "after a pull request or a merge it shows what it would add to the Customer report of the task, and asks; it changes only its own block of steps, what else is there is kept"
         return 0
     fi
     git config "shuttle.addon.$name.report" "$state"
     step "the report of '$name' is $state for this repository"
-    [[ "$state" == off ]] || info "after a pull request it shows what it would add to the Customer report of the task, and asks; it changes only its own block of steps, what else is there is kept"
+    [[ "$state" == off ]] || info "after a pull request or a merge it shows what it would add to the Customer report of the task, and asks; it changes only its own block of steps, what else is there is kept"
 }
