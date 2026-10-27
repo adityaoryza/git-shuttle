@@ -6,7 +6,9 @@ import { addPicks, filterMerges, movePick, pendingOf, releaseAction, releaseBran
 import { refusedForChanges, startPlan, whereLine, willDo } from "../tabs.js";
 import { TaskPicker } from "./addons.js";
 import { FileRow } from "./file-row.js";
+import { stageOfCandidate } from "../release-state.js";
 import { TaskBadge } from "./graph-view.js";
+import { StateChip } from "./state-chip.js";
 import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, cn } from "./ui.js";
 
 // ---- what the repository says, in the words of the settings
@@ -320,6 +322,7 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
   const taskInfo = key => ((taskMap && taskMap.tasks) || {})[key] || {};
   const visibleCount = visible.reduce((sum, m) => sum + m.commits.length, 0);
   const total = merges.reduce((sum, m) => sum + m.commits.length, 0);
+  const openCount = pendingOf(merges).length;
   const plan = releaseAction({ picked, target, name, push, strategy });
   const branchName = target || name;
 
@@ -359,7 +362,8 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
           <option value="">${taskCounts.size ? "All tasks" : "No task linked"}</option>
           ${[...taskCounts].map(([key, count]) => html`<option value=${key}>#${key.split(":").slice(1).join(":")} ${taskInfo(key).title || ""} (${count})</option>`)}
           ${withoutTask ? html`<option value="none">No task (${withoutTask})</option>` : null}</select>` : null}
-        <label class="check" title="Commits that are in the release branch, or in a release branch that is on its way"><input type="checkbox" checked=${hideReleased} onChange=${e => setHideReleased(e.target.checked)} /> Hide released</label>
+        <${Segmented} value=${hideReleased ? "open" : "all"} onChange=${v => setHideReleased(v === "open")}
+          options=${[{ value: "open", label: "Not released · " + openCount }, { value: "all", label: "All · " + total }]} />
       </div>
       <div class="release-count">
         <span class="hint" aria-live="polite">${visibleCount === total ? total + " commit" + (total === 1 ? "" : "s") : visibleCount + " of " + total + " commits"} · <strong>${picked.length} picked</strong></span>
@@ -370,10 +374,14 @@ export function ReleaseTab({ repoId, status, branches, runner, onError, onLoaded
       <div class="release-groups">
         ${total === 0 ? html`<p class="hint">Nothing has been merged into ${c.integration || "the integration branch"} since the last release.</p>` : null}
         ${total > 0 && visible.length === 0 ? html`<p class="hint">${query ? "No commit matches “" + query + "”." : "Everything merged so far is already released."}${hideReleased ? " " : ""}${hideReleased ? html`<button type="button" class="link" onClick=${() => setHideReleased(false)}>Show the released ones</button>` : null}</p>` : null}
-        ${visible.map(m => html`<div class="group"><div class="group-head"><strong class="msg" title=${m.subject}>${m.subject}</strong><span class="grow" /><span class="hint">${(m.date || "").slice(0, 10)}</span>
+        ${visible.map(m => html`<div class="group"><div class="group-head"><strong class="msg" title=${m.subject}>${m.subject}</strong><span class="grow" /><span class="hint">${pendingOf([m]).length === m.commits.length ? m.commits.length + (m.commits.length === 1 ? " commit" : " commits") : pendingOf([m]).length + " of " + m.commits.length + " not released"} · ${(m.date || "").slice(0, 10)}</span>
             <button type="button" class="link" disabled=${m.commits.every(cm => !cm.pending)} onClick=${() => changed(addPicks(picked, m.commits))}>Select all</button></div>
-          ${m.commits.map(cm => html`<label class="check pick"><input type="checkbox" disabled=${!cm.pending} checked=${picked.some(p => p.hash === cm.hash)} onChange=${e => changed(e.target.checked ? addPicks(picked, [cm]) : removePicks(picked, [cm.hash]))} />
-            <code>${shortHash(cm.hash)}</code>${(own => own ? html`<${TaskBadge} id=${own[1]} title=${taskInfo(own.join(":")).title} link=${taskInfo(own.join(":")).link} />` : null)(taskOf(taskMap, m, cm))}<span class="msg" title=${cm.subject}>${cm.subject}</span>${!cm.pending ? html`<${Badge} tone=${cm.in_release ? "info" : "neutral"}>${cm.in_release ? "in " + cm.in_release : "released"}<//>` : null}</label>`)}</div>`)}
+          ${m.commits.map(cm => html`<label class=${"check pick" + (cm.pending ? "" : " pick-done")}><input type="checkbox" disabled=${!cm.pending} checked=${picked.some(p => p.hash === cm.hash)} onChange=${e => changed(e.target.checked ? addPicks(picked, [cm]) : removePicks(picked, [cm.hash]))} />
+            <code>${shortHash(cm.hash)}</code>
+            <span class="pick-task">${(own => own ? html`<${TaskBadge} id=${own[1]} title=${taskInfo(own.join(":")).title} link=${taskInfo(own.join(":")).link} />` : null)(taskOf(taskMap, m, cm))}</span>
+            <span class="msg" title=${cm.subject}>${cm.subject}</span>
+            <span class="pick-author" title=${cm.author || ""}>${cm.author || ""}</span>
+            ${hideReleased ? null : html`<${StateChip} stage=${stageOfCandidate(cm)} release=${c.release} integration=${c.integration} />`}</label>`)}</div>`)}
       </div>
     </section>
 

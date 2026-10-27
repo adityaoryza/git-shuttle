@@ -701,3 +701,18 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 :root, :root[data-theme="dark"] { --syn-kw: #c586c0; --syn-str: #ce9178; --syn-com: #7ca668; --syn-num: #b5cea8; --syn-tag: #569cd6; --syn-fn: #dcdcaa; --syn-cls: #4ec9b0; --syn-self: #9cdcfe; --syn-dec: #dcdcaa; --syn-const: #569cd6; --syn-attr: #9cdcfe; }
 :root[data-theme="light"] { --syn-kw: #a100c4; --syn-str: #a31515; --syn-com: #2e6b1f; --syn-num: #0b6b4a; --syn-tag: #0b4fc7; --syn-fn: #795e26; --syn-cls: #0f6a82; --syn-self: #0b5394; --syn-dec: #795e26; --syn-const: #0b4fc7; --syn-attr: #0451a5; }
 @media (prefers-color-scheme: light) { :root:not([data-theme]) { --syn-kw: #a100c4; --syn-str: #a31515; --syn-com: #2e6b1f; --syn-num: #0b6b4a; --syn-tag: #0b4fc7; --syn-fn: #795e26; --syn-cls: #0f6a82; --syn-self: #0b5394; --syn-dec: #795e26; --syn-const: #0b4fc7; --syn-attr: #0451a5; } }
+
+/* where a commit is on its way to production: prod is quiet and green, a release on its way is blue, and not in prod has only an outline */
+.stage { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border); font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; color: var(--muted-foreground); }
+.stage-prod { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 35%, transparent); }
+.stage-queued { color: var(--info); border-color: color-mix(in srgb, var(--info) 40%, transparent); background: color-mix(in srgb, var(--info) 8%, transparent); }
+.stage-staging { border-style: dashed; }
+.stage-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--mono); font-size: 11.5px; }
+.stage-compact { padding: 0 6px; }
+
+/* the Release tab: every commit in the same columns (box, id, task, message, where it is), whatever the group */
+.release-groups .pick { display: grid; grid-template-columns: auto 7.5ch minmax(3.5em, auto) minmax(0, 1fr) 10ch auto; align-items: center; gap: 8px; }
+.release-groups .pick .msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick-task { display: inline-flex; min-width: 0; }
+.pick-author { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted-foreground); }
+.pick-done { color: var(--muted-foreground); }

@@ -675,6 +675,8 @@ class TestActions(Base):
         mine = [c for c in data["candidates"] if "feat/rel1" in c["subject"]][0]
         self.assertEqual([c["subject"] for c in mine["commits"]], ["[FEAT] r: one"])
         self.assertTrue(mine["commits"][0]["pending"])
+        self.assertEqual(mine["commits"][0]["author"], git(self.world.work, "log", "-1", "--format=%aN", mine["commits"][0]["hash"]), "who made the commit")
+        self.assertTrue(mine["commits"][0]["author"])
         git(self.world.work, "config", "shuttle.releasePattern", "rel-{date}-v1.{n}")
         job = self.run_job("release", {"onto": "auto", "commits": [mine["commits"][0]["hash"]], "push": True})
         # the release branch is on its way: its commit says where it is, and can no longer be picked
@@ -689,6 +691,48 @@ class TestActions(Base):
         self.assertTrue(any(n.endswith("-v1.0") for n in names), names)
         self.assertTrue(any("rel-" in b for b in git(self.world.remote, "branch").split()))
         git(self.world.work, "checkout", "-q", "main")
+
+    def test_release_state_tells_where_a_commit_is_on_its_way_to_production(self):
+        work, rid = self.world.work, self.rid()
+        self.world.feature("feat/state1", {"s1.txt": "1\n"})
+        git(work, "add", "-A"); git(work, "commit", "-q", "-m", "[FEAT] s: one")
+        first = git(work, "rev-parse", "HEAD")
+        self.assertEqual(self.run_job("ship", {})["state"], "done")
+        git(work, "checkout", "-q", "main")
+        self.api("POST", "repos/%s/fetch" % rid, {})
+        state = self.api("GET", "repos/%s/release-state" % rid)[1]["state"]
+        self.assertTrue(state["set"])
+        self.assertIn(state["release"], state["prod"], "the newest commits of the release branch, from its tip")
+        self.assertNotIn(first, state["prod"])
+        self.assertIn(first, state["staging"], "merged into the integration branch, not in the release branch")
+        self.assertIn(git(work, "rev-parse", "origin/develop"), state["staging"], "the merge commit has no patch: it is there too")
+        self.assertNotIn(first, state["equivalent"])
+        self.assertEqual(state["queued"], {})
+        # in a release branch that is on its way
+        git(work, "config", "shuttle.releasePattern", "rel-{date}-v1.{n}")
+        self.assertEqual(self.run_job("release", {"onto": "auto", "commits": [first], "push": True})["state"], "done")
+        git(work, "config", "--unset", "shuttle.releasePattern")
+        git(work, "checkout", "-q", "main")
+        self.api("POST", "repos/%s/fetch" % rid, {})
+        git(work, "config", "shuttle.releasePattern", "rel-{date}-v1.{n}")
+        state = self.api("GET", "repos/%s/release-state" % rid)[1]["state"]
+        git(work, "config", "--unset", "shuttle.releasePattern")
+        self.assertNotIn(first, state["staging"])
+        self.assertTrue(state["queued"][first].startswith("rel-"), state)
+        # a cherry-pick straight into the release branch: another hash, the same patch
+        git(work, "checkout", "-q", "-b", "tmp-prod", "origin/release")
+        git(work, "cherry-pick", first)
+        git(work, "push", "-q", "origin", "tmp-prod:release")
+        git(work, "checkout", "-q", "main")
+        self.api("POST", "repos/%s/fetch" % rid, {})
+        state = self.api("GET", "repos/%s/release-state" % rid)[1]["state"]
+        self.assertIn(first, state["equivalent"], "released under another hash")
+        self.assertNotIn(first, state["staging"])
+        self.assertEqual(state["release"], git(work, "rev-parse", "origin/release"))
+        # nothing is said until the repository has its two branches
+        git(work, "config", "--unset", "shuttle.release")
+        self.assertEqual(self.api("GET", "repos/%s/release-state" % rid)[1]["state"], {"set": False})
+        git(work, "config", "shuttle.release", "release")
 
     def test_an_empty_release_branch_and_commits_added_to_it_later(self):
         work = self.world.work

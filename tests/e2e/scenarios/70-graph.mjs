@@ -9,9 +9,9 @@ const dragBy = async (page, loc, dx) => { const b = await loc.boundingBox(); con
 export const scenarios = {
   async "graph table: separate columns with names, dates and ids"(t) {
     const page = await t.page();
-    t.ok("the columns are Branch/Tag, Graph, Message, Author, Date and SHA", (await heads(page)).join(",") === "branch/tag,graph,message,author,date,sha", (await heads(page)).join("|"));
+    t.ok("the columns are Branch/Tag, Graph, Message, Prod, Author, Date and SHA", (await heads(page)).join(",") === "branch/tag,graph,message,prod,author,date,sha", (await heads(page)).join("|"));
     const row = page.locator(".graph .row", { hasText: "round the invoice total" }).first();
-    t.ok("the author is its own cell", (await row.locator("[role=gridcell]").nth(3).innerText()).includes("Sam Lee"));
+    t.ok("the author is its own cell", (await row.locator("[role=gridcell]").nth(4).innerText()).includes("Sam Lee"));
     t.ok("the message cell has only the message", (await row.locator("[role=gridcell]").nth(2).innerText()).trim() === "[FIX] billing: round the invoice total to cents");
     t.ok("the date is relative by default", /ago|just now/.test(await row.locator(".when").innerText()));
     t.ok("the sha is a short id in its own cell", /^[0-9a-f]{7}$/.test((await row.locator(".sha-cell").innerText()).trim()));
@@ -41,15 +41,15 @@ export const scenarios = {
     const d = await date.boundingBox(), a = await authorHead.boundingBox();
     await page.mouse.move(d.x + 20, d.y + d.height / 2); await page.mouse.down();
     await page.mouse.move(a.x + 10, a.y + a.height / 2, { steps: 8 }); await page.mouse.up();
-    t.ok("dragging a header moves the column", (await heads(page)).join(",") === "branch/tag,graph,message,date,author,sha", (await heads(page)).join("|"));
+    t.ok("dragging a header moves the column", (await heads(page)).join(",") === "branch/tag,graph,message,prod,date,author,sha", (await heads(page)).join("|"));
     t.ok("...without sorting by it", (await page.locator(".graph .table-note").count()) === 0);
     await page.locator(".graph .thead [data-col=date] .thsort").focus();
     await page.keyboard.press("Alt+ArrowRight");
-    t.ok("Alt+Right moves a focused header one step", (await heads(page)).join(",") === "branch/tag,graph,message,author,date,sha");
+    t.ok("Alt+Right moves a focused header one step", (await heads(page)).join(",") === "branch/tag,graph,message,prod,author,date,sha");
     await page.waitForFunction(() => document.activeElement && document.activeElement.closest("[data-col]"));
     t.ok("...and keeps the focus on it", await page.evaluate(() => document.activeElement.closest("[data-col]").dataset.col === "date"));
     await page.keyboard.press("Alt+ArrowLeft");
-    t.ok("Alt+Left moves it back", (await heads(page)).join(",") === "branch/tag,graph,message,date,author,sha");
+    t.ok("Alt+Left moves it back", (await heads(page)).join(",") === "branch/tag,graph,message,prod,date,author,sha");
     await page.keyboard.press("Alt+ArrowRight");
     await gear(page).click();
     t.ok("Message and Graph cannot be hidden", await page.locator(".graph .table-menu label", { hasText: "Message" }).locator("input").isDisabled() && await page.locator(".graph .table-menu label", { hasText: "Graph" }).locator("input").isDisabled());
@@ -66,11 +66,30 @@ export const scenarios = {
     await page.keyboard.press("Escape");
     await page.locator(".graph .thead [data-col=date]").boundingBox();
     await page.reload(); await page.waitForSelector(".graph .row");
-    t.ok("the columns are remembered after a reload", (await heads(page)).join(",") === "branch/tag,graph,message,author,date,committer");
+    t.ok("the columns are remembered after a reload", (await heads(page)).join(",") === "branch/tag,graph,message,prod,author,date,committer");
     t.ok("...and so are the date format and the e-mail", /^\d{4}-\d\d-\d\d /.test((await page.locator(".graph .when").first().innerText()).trim()) && (await page.locator(".graph .person-email").count()) > 0);
     await gear(page).click();
     await page.getByRole("button", { name: "Reset columns" }).click();
-    t.ok("Reset columns goes back to the default", (await heads(page)).join(",") === "branch/tag,graph,message,author,date,sha");
+    t.ok("Reset columns goes back to the default", (await heads(page)).join(",") === "branch/tag,graph,message,prod,author,date,sha");
+  },
+
+  async "graph table: where each commit is on its way to production"(t) {
+    const page = await t.page();
+    const chips = page.locator(".graph .row .stage");
+    await chips.first().waitFor();
+    t.ok("a commit that the release branch has says so", (await page.locator(".graph .row .stage-prod").count()) > 0);
+    t.ok("...and one that is merged but not released says it is not in prod", (await page.locator(".graph .row .stage-staging").count()) > 0);
+    t.ok("...a commit that is on no integration branch says nothing", (await page.locator(".graph .row").evaluateAll(rows => rows.some(r => !r.querySelector(".stage") && !r.classList.contains("row-wip")))));
+    t.ok("the pointer says where it is, with the branch names", /not in .+ yet/.test(await page.locator(".graph .row .stage-staging").first().getAttribute("title")) && /In /.test(await page.locator(".graph .row .stage-prod").first().getAttribute("title")));
+    t.ok("the chip is in its own column, between the message and the author", (await heads(page)).join(",").includes("message,prod,author"));
+    await page.getByRole("searchbox", { name: "Search commits" }).fill("not in prod");
+    const rows = await page.locator(".graph .row:not(.row-wip)").count();
+    t.ok("the search finds the commits by it", rows > 0 && (await page.locator(".graph .row:not(.row-wip) .stage-staging").count()) === rows, rows);
+    await page.getByRole("searchbox", { name: "Search commits" }).fill("");
+    await page.locator(".graph .row", { has: page.locator(".stage-staging") }).first().click();
+    await page.locator(".detail .stage").waitFor();
+    t.ok("the details of a commit have the same chip", (await page.locator(".detail .stage-staging").count()) === 1);
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
 
   async "graph table: sorting, double click and the keyboard"(t) {
