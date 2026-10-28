@@ -237,11 +237,15 @@ export function TasksDialog({ repoId, branches, current, onRun, onClose, notify 
       <p class="hint">What happened to each task you started from an add-on, from the first commit to the deploy. Click a task to see it. Times are in your time zone; nothing leaves this repository.</p>
       ${tasks === null ? html`<${Skeleton} rows=${3} />` : tasks.length === 0 ? html`<div class="empty-note"><strong>No task yet</strong><span class="hint">Start one from the Start tab, or link a branch that already has work.</span></div>` : html`<ul class="task-accordion">${tasks.map(t => {
         const key = t.addon + ":" + t.id, isOpen = open === key;
+        const reportFrom = ((linked || []).find(b => b.addon === t.addon && b.id === t.id) || {}).name || (t.branches || [])[0] || "";
         return html`<li class=${isOpen ? "open" : ""}>
+          <div class="task-line">
           <button type="button" class="task-head" aria-expanded=${isOpen} onClick=${() => toggle(t)}>
             <span class="chev" aria-hidden="true">${isOpen ? "▾" : "▸"}</span><span class="mono">${t.id}</span><strong class="msg">${t.title || "(no title)"}</strong>
             <span class="hint">${LAST_SAY[t.last_type] || t.last_type} · ${localTime(t.last)}</span><span class="row-actions">Timeline</span>
           </button>
+          <${Button} size="sm" variant="outline" disabled=${!reportFrom} title=${reportFrom ? "Adds this task's steps to its Customer report. The release branch does not have to be linked. It must be turned on in Add-ons first." : "This task has no branch to report from"} onClick=${() => onRun("task-report", { branch: reportFrom }, "Customer report of task " + t.id)}>Report<//>
+          </div>
           ${t.branches.length ? html`<div class="task-branches">${t.branches.map(b => html`<span class="ref" title=${b}>${b}</span>`)}</div>` : null}
           ${isOpen ? html`<div class="task-body">
             ${webAddress(t.link) ? html`<${ExternalLink} href=${t.link} class="addon-link">${t.link.replace(/^https?:\/\//, "")}<//>` : null}

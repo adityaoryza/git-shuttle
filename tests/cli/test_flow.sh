@@ -145,6 +145,24 @@ assert_contains "$OUT" "no branch was merged" "nothing to release: says so"
 PJ=$(porcelain_json candidates --porcelain)
 assert_eq "" "$(pj candidate)" "...and an empty list in porcelain"
 
+# a release named by the commits (what the Release tab sends) is recorded on the task those commits belong to
+git checkout -q -b feat/picked develop
+echo picked > picked.txt; git add picked.txt; git commit -q -m "[FEAT] shop: the picked one"
+sha=$(git rev-parse HEAD)
+git checkout -q main
+git config branch.feat/picked.shuttle-ref-addon task
+git config branch.feat/picked.shuttle-ref-id 42
+git config branch.feat/picked.shuttle-ref-title "Picked"
+trace=$(git rev-parse --path-format=absolute --git-common-dir)/shuttle-trace/events.jsonl
+mkdir -p "$(dirname "$trace")"
+printf '%s\n' '{"time":"2026-10-26T04:37:44Z","type":"commit","branch":"feat/picked","addon":"task","task":"42","title":"Picked","sha":"'"$sha"'","subject":"[FEAT] shop: the picked one"}' >"$trace"
+shuttle -y release --onto rel-picked/1 --push "$sha"
+assert_status 0 "$RC" "release by the commit the Release tab would send"
+assert_contains "$(cat "$trace")" '"type": "release"' "the task is told it was released"
+assert_contains "$(cat "$trace")" '"release_branch": "rel-picked/1"' "...onto the release branch"
+assert_contains "$(cat "$trace")" '"branch": "feat/picked"' "...on the branch the commit belongs to"
+git checkout -q main
+
 # --- the default name needs a repository without a branch called "release" ----------------------------------------------------
 git checkout -q main
 shuttle -n release --onto auto HEAD

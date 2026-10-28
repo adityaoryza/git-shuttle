@@ -4,6 +4,10 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+### Fixed
+
+- A release made by naming commits (the Release tab) is recorded on the task those commits belong to. The customer report then shows that release, and a later deploy of the release line that contains the release branch, including a cherry-pick that was already made.
+
 ## [0.14.0] - 2026-10-27
 
 ### Changed

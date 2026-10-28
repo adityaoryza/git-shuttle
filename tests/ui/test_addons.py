@@ -357,6 +357,53 @@ class TestReportSteps(unittest.TestCase):
             doc2 = rp.build("preview", tmp, "feat/x", "staging", "x", "15842", "")
             self.assertNotIn("phases", doc2)
 
+    def test_a_cherry_pick_already_released_shows_on_the_task(self):
+        import importlib.util
+        import subprocess
+        import tempfile
+        here = os.path.dirname(os.path.abspath(__file__))
+        load = lambda name, file: (lambda m: (m.__spec__.loader.exec_module(m), m)[1])(importlib.util.module_from_spec(importlib.util.spec_from_file_location(name, os.path.join(here, "..", "..", "lib", "addons", file))))
+        rp, tr = load("shuttle_report5", "report.py"), load("shuttle_trace5", "trace.py")
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL="a@a",
+                       GIT_AUTHOR_DATE="2026-10-28T08:00:00Z", GIT_COMMITTER_DATE="2026-10-28T08:00:00Z")
+            run = lambda *args: subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True, text=True).stdout.strip()
+            run("init", "-q", "-b", "line")
+            run("commit", "-q", "--allow-empty", "-m", "base")
+            run("checkout", "-q", "-b", "feat/picked")
+            with open(os.path.join(tmp, "work.txt"), "w") as handle:
+                handle.write("the task\n")
+            run("add", "work.txt")
+            run("commit", "-q", "-m", "[FEAT] shop: the picked one")
+            original = run("rev-parse", "HEAD")
+            run("checkout", "-q", "-b", "19.0-release/1", "line")
+            env["GIT_COMMITTER_DATE"] = "2026-10-28T08:10:00Z"
+            run("cherry-pick", original)
+            self.assertNotEqual(run("rev-parse", "HEAD"), original, "a cherry-pick is another hash")
+            run("checkout", "-q", "line")
+            env["GIT_COMMITTER_DATE"] = "2026-10-28T08:30:00Z"
+            run("merge", "-q", "--no-ff", "-m", "Merge pull request #9 from o/19.0-release/1", "19.0-release/1")
+            tip = run("rev-parse", "HEAD")
+            self.assertIn(run("rev-parse", "19.0-release/1"), run("rev-parse", "HEAD^2"))
+            trace = os.path.join(tmp, "events.jsonl")
+            base = ["addon=odoo-task", "task=42", "title=Picked", "branch=feat/picked"]
+            tr.append(trace, ["type=commit", "at=2026-10-26T04:37:44Z", "sha=" + original, "subject=[FEAT] shop: the picked one"] + base)
+            tr.append(trace, ["type=merge", "at=2026-10-26T04:38:00Z", "sha=" + "c" * 40, "into=staging"] + base)
+            tr.append(trace, ["type=deploy", "at=2026-10-28T09:00:00Z", "target=preaucess_prod", "tip=" + tip, "branch=line"])
+            os.environ["REPORT_TRACE_FILE"], os.environ["REPORT_ADDON"] = trace, "odoo-task"
+            try:
+                doc = rp.build("preview", tmp, "feat/picked", "staging", "x", "42", "")
+            finally:
+                os.environ.pop("REPORT_TRACE_FILE", None)
+                os.environ.pop("REPORT_ADDON", None)
+            titles = [p["title"] for p in doc["phases"]]
+            self.assertIn("Released", titles)
+            released = [p for p in doc["phases"] if p["title"] == "Released"][0]["items"][0]["text"]
+            self.assertIn("19.0-release/1", released)
+            deploys = [(p["title"], p["items"][0]["text"]) for p in doc["phases"] if p["title"].startswith("Deployed")]
+            self.assertEqual(deploys, [("Deployed to prod", "to preaucess_prod (branch line)")])
+            self.assertLess(titles.index("Released"), titles.index("Deployed to prod"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -92,8 +92,9 @@ def phases_of(trace_file, addon, task, repo, web, pr_commits, branch):
         out.append({"title": "Released", "when": when(event), "items": [{"text": "in %s" % event["release_branch"], "url": link("tree/" + event["release_branch"]), "ref": event["release_branch"]}]})
     for event in [e for e in events if e["type"] == "deploy"][-5:]:
         text = "to %s (branch %s)" % (event.get("target", ""), event.get("branch", ""))
-        # shortcut: a deploy of a branch with "release" in its name is the production one, when a naming other than that is used, make it a setting
-        title = "Deployed to prod" if "release" in event.get("branch", "") else "Deployed"
+        # a deploy of a branch with "release" in its name is the production one; so is a deploy that carried the task's release
+        # (the release line is often named without that word, and the release branch was merged into it)
+        title = "Deployed to prod" if "release" in event.get("branch", "") or event.get("derived") == "the release of this task was deployed" else "Deployed"
         out.append({"title": title, "when": when(event), "items": [{"text": text, "at": when(event)}]})
     return out
 

@@ -572,6 +572,7 @@ kbd { font: 600 11px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .task-badge:first-child { margin-left: 0; margin-right: 6px; }
 .empty-note { display: grid; gap: 4px; padding: 14px; border: 1px dashed var(--border); border-radius: var(--radius); text-align: center; }
 .task-accordion { list-style: none; margin: 8px 0; padding: 0; display: grid; gap: 6px; }
+.task-line { display: flex; align-items: center; gap: 8px; padding-right: 8px; } .task-line .task-head { flex: 1; width: auto; } .task-line > .btn { flex: none; }
 .task-accordion > li { border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; } .task-accordion > li.open { border-color: color-mix(in srgb, var(--brand) 45%, var(--border)); }
 .task-head { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; padding: 9px 10px; cursor: pointer; min-width: 0; border-radius: var(--radius); }
 .task-head:hover { background: var(--accent); } .task-head:focus-visible { outline: 2px solid var(--ring); }

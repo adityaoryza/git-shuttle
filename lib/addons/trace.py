@@ -130,20 +130,198 @@ def is_ancestor(repo, older, newer):
     return done.returncode == 0
 
 
+def resolve_ref(repo, name):
+    """The commit a branch, a remote branch, or a hash points at, or nothing."""
+    if not name or any(c in name for c in " \t\n"):
+        return ""
+    lines = git_lines(repo, "rev-parse", "--verify", "-q", "%s^{commit}" % name)
+    return lines[0] if lines and SHA_RE.match(lines[0]) else ""
+
+
+def git_config(repo, key):
+    lines = git_lines(repo, "config", "--get", key)
+    return lines[0] if lines else ""
+
+
+def pattern_regex(pattern):
+    """shuttle.releasePattern ('19.0-release/{yymmdd}-v1.{n}') as a regular expression."""
+    parts = re.split(r"(\{date\}|\{yymmdd\}|\{n\})", pattern or "")
+    source = "".join(r"\d{8}" if part == "{date}" else r"\d{6}" if part == "{yymmdd}" else r"\d+" if part == "{n}" else re.escape(part) for part in parts)
+    return re.compile("^" + source + "$")
+
+
+def is_release_name(name, pattern):
+    """A branch made for a release: it matches the pattern, or its name says release."""
+    if not name or any(c in name for c in " \t\n~^:?*[\\"):
+        return False
+    if pattern:
+        try:
+            if pattern_regex(pattern).match(name):
+                return True
+        except re.error:
+            pass
+    return "release" in name
+
+
+PR_MERGE = re.compile(r"^Merge pull request #\d+ from [^/\s]+/(\S+)$")
+BRANCH_MERGE = re.compile(r"^Merge branch '([^']+)'")
+
+
+def release_name_of(subject):
+    """The branch a merge commit brought in, from its subject, or nothing."""
+    found = PR_MERGE.match(subject or "") or BRANCH_MERGE.match(subject or "")
+    return found.group(1) if found else ""
+
+
+def patch_ids(repo, shas):
+    """{sha: patch-id} for the commits that exist and have a change. A cherry-pick keeps the patch-id and changes the hash."""
+    existing = [sha for sha in shas if SHA_RE.match(sha or "") and _exists(repo, sha)]
+    if not existing:
+        return {}
+    try:
+        show = subprocess.run(["git", "show", "--no-ext-diff"] + existing[:300], cwd=repo,
+                              capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+        if show.returncode != 0 or not show.stdout.strip():
+            return {}
+        done = subprocess.run(["git", "patch-id", "--stable"], cwd=repo, input=show.stdout, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    out = {}
+    for line in done.stdout.decode("utf-8", "replace").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and SHA_RE.match(parts[1]):
+            out[parts[1]] = parts[0]
+    return out
+
+
+def _exists(repo, sha):
+    try:
+        return subprocess.run(["git", "cat-file", "-e", sha], cwd=repo, capture_output=True, timeout=10, stdin=subprocess.DEVNULL).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def committer_utc(repo, sha):
+    lines = git_lines(repo, "log", "-1", "--format=%cI", sha)
+    if not lines:
+        return ""
+    try:
+        return utc(lines[0])
+    except ValueError:
+        return ""
+
+
+def commits_brought(repo, branch_sha, tip, line_sha):
+    """The commits a release branch contributed that `tip` contains, oldest first. After it is merged, the range from the
+    release line is empty: the merge that brought the branch holds them between its parents."""
+    if not is_ancestor(repo, branch_sha, tip):
+        return []
+    if branch_sha != tip:
+        merges = git_lines(repo, "rev-list", "--merges", "--ancestry-path", "--reverse", "--max-count=20", "%s..%s" % (branch_sha, tip))
+        for merge in merges:
+            parents = (git_lines(repo, "rev-list", "--parents", "-n", "1", merge) or [""])[0].split()
+            if len(parents) == 3 and is_ancestor(repo, branch_sha, parents[2]):
+                return git_lines(repo, "rev-list", "--reverse", "--no-merges", "--max-count=300", "%s..%s" % (parents[1], parents[2]))
+    if line_sha and line_sha != branch_sha:
+        return git_lines(repo, "rev-list", "--reverse", "--no-merges", "--max-count=300", "%s..%s" % (line_sha, branch_sha))
+    return []
+
+
+def release_candidates(repo, pattern, tips):
+    """Release branches to compare with a task: the ones that match the pattern (newest first), and a branch a deploy
+    merged even when that branch is gone. [(name, sha)], at most 30."""
+    remote = (git_lines(repo, "remote") or ["origin"])[0]
+    found, seen = [], set()
+
+    def add(name, sha):
+        if name in seen or not sha or not is_release_name(name, pattern) or len(found) >= 30:
+            return
+        seen.add(name)
+        found.append((name, sha))
+
+    for ref in git_lines(repo, "for-each-ref", "--sort=-committerdate", "--format=%(refname:short)", "refs/heads", "refs/remotes"):
+        name = ref[len(remote) + 1:] if ref.startswith(remote + "/") else ref
+        add(name, resolve_ref(repo, ref))
+        if len(found) >= 30:
+            break
+    for tip in tips:
+        for merge in git_lines(repo, "rev-list", "--merges", "--max-count=40", tip):
+            name = release_name_of((git_lines(repo, "log", "-1", "--format=%s", merge) or [""])[0])
+            parents = (git_lines(repo, "rev-list", "--parents", "-n", "1", merge) or [""])[0].split()
+            add(name, parents[2] if len(parents) == 3 else resolve_ref(repo, name))
+    return found
+
+
+def release_carried(repo, deploy, released):
+    """A deploy carries a release of the task when it is of that release branch, or of the line the release was merged
+    into (the hashes differ: they were cherry-picked), and it happened afterwards."""
+    branch, tip, when = deploy.get("branch") or "", deploy.get("tip") or "", deploy.get("time") or ""
+    for name, at in released.items():
+        if when < at:
+            continue
+        if branch == name:
+            return True
+        sha = resolve_ref(repo, name) if repo else ""
+        if sha and SHA_RE.match(tip) and is_ancestor(repo, sha, tip):
+            return True
+    return False
+
+
+def inferred_releases(repo, mine, deploys, already):
+    """A release that was cherry-picked before it was recorded: the same patch is on a release branch that a deploy
+    contains. Nothing is written; the task's trace shows it when it is read."""
+    shas, sample = [], None
+    for event in mine:
+        if event.get("type") == "commit" and SHA_RE.match(event.get("sha") or ""):
+            sample = sample or event
+            if event["sha"] not in shas:
+                shas.append(event["sha"])
+    if not sample or not shas:
+        return []
+    line = git_config(repo, "shuttle.release")
+    interesting = [d for d in deploys if SHA_RE.match(d.get("tip") or "") and _exists(repo, d["tip"])
+                   and ((line and d.get("branch") == line) or "release" in (d.get("branch") or "") or "prod" in (d.get("target") or ""))]
+    if not interesting:
+        return []
+    own = set(patch_ids(repo, shas).values())
+    if not own:
+        return []
+    pattern = git_config(repo, "shuttle.releasePattern")
+    line_sha = resolve_ref(repo, line) if line else ""
+    found, seen = [], set(already)
+    for name, sha in release_candidates(repo, pattern, [d["tip"] for d in interesting]):
+        if name in seen or not any(is_ancestor(repo, sha, d["tip"]) for d in interesting):
+            continue
+        tip = next(d["tip"] for d in interesting if is_ancestor(repo, sha, d["tip"]))
+        brought = commits_brought(repo, sha, tip, line_sha)
+        if not own & set(patch_ids(repo, brought).values()):
+            continue
+        when = committer_utc(repo, brought[-1] if brought else sha)
+        if not when:
+            continue
+        seen.add(name)
+        found.append({"type": "release", "time": when, "release_branch": name, "sha": brought[-1] if brought else sha,
+                      "branch": sample.get("branch", ""), "addon": sample.get("addon", ""), "task": sample.get("task", ""),
+                      "title": sample.get("title", ""), "link": sample.get("link", ""), "derived": "cherry-picked onto this release"})
+    return found
+
+
 def show(path, addon, task_id, repo=None):
     mine = [e for e in events(path) if e.get("task") == task_id and e.get("addon", "") == addon]
     merges = [e["sha"] for e in mine if e["type"] == "merge" and e.get("sha")]
     released = {e["release_branch"]: e["time"] for e in mine if e["type"] == "release" and e.get("release_branch")}
+    deploys = [e for e in events(path) if e["type"] == "deploy" and not e.get("task")]
+    extra = inferred_releases(repo, mine, deploys, released) if repo else []
+    for event in extra:
+        released[event["release_branch"]] = event["time"]
     derived = []
-    for event in events(path):
-        if event["type"] != "deploy" or event.get("task"):
-            continue
+    for event in deploys:
         if repo and any(is_ancestor(repo, m, event.get("tip", "")) for m in merges):
             derived.append(dict(event, derived="the merge of this task is in what was deployed"))
-        # a release branch holds cherry-picks (other hashes): the deploy of that branch, after the release, carries the task
-        elif event.get("branch") in released and event["time"] >= released[event["branch"]]:
+        # a release branch holds cherry-picks (other hashes): the deploy of that branch, or of the line it was merged into, carries the task
+        elif release_carried(repo, event, released):
             derived.append(dict(event, derived="the release of this task was deployed"))
-    rows = sorted(mine + derived, key=lambda e: e["time"])
+    rows = sorted(mine + extra + derived, key=lambda e: e["time"])
     head = {"addon": addon, "id": task_id, "title": "", "link": "", "branches": []}
     for event in mine:
         head["title"] = event.get("title") or head["title"]
@@ -151,6 +329,17 @@ def show(path, addon, task_id, repo=None):
         if event.get("branch") and event["branch"] not in head["branches"]:
             head["branches"].append(event["branch"])
     return {"task": head, "events": rows}
+
+
+def branches_of(path, shas):
+    """The branches whose traced commits are among shas, in the order the trace recorded them."""
+    want, found, seen = set(shas), [], set()
+    for event in events(path):
+        branch = event.get("branch") or ""
+        if event.get("type") == "commit" and event.get("sha") in want and branch and branch not in seen:
+            seen.add(branch)
+            found.append(branch)
+    return found
 
 
 def commits_of(repo, base, branch):
@@ -317,6 +506,9 @@ def main(argv):
         elif len(argv) == 5 and argv[1] == "backfill":
             # backfill FILE JSON(who) REPO BASE [PRFILE]: who is read from the JSON in argv[3]; the pull request, from a file of gh
             print(json.dumps(backfill(argv[2], json.loads(argv[3]), argv[4], os.environ.get("TRACE_BASE", "HEAD"), os.environ.get("TRACE_PR") or None)))
+        elif len(argv) >= 4 and argv[1] == "branches-of":
+            for branch in branches_of(argv[2], argv[3:]):
+                print(branch)
         elif len(argv) == 4 and argv[1] == "forget":
             print(forget(argv[2], argv[3]))
         elif len(argv) == 4 and argv[1] == "map":
@@ -327,7 +519,7 @@ def main(argv):
             repo = argv[argv.index("--repo") + 1] if "--repo" in argv else None
             print(json.dumps(show(argv[2], argv[3], argv[4], repo), ensure_ascii=False))
         else:
-            sys.stderr.write("usage: trace.py append FILE key=value... | tasks FILE | show FILE ADDON ID [--repo DIR]\n")
+            sys.stderr.write("usage: trace.py append FILE key=value... | tasks FILE | show FILE ADDON ID [--repo DIR] | branches-of FILE SHA...\n")
             return 2
     except (ValueError, IndexError) as error:
         sys.stderr.write("%s\n" % error)

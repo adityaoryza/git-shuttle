@@ -153,6 +153,7 @@ cmd_release() {
                 ;;
         esac
     done
+    release_note_picked
     (( ! empty || ! append )) || die "release: --empty and --append do not go together"
     if (( empty )); then
         [[ -n "$onto" ]] || die "release --empty needs the new branch:  git shuttle release --onto auto --empty"
@@ -169,6 +170,24 @@ cmd_release() {
     fi
     cmd_pick "${args[@]}" || return $?
     release_trace "$onto" "${traced[@]}"
+}
+
+# release_note_picked — commits named by hash (the Release tab sends hashes, not the branch) belong to a task when the
+# trace recorded them. Those branches are told about this release, the same way as when the branch itself is named.
+# `commits` and `traced` belong to cmd_release, which calls this.
+release_note_picked() {
+    local file b noted="" x found
+    (( ${#commits[@]} )) || return 0
+    trace_python || return 0
+    file=$(trace_file 2>/dev/null) || return 0
+    [[ -f "$file" ]] || return 0
+    noted=$("$TRACE_PY" -I "$ROOT/lib/addons/trace.py" branches-of "$file" "${commits[@]}" 2>/dev/null) || return 0
+    while IFS= read -r b; do
+        [[ -n "$b" ]] || continue
+        found=0
+        for x in "${traced[@]}"; do [[ "$x" == "$b" ]] && found=1; done
+        (( found )) || traced+=("$b")
+    done <<<"$noted"
 }
 
 # release_trace RELEASE_BRANCH BRANCH... — each branch that is for a task puts "released" in the trace of its task.

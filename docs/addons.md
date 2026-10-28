@@ -68,8 +68,10 @@ offers them to pick from (45 s allowed, `GIT_SHUTTLE_ADDON_TASKS_TIMEOUT`). `ref
 kept with the start of the task.
 
 Every step on a branch that is for a task is written to `<git dir>/shuttle-trace/events.jsonl` (private, never pushed): start, commit, push, pr, merge,
-release, and the deploys that carried the merge. `git shuttle trace list` and `trace show ID --addon NAME` read it (in your time zone); the web UI
-shows it in **Tasks**.
+release, and the deploys that carried the merge. A release made by naming commits (the Release tab sends hashes) is recorded on the task those
+commits belong to. A deploy of the release line shows on that task when the release branch is part of what was deployed; a cherry-pick that was
+made before this was recorded is recognized by its patch when the trace is read. `git shuttle trace list` and `trace show ID --addon NAME` read it
+(in your time zone); the web UI shows it in **Tasks**.
 
 A branch that already had work is linked afterwards: `git shuttle trace bind 15530 [--addon NAME] [--branch NAME] [--force]`, or **Tasks**, then **Link a
 branch** in the web UI (after a preview). The add-on is asked for the task (its `start` hook), the branch remembers it, and what the branch already
