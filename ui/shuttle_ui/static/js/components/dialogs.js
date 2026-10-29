@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { DEFAULT_RELEASE_PATTERN, branchOptions, inferReleasePattern, normalizePrefix, prefixOptions, releasePreview } from "../logic.js";
 import { resetSkippedPreviews, skippedPreviews } from "../skip-preview.js";
 import { Combobox } from "./combobox.js";
-import { Button, Field, Input, Modal, cn } from "./ui.js";
+import { Button, Field, Input, Modal, Status, cn } from "./ui.js";
 
 /* Pick a repository by walking through your home folder (the server lists folder names only, nothing outside your home). */
 export function AddRepoDialog({ onAdd, onClose }) {
@@ -42,7 +42,7 @@ export function AddRepoDialog({ onAdd, onClose }) {
     ${error ? html`<span class="field-hint warn" role="alert">${error}${typed ? " The path can still be added if it is a git repository." : ""}</span>` : null}
     ${listing ? html`<div class="folders" role="listbox" aria-label="Folders">
       ${listing.parent ? html`<button type="button" role="option" class="folder" onClick=${() => go(listing.parent)}><span aria-hidden="true">↰</span> <span>..</span> <span class="hint">up</span></button>` : null}
-      ${listing.dirs.length === 0 ? html`<p class="hint pad">No folders here.</p>` : listing.dirs.map(d => html`<button type="button" role="option" class="folder" onClick=${() => go(listing.path + "/" + d.name)}><span aria-hidden="true">▸</span> <span class="mono">${d.name}</span>${d.repo ? html`<span class="field-status">git repository</span>` : null}</button>`)}
+      ${listing.dirs.length === 0 ? html`<p class="hint pad">No folders here.</p>` : listing.dirs.map(d => html`<button type="button" role="option" class="folder" onClick=${() => go(listing.path + "/" + d.name)}><span aria-hidden="true">▸</span> <span class="mono">${d.name}</span>${d.repo ? html`<${Status}>git repository<//>` : null}</button>`)}
     </div>
     ${listing.repo ? html`<p class="hint">This folder is a git repository.</p>` : html`<p class="hint">Open a folder that is a git repository, then Add.</p>`}` : html`<p class="hint">Loading…</p>`}
     <${Field} label="Display name (optional)" hint="Shown in the list. The folder name is used when empty; you can rename it later in Settings."><${Input} maxlength="80" value=${name} onInput=${e => setName(e.target.value)} onKeyDown=${e => e.key === "Enter" && submit()} /><//>

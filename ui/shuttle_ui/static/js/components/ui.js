@@ -26,6 +26,29 @@ export function Badge({ tone = "neutral", children }) {
   return html`<span class=${"badge badge-" + tone}>${children}</span>`;
 }
 
+// A settled state is quiet. tone "warn" is the only coloured one: something still needs a look.
+export function Status({ tone, class: klass, children }) {
+  return html`<span class=${cn("field-status", tone === "warn" && "is-warn", klass)}>${children}</span>`;
+}
+
+// One row shape for every list in a dialog: what it is, the actions, then a note that wraps under both.
+export function ItemList({ children }) {
+  return html`<ul class="item-list">${children}</ul>`;
+}
+
+export function ItemRow({ id, actions, note }) {
+  return html`<li>
+    <span class="item-id">${id}</span>
+    ${actions ? html`<span class="row-actions">${actions}</span>` : null}
+    ${note ? html`<span class="item-note">${note}</span>` : null}
+  </li>`;
+}
+
+// Label and value, the same grid in a card, a trace, and the Deploy tab.
+export function Facts({ children }) {
+  return html`<dl class="facts">${children}</dl>`;
+}
+
 export function Field({ label, hint, children }) {
   return html`<label class="field"><span class="field-label">${label}</span>${children}${hint ? html`<span class="field-hint">${hint}</span>` : null}</label>`;
 }

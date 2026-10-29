@@ -9,7 +9,7 @@ import { FileRow } from "./file-row.js";
 import { stageOfCandidate } from "../release-state.js";
 import { TaskBadge } from "./graph-view.js";
 import { StateChip } from "./state-chip.js";
-import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, cn } from "./ui.js";
+import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, Status, cn } from "./ui.js";
 
 // ---- what the repository says, in the words of the settings
 export function settings(status) {
@@ -49,10 +49,9 @@ const stepLabel = argv => (argv[0] === "commit" ? "commit " + JSON.stringify(arg
 export function ResultCard({ runner, onPullRequest, ready }) {
   const j = runner.job;
   if (!j) return null;
-  const tone = j.state === "done" ? "ok" : j.state === "running" ? "neutral" : "bad";
-  const check = html`<svg class="check-draw" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ok)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>`;
+  const failed = j.state === "failed" || j.state === "stopped";
   return html`<section class="result" tabIndex="-1">
-    <header>${j.state === "done" ? check : null}<strong>${j.label}</strong><${Badge} tone=${tone}>${j.state}<//><span class="grow" /><${Button} variant="ghost" size="icon" onClick=${runner.closeJob} aria-label="Dismiss">✕<//></header>
+    <header><strong>${j.label}</strong>${failed ? html`<${Badge} tone=${j.state === "failed" ? "bad" : "warn"}>${j.state}<//>` : html`<${Status}>${j.state}<//>`}<span class="grow" /><${Button} variant="ghost" size="icon" onClick=${runner.closeJob} aria-label="Dismiss">✕<//></header>
     <ol class="steps">${(j.steps || []).map(s => html`<li class=${"step-" + s.state}><code>${stepLabel(s.argv)}</code></li>`)}</ol>
     ${(j.steps || []).some(s => s.output) ? html`<details open=${j.state !== "done"}><summary class="hint">Output</summary>
       ${(j.steps || []).filter(s => s.output).map(s => html`<${Output} follow=${s.state === "running"}>${s.output}<//>`)}</details>` : null}

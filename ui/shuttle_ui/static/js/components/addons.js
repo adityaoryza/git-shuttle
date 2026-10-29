@@ -4,7 +4,7 @@ import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { linkify, stageTone } from "../logic.js";
 import { ExternalLink } from "./links.js";
-import { Alert, Badge, Button, Field, Input, Modal, Segmented, Skeleton } from "./ui.js";
+import { Alert, Badge, Button, Facts, Field, Input, ItemList, ItemRow, Modal, Segmented, Skeleton, Status } from "./ui.js";
 import { Combobox } from "./combobox.js";
 
 const webAddress = link => (typeof link === "string" && /^https?:\/\//.test(link) ? link : "");
@@ -41,7 +41,7 @@ export function AddonCards({ repoId, branch, version }) {
     <header><strong>${card.title}</strong>${card.subtitle ? html`<${Badge}>${card.subtitle}<//>` : null}
       <${Button} size="sm" variant="ghost" class="addon-refresh" busy=${busy} disabled=${busy} title="Ask the add-on to read it again (for a task: it is fetched from Odoo, a read), to see what changed" onClick=${refresh}>${busy ? "Reading…" : "Refresh"}<//></header>
     ${webAddress(card.link) ? html`<${ExternalLink} href=${card.link} class="addon-link">${card.link.replace(/^https?:\/\//, "")}<//>` : null}
-    ${(card.fields || []).length ? html`<dl class="addon-fields">${card.fields.map(f => html`<dt>${f.label}</dt><dd>${f.value}</dd>`)}</dl>` : null}
+    ${(card.fields || []).length ? html`<${Facts}>${card.fields.map(f => html`<dt>${f.label}</dt><dd>${f.value}</dd>`)}<//>` : null}
     ${card.text ? html`<${CardText} text=${card.text} />` : null}
     <footer class="hint">from the add-on ${card.addon}</footer>
   </article>`)}
@@ -66,20 +66,22 @@ export function AddonsDialog({ repoId, onRun, onSetup, onClose, notify }) {
   return html`<${Modal} title="Add-ons" wide onClose=${onClose}>
     <p class="hint">An add-on is a program named <code>git-shuttle-NAME</code> that tells git-shuttle more (the task of a branch, the text of a pull request). None does anything until you enable it, and enabling pins the program: if it changes, it has to be enabled again.</p>
     <h3 class="sub">Installed</h3>
-    ${list === null ? html`<p class="hint">Loading…</p>` : list.length === 0 ? html`<p class="hint">None yet: install one below.</p>` : html`<ul class="stash-list addon-rows">${list.map(a => html`<li>
-      <strong class="mono">${a.name}</strong>${a.version ? html`<span class="hint">${a.version}</span>` : null}<${Badge} tone=${TONE[a.state] || "neutral"}>${a.state}<//>
-      <span class="msg hint" title=${a.path}>${SAY[a.state] || ""}</span>
-      <span class="row-actions">${a.state === "enabled" && (a.hooks || []).includes("report") ? html`<${Button} size="sm" variant="outline" class=${a.report ? "is-on" : ""} title="After a pull request, the add-on adds its link and the commits to the Customer report of the task: it shows the text first, and it changes only its own block of steps" onClick=${() => onRun("addon-report", { name: a.name, on: !a.report }, "Customer report of " + a.name + ": " + (a.report ? "off" : "on"))}>Customer report: ${a.report ? "on" : "off"}<//>` : null}${a.state === "enabled" && (a.hooks || []).includes("setup") ? html`<${Button} size="sm" variant="secondary" onClick=${() => onSetup(a.name)}>Set up<//>` : null}${a.state === "enabled"
+    ${list === null ? html`<p class="hint">Loading…</p>` : list.length === 0 ? html`<p class="hint">None yet: install one below.</p>` : html`<${ItemList}>${list.map(a => html`<${ItemRow}
+      id=${html`<strong class="mono" title=${a.path}>${a.name}</strong>${a.version ? html`<span class="hint">${a.version}</span>` : null}<${Badge} tone=${TONE[a.state] || "neutral"}>${a.state}<//>`}
+      actions=${html`${a.state === "enabled" && (a.hooks || []).includes("report") ? html`<${Button} size="sm" variant="outline" class=${a.report ? "is-on" : ""} title="After a pull request, the add-on adds its link and the commits to the Customer report of the task: it shows the text first, and it changes only its own block of steps" onClick=${() => onRun("addon-report", { name: a.name, on: !a.report }, "Customer report of " + a.name + ": " + (a.report ? "off" : "on"))}>Customer report: ${a.report ? "on" : "off"}<//>` : null}${a.state === "enabled" && (a.hooks || []).includes("setup") ? html`<${Button} size="sm" variant="secondary" onClick=${() => onSetup(a.name)}>Set up<//>` : null}${a.state === "enabled"
         ? html`<${Button} size="sm" variant="outline" onClick=${() => onRun("addon-disable", { name: a.name }, "Disable the add-on " + a.name)}>Disable<//>`
-        : html`<${Button} size="sm" variant="outline" onClick=${() => onRun("addon-enable", { name: a.name }, "Enable the add-on " + a.name)}>${a.state === "changed" ? "Enable again" : "Enable"}<//>`}</span></li>`)}</ul>`}
+        : html`<${Button} size="sm" variant="outline" onClick=${() => onRun("addon-enable", { name: a.name }, "Enable the add-on " + a.name)}>${a.state === "changed" ? "Enable again" : "Enable"}<//>`}`}
+      note=${SAY[a.state] && SAY[a.state] !== a.state ? SAY[a.state] : null}
+    />`)}<//>`}
     <h3 class="sub">Available</h3>
     <p class="hint">From the list that ships with git-shuttle. Installing downloads the release of its repository over https, checks its checksum and unpacks it in your add-on folder; nothing runs until you enable it. The preview shows the address and the folder.</p>
-    ${available === null ? html`<p class="hint">Loading…</p>` : available.length === 0 ? html`<p class="hint">No add-on in the list.</p>` : html`<ul class="stash-list addon-rows">${available.map(a => html`<li>
-      <strong>${a.title || a.name}</strong><span class="hint mono">${a.name}</span><span class="field-status">${a.version ? "installed " + a.version : "not installed"}</span>
-      <span class="msg hint" title=${a.description}>${a.description}</span>
-      <span class="row-actions">${a.version
+    ${available === null ? html`<p class="hint">Loading…</p>` : available.length === 0 ? html`<p class="hint">No add-on in the list.</p>` : html`<${ItemList}>${available.map(a => html`<${ItemRow}
+      id=${html`<strong>${a.title || a.name}</strong><span class="hint mono">${a.name}</span><${Status}>${a.version ? "installed " + a.version : "not installed"}<//>`}
+      actions=${a.version
         ? html`<${Button} size="sm" variant="outline" onClick=${() => onRun("addon-install", { name: a.name }, "Update the add-on " + a.name)}>Update<//><${Button} size="sm" variant="destructive" onClick=${() => onRun("addon-uninstall", { name: a.name }, "Remove the add-on " + a.name)}>Remove<//>`
-        : html`<${Button} size="sm" variant="secondary" onClick=${() => onRun("addon-install", { name: a.name }, "Install the add-on " + a.name)}>Install<//>`}</span></li>`)}</ul>`}
+        : html`<${Button} size="sm" variant="secondary" onClick=${() => onRun("addon-install", { name: a.name }, "Install the add-on " + a.name)}>Install<//>`}
+      note=${a.description || null}
+    />`)}<//>`}
   <//>`;
 }
 
@@ -110,7 +112,7 @@ export function AddonSetupDialog({ repoId, name, onClose, notify }) {
   return html`<${Modal} title=${"Set up " + name} wide onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Close<//><${Button} onClick=${save} busy=${busy} disabled=${busy || !form || missing.length > 0 || !Object.values(typed).some(v => v)} title=${missing.length ? "Fill in: " + missing.map(f => f.label).join(", ") : ""}>Save and test<//>`}>
     <p class="hint">What you type goes to the add-on to keep, the way it does for its own command. git-shuttle does not store, log or show it again: a key shows only as <em>set</em>. Leave a field empty to keep what is saved.</p>
     ${form === null ? html`<p class="hint">Loading…</p>` : html`
-      ${form.ready ? html`<span class="field-status">ready</span>` : html`<span class="field-status is-warn">not ready yet</span>`}${form.note ? html` <span class="hint">${form.note}</span>` : null}
+      ${form.ready ? html`<${Status}>ready<//>` : html`<${Status} tone="warn">not ready yet<//>`}${form.note ? html` <span class="hint">${form.note}</span>` : null}
       ${fields.map(f => html`<${Field} label=${f.label + (f.required ? " *" : "")} hint=${f.help}>
         <${Input} type=${f.kind === "secret" ? "password" : "text"} class=${f.kind === "path" || f.kind === "url" ? "mono" : ""} autocomplete=${f.kind === "secret" ? "new-password" : "off"} spellcheck="false"
           value=${typed[f.key] !== undefined ? typed[f.key] : f.kind === "secret" ? "" : f.value}
@@ -200,7 +202,7 @@ function Timeline({ events }) {
       <span class="msg">${eventText(r.e)}</span>
       ${webAddress(r.e.url) ? html`<${ExternalLink} href=${r.e.url} class="addon-link">${r.e.url.replace(/^https?:\/\//, "")}<//>` : null}
       ${r.e.derived ? html`<span class="hint">${r.e.derived}</span>` : null}
-      ${r.e.details ? html`<dl class="addon-fields">${Object.entries(r.e.details).map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}</dl>` : null}
+      ${r.e.details ? html`<${Facts}>${Object.entries(r.e.details).map(([k, v]) => html`<dt>${k}</dt><dd>${v}</dd>`)}<//>` : null}
     </li>`))}</ol>`;
 }
 
@@ -255,9 +257,10 @@ export function TasksDialog({ repoId, branches, current, onRun, onClose, notify 
       <div class="actions"><span class="hint">A branch that already has work?</span><${Button} variant="secondary" size="sm" onClick=${goLink}>Link a branch<//></div>`
     : html`
       <h3 class="sub">Linked branches</h3>
-      ${linked === null ? html`<${Skeleton} rows=${2} />` : linked.length === 0 ? html`<p class="hint">No branch is linked to a task yet.</p>` : html`<ul class="stash-list addon-rows">${linked.map(b => html`<li>
-        <strong class="mono">#${b.id}</strong><span class="msg mono" title=${b.name}>${b.name}</span>${b.title ? html`<span class="hint" title=${b.title}>${b.title}</span>` : null}
-        <span class="row-actions"><${Button} size="sm" variant="outline" title="Adds the pull request and the commits to the Customer report of the task (only its own block of steps changes; the text that is there is kept). It must be turned on in Add-ons first." onClick=${() => onRun("task-report", { branch: b.name }, "Customer report of task " + b.id + " from " + b.name)}>Report<//><${Button} size="sm" variant="outline" title="The branch forgets the task and its steps leave the trace; the commits are not touched" onClick=${() => onRun("task-unbind", { branch: b.name }, "Unlink " + b.name + " from task " + b.id)}>Unlink<//></span></li>`)}</ul>`}
+      ${linked === null ? html`<${Skeleton} rows=${2} />` : linked.length === 0 ? html`<p class="hint">No branch is linked to a task yet.</p>` : html`<${ItemList}>${linked.map(b => html`<${ItemRow}
+        id=${html`<strong class="mono">#${b.id}</strong><span class="item-name mono" title=${b.name}>${b.name}</span>${b.title ? html`<span class="hint" title=${b.title}>${b.title}</span>` : null}`}
+        actions=${html`<${Button} size="sm" variant="outline" title="Adds the pull request and the commits to the Customer report of the task (only its own block of steps changes; the text that is there is kept). It must be turned on in Add-ons first." onClick=${() => onRun("task-report", { branch: b.name }, "Customer report of task " + b.id + " from " + b.name)}>Report<//><${Button} size="sm" variant="outline" title="The branch forgets the task and its steps leave the trace; the commits are not touched" onClick=${() => onRun("task-unbind", { branch: b.name }, "Unlink " + b.name + " from task " + b.id)}>Unlink<//>`}
+      />`)}<//>`}
       <h3 class="sub">Link a branch to a task</h3>
       <p class="hint">For a branch that already has commits (or a pull request). The branch remembers the task, and what it already did (start, commits, pull request, merge) is added to the trace with its real dates. Run again, it adds only what is missing. Shared branches (the base, the integration and the release branch) cannot be linked.</p>
       ${linking ? html`

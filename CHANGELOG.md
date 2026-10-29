@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+### Changed
+
+- Dialog lists share one row: what the item is, its actions, then a note that wraps. A detail is the same label-and-value grid in a card, a trace, and Deploy.
+- Menus, branch lists, and selects use the same padding and the same quiet status text. A finished command stays quiet; a warning and a failure stay marked.
+
 ## [0.14.2] - 2026-10-29
 
 ### Changed

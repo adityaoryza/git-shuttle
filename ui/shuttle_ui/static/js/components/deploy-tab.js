@@ -5,7 +5,7 @@ import { api } from "../api.js";
 import { branchOptions } from "../logic.js";
 import { MODULES_RE, deployParams, deployProblems, emptyForm, formOf, lastDeployText, setupParams, setupProblems, suggestRequireName, tidyModules } from "../deploy.js";
 import { PreviewBox, settings } from "./panel.js";
-import { Alert, Badge, Button, Field, Input, Skeleton } from "./ui.js";
+import { Alert, Button, Facts, Field, Input, Skeleton, Status } from "./ui.js";
 
 export function DeployTab({ repoId, status, branches, runner, onError, confirm }) {
   const c = settings(status);
@@ -169,15 +169,15 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
     ${target ? html`<p class="hint">${lastDeployText(target)}${target.confirm === "name" ? " · asks for its name" : ""}</p>` : null}
     ${planError ? html`<${Alert} tone="bad" title="Cannot deploy yet"><p>${planError}</p><div class="actions"><${Button} size="sm" onClick=${() => { setPlanError(""); setAgain(n => n + 1); }}>Try again<//></div><//>` : null}
     ${target && !plan && !planError ? html`<${Skeleton} />` : null}
-    ${plan ? html`<dl class="deploy-facts">
+    ${plan ? html`<${Facts}>
       <dt>Deploys</dt><dd><code>${plan.branch}</code> at <code>${plan.tip.slice(0, 9)}</code> ${plan.subject}</dd>
       <dt>To</dt><dd><code>${plan.host}${plan.port ? ":" + plan.port : ""}</code>${plan.host.includes("@") ? "" : html` <span class="hint">no user: ssh uses your own (Edit the server to add it)</span>`}</dd>
       <dt>Runs</dt><dd><code>${plan.command}</code></dd>
-    </dl>` : null}
+    <//>` : null}
     ${target && target.command.includes("{modules}") && (plan || edited !== null) ? html`<${Field} label="Modules" hint=${edited === null ? (plan && plan.modules ? "Found from what changed since the last deploy. Change them if needed." : "None found: name them.") : planning ? "Typed by hand · reading what would run…" : "Typed by hand."}>
       <${Input} value=${edited === null ? (plan ? plan.modules : "") : edited} onInput=${e => { setEdited(e.target.value); runner.clearPreview(); }} placeholder="sale_documents,custom_technicien" /><//>` : null}
     ${target && target.confirm === "name" ? html`<${Field} label=${"Type “" + target.target + "” to confirm"} hint=${typed && typed !== target.target ? "It does not match: type exactly “" + target.target + "”." : ""}><${Input} value=${typed} onInput=${e => setTyped(e.target.value)} autocomplete="off" aria-invalid=${typed && typed !== target.target ? "true" : undefined} /><//>` : null}
-    ${target && saved ? html`<div class="deploy-saved"><span class="field-status">Password saved on this computer (${vaultInfo.label || "the keychain"}) · ${target.saved.replace("T", " ").slice(0, 16)}</span>
+    ${target && saved ? html`<div class="deploy-saved"><${Status}>Password saved on this computer (${vaultInfo.label || "the keychain"}) · ${target.saved.replace("T", " ").slice(0, 16)}<//>
       <span class="deploy-saved-actions"><${Button} variant="ghost" size="sm" onClick=${() => setOther(true)}>Use another<//><${Button} variant="ghost" size="sm" onClick=${forgetPassword} disabled=${runner.busy}>Forget<//></span></div>` : null}
     ${target && !saved ? html`<${Field} label="Password of the server" hint="For the login and for sudo, when the server asks. Not saved unless you tick the box below. Empty: you log in with a key.">
       <${Input} type="password" value=${password} onInput=${e => setPassword(e.target.value)} autocomplete="new-password" /><//>

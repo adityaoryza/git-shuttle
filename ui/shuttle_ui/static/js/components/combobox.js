@@ -1,7 +1,7 @@
 /* A text field that lists what exists while you type, so the value is picked, not guessed. */
 import { html, useState, useRef, useEffect } from "../../vendor/preact-htm.js";
 import { matchOptions } from "../logic.js";
-import { cn } from "./ui.js";
+import { cn, Status } from "./ui.js";
 
 export function Combobox({ value, onChange, options, placeholder, label, exactOnly, scope }) {
   const [open, setOpen] = useState(false);
@@ -32,7 +32,7 @@ export function Combobox({ value, onChange, options, placeholder, label, exactOn
     <div class="combo-field">
       <input class=${cn("input", "mono", value && !exists && exactOnly && "invalid")} spellcheck="false" autocomplete="off" role="combobox" aria-expanded=${open} aria-label=${label}
         value=${value} placeholder=${placeholder} onInput=${e => { onChange(e.target.value); setOpen(true); }} onFocus=${() => setOpen(true)} onKeyDown=${key} />
-      ${mark ? html`<span class="field-status combo-state">${mark}</span>` : null}
+      ${mark ? html`<${Status} class="combo-state">${mark}<//>` : null}
     </div>
     ${open && list.length ? html`<ul class="combo-list" role="listbox">${list.map((o, i) => html`
       <li role="option" aria-selected=${i === active} class=${cn(i === active && "on")} onMouseDown=${e => { e.preventDefault(); choose(o); }} onMouseEnter=${() => setActive(i)}>

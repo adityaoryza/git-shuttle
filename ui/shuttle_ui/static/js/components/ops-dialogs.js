@@ -3,7 +3,7 @@ import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { SHORTCUTS, validBranchName } from "../ops.js";
 import { shortHash } from "../logic.js";
-import { Alert, Badge, Button, Field, Input, Modal, Output } from "./ui.js";
+import { Alert, Button, Field, Input, ItemList, ItemRow, Modal, Output, Status } from "./ui.js";
 
 const STEPS = [["pick", "Keep"], ["reword", "Reword"], ["squash", "Squash into the one before"], ["fixup", "Fixup (drop its message)"], ["drop", "Drop"]];
 
@@ -33,9 +33,10 @@ export function StashDialog({ repoId, onAction, onClose, notify }) {
   useEffect(() => { api("GET", "repos/" + repoId + "/stashes").then(d => setList(d.stashes)).catch(e => { setList([]); notify({ variant: "error", title: "Cannot read the stash", detail: e.message }); }); }, []);
   const view = async s => { try { setDiff({ index: s.index, text: (await api("GET", "repos/" + repoId + "/stashes/" + s.index)).diff }); } catch (e) { notify({ variant: "error", title: "Cannot show it", detail: e.message }); } };
   return html`<${Modal} title="Stashes" wide onClose=${onClose}>
-    ${list === null ? html`<p class="hint">Loading…</p>` : list.length === 0 ? html`<p class="hint">The stash is empty. “Stash changes” puts your uncommitted work aside.</p>` : html`<ul class="stash-list">${list.map(s => html`<li>
-      <span class="mono">stash@{${s.index}}</span><span class="msg" title=${s.message}>${s.message}</span><span class="hint">${(s.date || "").replace("T", " ").slice(0, 16)}</span>
-      <span class="row-actions"><${Button} size="sm" variant="ghost" onClick=${() => view(s)}>View<//><${Button} size="sm" variant="ghost" onClick=${() => onAction("apply", s.index)}>Apply<//><${Button} size="sm" variant="ghost" onClick=${() => onAction("pop", s.index)}>Pop<//><${Button} size="sm" variant="ghost" onClick=${() => onAction("drop", s.index)}>Drop<//></span></li>`)}</ul>`}
+    ${list === null ? html`<p class="hint">Loading…</p>` : list.length === 0 ? html`<p class="hint">The stash is empty. “Stash changes” puts your uncommitted work aside.</p>` : html`<${ItemList}>${list.map(s => html`<${ItemRow}
+      id=${html`<span class="mono">stash@{${s.index}}</span><span class="item-name" title=${s.message}>${s.message}</span><span class="hint">${(s.date || "").replace("T", " ").slice(0, 16)}</span>`}
+      actions=${html`<${Button} size="sm" variant="ghost" onClick=${() => view(s)}>View<//><${Button} size="sm" variant="ghost" onClick=${() => onAction("apply", s.index)}>Apply<//><${Button} size="sm" variant="ghost" onClick=${() => onAction("pop", s.index)}>Pop<//><${Button} size="sm" variant="ghost" onClick=${() => onAction("drop", s.index)}>Drop<//>`}
+    />`)}<//>`}
     ${diff ? html`<h3 class="sub">stash@{${diff.index}}</h3><${Output}>${diff.text || "(no changes)"}<//>` : null}
   <//>`;
 }
@@ -49,8 +50,11 @@ export function WorktreesDialog({ repoId, branches, onRun, onClose, notify }) {
   const exists = ((branches && branches.local) || []).some(x => x.name === b);
   const problem = !path.trim().startsWith("/") ? "the folder must be an absolute path" : !validBranchName(b) ? "give a branch name" : !exists && !from.trim() ? "that branch does not exist: say where to start it from" : "";
   return html`<${Modal} title="Worktrees" wide onClose=${onClose}>
-    ${list === null ? html`<p class="hint">Loading…</p>` : html`<ul class="stash-list">${list.map(w => html`<li><span class="mono msg" title=${w.path}>${w.path}</span><${Badge} tone=${w.main ? "info" : "neutral"}>${w.branch || "(detached)"}<//><code>${w.head}</code>
-      ${w.main ? html`<span class="hint">main folder</span>` : html`<${Button} size="sm" variant="ghost" onClick=${() => onRun("worktree-remove", { path: w.path }, "Remove " + w.path, true)}>Remove<//>`}</li>`)}</ul>`}
+    ${list === null ? html`<p class="hint">Loading…</p>` : html`<${ItemList}>${list.map(w => html`<${ItemRow}
+      id=${html`<span class="item-name mono" title=${w.path}>${w.path}</span><span class="hint">${w.branch || "(detached)"}</span><code>${w.head}</code>`}
+      actions=${w.main ? null : html`<${Button} size="sm" variant="ghost" onClick=${() => onRun("worktree-remove", { path: w.path }, "Remove " + w.path, true)}>Remove<//>`}
+      note=${w.main ? "main folder" : null}
+    />`)}<//>`}
     <h3 class="sub">Add one</h3>
     <${Field} label="Folder" hint="outside the repository, absolute"><${Input} class="mono" value=${path} placeholder="/home/you/work/feature" onInput=${e => setPath(e.target.value)} /><//>
     <${Field} label="Branch"><${Input} class="mono" list="wt-branches" value=${branch} onInput=${e => setBranch(e.target.value)} /><//>
@@ -66,7 +70,10 @@ export function JournalDialog({ repoId, status, onAction, onClose, notify }) {
   useEffect(() => { api("GET", "repos/" + repoId + "/journal").then(d => setList(d.journal)).catch(e => { setList([]); notify({ variant: "error", title: "Cannot read the journal", detail: e.message }); }); }, []);
   return html`<${Modal} title="What was changed here" wide onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Close<//><${Button} variant="outline" disabled=${!status["journal.redo"]} onClick=${() => onAction("redo")}>Redo ${status["journal.redo"] || ""}<//><${Button} disabled=${!status["journal.undo"]} onClick=${() => onAction("undo")}>Undo ${status["journal.undo"] || ""}<//>`}>
     <p class="hint">Only what git-shuttle did in this repository. Undo puts branches, tags and HEAD back, and only when that is safe (nothing pushed, nothing moved since).</p>
-    ${list === null ? html`<p class="hint">Loading…</p>` : list.length === 0 ? html`<p class="hint">Nothing yet.</p>` : html`<ul class="stash-list">${list.map(e => html`<li><span class="mono">${e.command}</span><span class="msg" title=${e.summary}>${e.summary}</span><span class="hint">${(e.time || "").replace("T", " ")}</span><${Badge} tone=${e.state === "done" ? "ok" : "neutral"}>${e.state}<//></li>`)}</ul>`}
+    ${list === null ? html`<p class="hint">Loading…</p>` : list.length === 0 ? html`<p class="hint">Nothing yet.</p>` : html`<${ItemList}>${list.map(e => html`<${ItemRow}
+      id=${html`<span class="mono">${e.command}</span><span class="item-name" title=${e.summary}>${e.summary}</span><span class="hint">${(e.time || "").replace("T", " ")}</span>`}
+      actions=${html`<${Status} tone=${e.state === "done" ? undefined : "warn"}>${e.state}<//>`}
+    />`)}<//>`}
   <//>`;
 }
 

@@ -4,7 +4,7 @@ import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { blameLine, conflictChoices, hunkLines, hunksDecided, pickChoice, pickProgress, pickResult, plainSide, presetPick, resolveHunksRequest, setOrder, shortName, togglePick } from "../logic.js";
 import { highlightLine, languageOf } from "../highlight.js";
-import { Alert, Button, Modal, Skeleton, cn } from "./ui.js";
+import { Alert, Button, Modal, Skeleton, Status, cn } from "./ui.js";
 
 // a line of code in the colours of its language (the pieces put back together are the line)
 const CodeBlock = ({ text, lang, className }) => html`<pre class=${className}>${String(text).split("\n").map((line, i) => html`${i ? "\n" : ""}${highlightLine(line, lang).map(p => (p.kind ? html`<span class=${"tok-" + p.kind}>${p.text}</span>` : p.text))}`)}</pre>`;
@@ -78,7 +78,7 @@ export function ConflictDialog({ repoId, file, status, onClose, onSubmit }) {
       const where = h.from != null ? "around line " + h.from + " of the file on this branch" : "around line " + h.start + " of the file";
       return html`<section class=${cn("hunk", "rc", pick ? "is-decided" : "is-open")} key=${h.n} aria-label=${"Change " + h.n}>
         <header class="hunk-head"><strong>Change ${h.n}${many ? " of " + hunks.length : ""}</strong><span class="hint">${where}</span>
-          ${pick ? html`<span class="field-status">decided</span>` : html`<span class="field-status is-warn">needs your choice</span>`}</header>
+          ${pick ? html`<${Status}>decided<//>` : html`<${Status} tone="warn">needs your choice<//>`}</header>
         <div class="rc-ask">Which version should the file keep?</div>
         <div class="choices" role="group" aria-label=${"Choose for change " + h.n}>${main.map(o => html`<button type="button" data-side=${o.id}
           class=${cn("choice", pick && pickChoice(h, pick) === o.id && "on")} title=${o.title} onClick=${() => setPick(h.n, presetPick(h, o.id))}>${o.label}</button>`)}
