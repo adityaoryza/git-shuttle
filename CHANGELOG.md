@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.3] - 2026-10-29
+
 ### Changed
 
 - Dialog lists share one row: what the item is, its actions, then a note that wraps. A detail is the same label-and-value grid in a card, a trace, and Deploy.
