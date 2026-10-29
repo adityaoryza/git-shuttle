@@ -4,7 +4,7 @@ import { api } from "../api.js";
 import { DEFAULT_RELEASE_PATTERN, branchOptions, inferReleasePattern, normalizePrefix, prefixOptions, releasePreview } from "../logic.js";
 import { resetSkippedPreviews, skippedPreviews } from "../skip-preview.js";
 import { Combobox } from "./combobox.js";
-import { Badge, Button, Field, Input, Modal, cn } from "./ui.js";
+import { Button, Field, Input, Modal, cn } from "./ui.js";
 
 /* Pick a repository by walking through your home folder (the server lists folder names only, nothing outside your home). */
 export function AddRepoDialog({ onAdd, onClose }) {
@@ -42,9 +42,9 @@ export function AddRepoDialog({ onAdd, onClose }) {
     ${error ? html`<span class="field-hint warn" role="alert">${error}${typed ? " The path can still be added if it is a git repository." : ""}</span>` : null}
     ${listing ? html`<div class="folders" role="listbox" aria-label="Folders">
       ${listing.parent ? html`<button type="button" role="option" class="folder" onClick=${() => go(listing.parent)}><span aria-hidden="true">↰</span> <span>..</span> <span class="hint">up</span></button>` : null}
-      ${listing.dirs.length === 0 ? html`<p class="hint pad">No folders here.</p>` : listing.dirs.map(d => html`<button type="button" role="option" class="folder" onClick=${() => go(listing.path + "/" + d.name)}><span aria-hidden="true">▸</span> <span class="mono">${d.name}</span>${d.repo ? html`<${Badge} tone="ok">git repository<//>` : null}</button>`)}
+      ${listing.dirs.length === 0 ? html`<p class="hint pad">No folders here.</p>` : listing.dirs.map(d => html`<button type="button" role="option" class="folder" onClick=${() => go(listing.path + "/" + d.name)}><span aria-hidden="true">▸</span> <span class="mono">${d.name}</span>${d.repo ? html`<span class="field-status">git repository</span>` : null}</button>`)}
     </div>
-    ${listing.repo ? html`<${Badge} tone="ok">This folder is a git repository<//>` : html`<p class="hint">Open a folder that is a git repository, then Add.</p>`}` : html`<p class="hint">Loading…</p>`}
+    ${listing.repo ? html`<p class="hint">This folder is a git repository.</p>` : html`<p class="hint">Open a folder that is a git repository, then Add.</p>`}` : html`<p class="hint">Loading…</p>`}
     <${Field} label="Display name (optional)" hint="Shown in the list. The folder name is used when empty; you can rename it later in Settings."><${Input} maxlength="80" value=${name} onInput=${e => setName(e.target.value)} onKeyDown=${e => e.key === "Enter" && submit()} /><//>
   <//>`;
 }
@@ -87,7 +87,7 @@ export function SettingsDialog({ status, branches, repoName, onSave, onRemove, o
     onSave({ name: cleanName, nameChanged, settings: { ...form, branchPrefix: prefix }, settingsChanged });
   };
 
-  return html`<${Modal} title=${"Settings · " + repoName} onClose=${onClose} footer=${html`<${Button} variant="destructive" class="push-left" onClick=${onRemove}>Remove from list<//><${Button} variant="ghost" onClick=${onClose}>Cancel<//>${missing.length ? html`<span class="field-hint warn grow" role="alert">Pick an existing branch of the remote for: ${missing.map(f => f[1]).join(", ")}</span>` : null}<${Button} onClick=${save} disabled=${missing.length > 0 || !cleanName}>Save<//>`}>
+  return html`<${Modal} title=${"Settings · " + repoName} wide onClose=${onClose} footer=${html`<${Button} variant="destructive" class="push-left" onClick=${onRemove}>Remove from list<//><${Button} variant="ghost" onClick=${onClose}>Cancel<//>${missing.length ? html`<span class="field-hint warn settings-warn" role="alert">Pick an existing branch of the remote for: ${missing.map(f => f[1]).join(", ")}</span>` : null}<${Button} onClick=${save} disabled=${missing.length > 0 || !cleanName}>Save<//>`}>
     <${Field} label="Display name" hint="How this repository is listed. Two repositories may have the same name: the list then shows where each one is."><${Input} maxlength="80" value=${name} onInput=${e => setName(e.target.value)} /><//>
 
     ${BRANCH_FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Combobox} label=${label} exactOnly scope="on the remote" options=${remoteOptions} value=${form[key]} onChange=${v => set(key, v)} placeholder="Type to search the branches" /><//>`)}
@@ -105,7 +105,7 @@ export function SettingsDialog({ status, branches, repoName, onSave, onRemove, o
       <div class="chips">
         ${presets.map(p => html`<button type="button" class=${cn("chip", "chip-preset", p === form.releasePattern && "on")} onClick=${() => set("releasePattern", p)} title="Use this pattern">${p}${p === detected ? html` <em>from your branches</em>` : ""}</button>`)}
       </div>
-      ${preview.error ? html`<span class="field-hint warn">${preview.error}</span>` : html`<span class="field-hint ok">Next release branch: <code>${preview.name}</code></span>`}
+      ${preview.error ? html`<span class="field-hint warn">${preview.error}</span>` : html`<span class="field-hint">Next release branch: <code>${preview.name}</code></span>`}
     <//>
 
     ${RULE_FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Input} class="mono" value=${form[key]} onInput=${e => set(key, e.target.value)} /><//>`)}

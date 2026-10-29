@@ -205,7 +205,7 @@ function GroupBox({ g, index, count, cfg, update, move, files, onOpenFile }) {
       <div class="group-file-list">${files.map(f => html`<${FileRow} file=${f} plain tag=${SECTION_LABEL[f.group]} onPick=${() => onOpenFile({ path: f.path, group: f.group })} />`)}</div>
       <button type="button" class="link" onClick=${() => onOpenFile({ path: files[0].path, group: files[0].group })}>View all changes of this module</button>
     </details>` : null}
-    <${Input} class=${cn("mono", g.include && !untouched && (problem ? "invalid" : "valid"))} value=${g.message} disabled=${!g.include} onInput=${e => update(index, { message: e.target.value })} />
+    <${Input} class=${cn("mono", g.include && !untouched && problem && "invalid")} value=${g.message} disabled=${!g.include} onInput=${e => update(index, { message: e.target.value })} />
     ${g.include && problem && !untouched ? html`<span class="field-hint bad">${problem}</span>` : html`<span class="field-hint">${untouched && g.include ? "Finish the message: [TAG] module: what changed" : ""}</span>`}
   </div>`;
 }

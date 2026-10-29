@@ -27,8 +27,8 @@ function PullMenu({ ctx, perform }) {
   const items = [["pull", "Pull (fast-forward only)"], ["pull-rebase", "Pull and rebase my commits"], ["pull-merge", "Pull and merge"], "-",
     ["sync", "Update from " + (integration || "the integration branch") + " (rebase)"], ["sync-merge", "Merge " + (integration || "the integration branch") + " into this branch"], "-", ["fetch", "Fetch (change nothing of mine)"]];
   return html`<div class="split-btn" ref=${box}>
-    <${Tool} id="pull" ctx=${ctx} perform=${perform} label="Pull" glyph="↓" class="split-main" />
-    <${Button} variant="ghost" size="sm" class="split-caret" aria-label="More ways to pull" aria-haspopup="menu" aria-expanded=${open} title="More ways to pull" onClick=${() => setOpen(!open)}>▾<//>
+    <${Tool} id="pull" ctx=${ctx} perform=${perform} label="Pull" glyph="↓" variant="default" class="split-main" />
+    <${Button} variant="default" size="sm" class="split-caret" aria-label="More ways to pull" aria-haspopup="menu" aria-expanded=${open} title="More ways to pull" onClick=${() => setOpen(!open)}>▾<//>
     ${open ? html`<div class="menu" role="menu">${items.map(it => it === "-" ? html`<hr />` : (() => {
       const reason = it[0] === "fetch" ? reasonOf("fetch", ctx) : reasonOf(it[0], ctx);
       return html`<button type="button" role="menuitem" disabled=${!!reason} title=${reason} onClick=${() => { setOpen(false); perform(it[0]); }}><span>${it[1]}</span>${reason ? html`<span class="hint">${reason}</span>` : null}</button>`;
@@ -47,15 +47,17 @@ export function Toolbar({ ctx, perform, search, setSearch, searchRef, push, task
       : html`<${Button} variant="ghost" size="sm" class="tool" data-tool="push" disabled title="Nothing to push (Shift+P)"><span class="glyph" aria-hidden="true">↑</span><span class="tool-label">Push</span><//>`}
     <${Tool} id="branch" ctx=${ctx} perform=${perform} label="Branch" glyph="⎇" />
     <span class="tool-sep" aria-hidden="true"></span>
-    <${Tool} id="stash" ctx=${ctx} perform=${perform} label="Stash" glyph="▤" /><${Tool} id="stash-pop" ctx=${ctx} perform=${perform} label="Pop" glyph="▥" />
+    <${Tool} id="stash" ctx=${ctx} perform=${perform} label="Stash" glyph="▤" /><${Tool} id="stash-pop" ctx=${ctx} perform=${perform} label="Pop" glyph="▥" class="tool-quiet" />
     <span class="tool-sep" aria-hidden="true"></span>
-    <${Button} variant="secondary" size="sm" class="tool tool-sync" data-tool="sync-smart" disabled=${!!planReason} title=${"What is next: " + plan.label + (planReason ? " — " + planReason : "")} onClick=${() => perform(plan.id)}><span class="glyph" aria-hidden="true">⟳</span><span class="tool-label">${plan.id === "fetch" ? "Sync" : plan.label}</span><//>
+    <${Button} variant="ghost" size="sm" class="tool tool-sync tool-quiet" data-tool="sync-smart" disabled=${!!planReason} title=${"What is next: " + plan.label + (planReason ? " — " + planReason : "")} onClick=${() => perform(plan.id)}><span class="glyph" aria-hidden="true">⟳</span><span class="tool-label">${plan.id === "fetch" ? "Sync" : plan.label}</span><//>
     <span class="grow"></span>
     <${Tool} id="log" ctx=${ctx} perform=${perform} label="Log" glyph="☰" always />
     <${Button} variant="ghost" size="sm" class="tool" data-tool="palette" title="Every action (Ctrl+K)" aria-label="Every action (Ctrl+K)" onClick=${() => perform("palette")}><span class="glyph" aria-hidden="true">⌘</span><span class="tool-label">Actions</span><//>
-    ${taskList && taskList.length ? html`<select class=${cn("input tool-task", taskFilter && "is-filtered")} aria-label="Show the work of one task" title="Only the commits and branches of one task" value=${taskFilter} onChange=${e => setTaskFilter(e.target.value)}>
-      <option value="">All tasks</option>${taskList.map(t => html`<option value=${t.key}>#${t.id} ${t.title} (${t.count})</option>`)}</select>
-      ${taskFilter ? html`<${Button} variant="ghost" size="icon" class="tool-task-clear" aria-label="Clear the task filter" title="Clear the task filter" onClick=${() => setTaskFilter("")}>✕<//>` : null}` : null}
-    <${Search} class="tool-search" wrapClass="tool-search-wrap" inputRef=${searchRef} placeholder="Search commits (Ctrl+F)" aria-label="Search commits" value=${search} onInput=${e => setSearch(e.target.value)} onKeyDown=${e => e.key === "Escape" && (setSearch(""), e.target.blur())} />
+    <span class="tool-filters">
+      ${taskList && taskList.length ? html`<select class=${cn("input tool-task", taskFilter && "is-filtered")} aria-label="Show the work of one task" title="Only the commits and branches of one task" value=${taskFilter} onChange=${e => setTaskFilter(e.target.value)}>
+        <option value="">All tasks</option>${taskList.map(t => html`<option value=${t.key}>#${t.id} ${t.title} (${t.count})</option>`)}</select>
+        ${taskFilter ? html`<${Button} variant="ghost" size="icon" class="tool-task-clear" aria-label="Clear the task filter" title="Clear the task filter" onClick=${() => setTaskFilter("")}>✕<//>` : null}` : null}
+      <${Search} class="tool-search" wrapClass="tool-search-wrap" inputRef=${searchRef} placeholder="Search commits (Ctrl+F)" aria-label="Search commits" value=${search} onInput=${e => setSearch(e.target.value)} onKeyDown=${e => e.key === "Escape" && (setSearch(""), e.target.blur())} />
+    </span>
   </div>`;
 }

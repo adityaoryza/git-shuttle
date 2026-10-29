@@ -44,7 +44,7 @@ const Ref = ({ r, task }) => html`<span class=${"ref ref-" + r.kind + (r.current
 const Person = ({ name, email, showEmail }) => html`<span class="person" title=${(name || "") + (email ? " <" + email + ">" : "")}>
   <span class="avatar" style=${{ "--hue": hueOf(name) }} aria-hidden="true">${initials(name)}</span><span class="person-name">${name}</span>${showEmail && email ? html`<span class="person-email">${email}</span>` : null}</span>`;
 
-function makeColumns({ width, onCopy, hidden, filtered, tasks, stages, names }) {
+function makeColumns({ width, onCopy, hidden, filtered, tasks, stages, names, showStage }) {
   // a remote branch (origin/feature/x) is for the task of its local branch
   const taskOfRef = r => (tasks && tasks.branches ? tasks.branches[r.kind === "remote" ? r.name.replace(/^[^/]+\//, "") : r.name] : null);
   const natural = PAD * 2 + width * COL;
@@ -64,10 +64,10 @@ function makeColumns({ width, onCopy, hidden, filtered, tasks, stages, names }) 
       render: row => (row.wip ? html`<span class="msg">${row.changes} changed ${row.changes === 1 ? "file" : "files"}</span>`
         : html`${tasks && tasks.commits && tasks.commits[row.commit.sha] ? (([a, id]) => html`<${TaskBadge} id=${id} title=${((tasks.tasks || {})[a + ":" + id] || {}).title} link=${((tasks.tasks || {})[a + ":" + id] || {}).link} />`)(tasks.commits[row.commit.sha]) : null}<span class="msg" title=${row.commit.subject + (row.commit.body ? "\n\n" + row.commit.body : "")}>${row.commit.subject}</span>`),
       text: row => (row.wip ? "" : row.commit.subject) },
-    { key: "stage", label: "Prod", min: 84, width: 104, priority: 6, sortable: false,
-      title: "Where the commit is on its way to production",
+    ...(showStage ? [{ key: "stage", label: "Prod", min: 96, width: 112, priority: 6, sortable: false,
+      title: "Shown only when the commit is not in production yet",
       render: row => (row.wip || !stages || !stages.size ? null : html`<${StateChip} stage=${stages.get(row.commit.sha)} release=${names && names.release} integration=${names && names.integration} compact />`),
-      text: row => (row.wip || !stages ? "" : stageText(stages.get(row.commit.sha))) },
+      text: row => (row.wip || !stages ? "" : stageText(stages.get(row.commit.sha))) }] : []),
     { key: "author", label: "Author", min: 90, width: 150, priority: 3, sortable: true,
       render: (row, ctx) => (row.wip ? null : html`<${Person} name=${row.commit.author} email=${row.commit.email} showEmail=${ctx.opts.email} />`),
       text: row => (row.wip ? "" : row.commit.author + "    ") },
@@ -103,7 +103,12 @@ export function GraphView({ graph, changes, loading, onMenu, hidden, selected, o
   const narrowed = !!needle || !!taskFilter;
   const all = useMemo(() => graphRows((graph && graph.commits) || [], (graph && graph.remotes) || [], changes), [graph, changes]);
   const data = useMemo(() => (narrowed ? { ...all, rows: all.rows.filter(r => matches(r, needle, tasks, stages) && inTask(r, tasks, taskFilter)) } : all), [all, needle, tasks, stages, taskFilter]);
-  const columns = useMemo(() => makeColumns({ width: data.width, onCopy, hidden, filtered: narrowed, tasks, stages, names }), [data.width, onCopy, hidden, narrowed, tasks, stages, names]);
+  const showStage = data.rows.some(row => {
+    if (row.wip || !stages || !stages.size) return false;
+    const stage = stages.get(row.commit.sha);
+    return !!(stage && stage.kind !== "prod");
+  });
+  const columns = useMemo(() => makeColumns({ width: data.width, onCopy, hidden, filtered: narrowed, tasks, stages, names, showStage }), [data.width, onCopy, hidden, narrowed, tasks, stages, names, showStage]);
   if (!graph) return html`<${Skeleton} rows=${12} />`;
   if (!all.rows.length) return html`<div class="empty">This repository has no commits yet.</div>`;
   const selectedKey = selected ? (selected.type === "worktree" ? "worktree" : selected.sha) : null;

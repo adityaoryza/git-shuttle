@@ -2,9 +2,11 @@
 import { html } from "../../vendor/preact-htm.js";
 import { STAGE_LABEL, stageTitle } from "../release-state.js";
 
-const MARK = { prod: "✓", queued: "→", staging: "" };
+const MARK = { prod: "", queued: "→", staging: "" };
 
 export function StateChip({ stage, release, integration, compact }) {
   if (!stage) return null;
+  // In the graph the common case is an empty cell. The column only speaks when a commit is still on its way.
+  if (compact && stage.kind === "prod") return null;
   return html`<span class=${"stage stage-" + stage.kind + (compact ? " stage-compact" : "")} title=${stageTitle(stage, release, integration)}>${MARK[stage.kind] ? html`<span aria-hidden="true">${MARK[stage.kind]}</span> ` : null}${STAGE_LABEL[stage.kind]}${stage.kind === "queued" && !compact ? html` <span class="stage-name">${stage.name}</span>` : null}</span>`;
 }

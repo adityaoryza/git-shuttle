@@ -359,7 +359,6 @@ export function pickChoice(h, pick) {
   return "pick:" + mine;
 }
 
-// The colour of a stage pill, from what the stage says (done, waiting, running); a stage it does not know stays neutral.
-export const stageTone = stage => (/done|closed|approved|validated|released|shipped/i.test(stage) ? "ok"
-  : /valid|wait|pending|review|block|hold/i.test(stage) ? "warn"
-    : /run|progress|doing|assign|develop|test/i.test(stage) ? "info" : "neutral");
+// A finished stage stays quiet. Waiting and blocked are a warning, work in progress is blue, and anything else stays quiet.
+export const stageTone = stage => (/valid|wait|pending|review|block|hold/i.test(stage) ? "warn"
+  : /run|progress|doing|assign|develop|test/i.test(stage) ? "info" : "neutral");

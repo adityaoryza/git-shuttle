@@ -4,6 +4,11 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+### Changed
+
+- A known value is quiet text in the field, using the same word as the list (remote, local, local + remote, in use), instead of a green "exists" line. A missing name is still a warning.
+- The Prod column is shown only when a commit is not in production yet. Pull stays the primary action. A finished stage, an installed add-on, and a command that succeeded are quiet text; a warning, work in progress, and a failure keep their colour.
+
 ## [0.14.1] - 2026-10-28
 
 ### Fixed

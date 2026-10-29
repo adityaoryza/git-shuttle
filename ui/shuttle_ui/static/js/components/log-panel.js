@@ -75,7 +75,7 @@ export function LogPanel({ repos, version, onClose, onRerun, onCopy, notify, con
     { key: "time", label: "Time", min: 90, width: 120, priority: 4, sortable: false, render: r => html`<time title=${r.entry.time.replace("T", " ")}>${relative(r.entry.time)}</time>` },
     { key: "repo", label: "Repository", min: 90, width: 140, priority: 3, sortable: false, render: r => r.entry.repo },
     { key: "action", label: "Action", min: 140, width: 260, priority: 9, flex: true, required: true, sortable: false, render: r => html`<span title=${(r.entry.commands || []).join("\n")}>${r.entry.label || r.entry.action}</span>` },
-    { key: "result", label: "Result", min: 90, width: 110, priority: 8, required: true, sortable: false, render: r => { const x = resultOf(r.entry.state); return html`<span class=${"badge badge-" + x.tone}><span aria-hidden="true">${x.icon}</span> ${x.label}</span>`; } },
+    { key: "result", label: "Result", min: 90, width: 110, priority: 8, required: true, sortable: false, render: r => { const x = resultOf(r.entry.state); return html`<span class=${"badge badge-" + x.tone}>${x.icon ? html`<span aria-hidden="true">${x.icon}</span> ` : null}${x.label}</span>`; } },
     { key: "duration", label: "Took", min: 80, width: 90, priority: 2, align: "right", sortable: false, render: r => durationText(r.entry.duration) },
   ], []);
   const n = activeFilters(filters);

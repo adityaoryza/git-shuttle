@@ -30,7 +30,7 @@ export function relative(iso, now = Date.now()) {
   return Math.round(s / 86400) + " d ago";
 }
 export const durationText = seconds => (seconds == null ? "" : seconds < 1 ? Math.round(seconds * 1000) + " ms" : seconds < 60 ? seconds.toFixed(1) + " s" : Math.floor(seconds / 60) + " min " + Math.round(seconds % 60) + " s");
-export const RESULTS = { done: { label: "done", icon: "✓", tone: "ok" }, stopped: { label: "stopped", icon: "!", tone: "warn" }, failed: { label: "failed", icon: "✕", tone: "bad" } };
+export const RESULTS = { done: { label: "done", icon: "", tone: "neutral" }, stopped: { label: "stopped", icon: "!", tone: "warn" }, failed: { label: "failed", icon: "✕", tone: "bad" } };
 export const resultOf = state => RESULTS[state] || { label: String(state), icon: "?", tone: "neutral" };
 
 // The query string of a page request from the filters (empty values are left out).

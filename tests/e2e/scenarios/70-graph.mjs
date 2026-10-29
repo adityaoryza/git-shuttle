@@ -77,10 +77,10 @@ export const scenarios = {
     const page = await t.page();
     const chips = page.locator(".graph .row .stage");
     await chips.first().waitFor();
-    t.ok("a commit that the release branch has says so", (await page.locator(".graph .row .stage-prod").count()) > 0);
+    t.ok("a commit already in prod leaves the column empty", (await page.locator(".graph .row .stage-prod").count()) === 0);
     t.ok("...and one that is merged but not released says it is not in prod", (await page.locator(".graph .row .stage-staging").count()) > 0);
     t.ok("...a commit that is on no integration branch says nothing", (await page.locator(".graph .row").evaluateAll(rows => rows.some(r => !r.querySelector(".stage") && !r.classList.contains("row-wip")))));
-    t.ok("the pointer says where it is, with the branch names", /not in .+ yet/.test(await page.locator(".graph .row .stage-staging").first().getAttribute("title")) && /In /.test(await page.locator(".graph .row .stage-prod").first().getAttribute("title")));
+    t.ok("the pointer says where a commit that is not released is", /not in .+ yet/.test(await page.locator(".graph .row .stage-staging").first().getAttribute("title")));
     t.ok("the chip is in its own column, between the message and the author", (await heads(page)).join(",").includes("message,prod,author"));
     await page.getByRole("searchbox", { name: "Search commits" }).fill("not in prod");
     const rows = await page.locator(".graph .row:not(.row-wip)").count();

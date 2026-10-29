@@ -48,7 +48,7 @@ export function AddonCards({ repoId, branch, version }) {
   </section>`;
 }
 
-const TONE = { enabled: "ok", changed: "warn", found: "neutral", missing: "bad" };
+const TONE = { enabled: "neutral", changed: "warn", found: "neutral", missing: "bad" };
 const SAY = {
   enabled: "enabled",
   changed: "changed since it was enabled: enable it again to use it",
@@ -75,7 +75,7 @@ export function AddonsDialog({ repoId, onRun, onSetup, onClose, notify }) {
     <h3 class="sub">Available</h3>
     <p class="hint">From the list that ships with git-shuttle. Installing downloads the release of its repository over https, checks its checksum and unpacks it in your add-on folder; nothing runs until you enable it. The preview shows the address and the folder.</p>
     ${available === null ? html`<p class="hint">Loading…</p>` : available.length === 0 ? html`<p class="hint">No add-on in the list.</p>` : html`<ul class="stash-list addon-rows">${available.map(a => html`<li>
-      <strong>${a.title || a.name}</strong><span class="hint mono">${a.name}</span>${a.version ? html`<${Badge} tone="ok">installed ${a.version}<//>` : html`<${Badge}>not installed<//>`}
+      <strong>${a.title || a.name}</strong><span class="hint mono">${a.name}</span><span class="field-status">${a.version ? "installed " + a.version : "not installed"}</span>
       <span class="msg hint" title=${a.description}>${a.description}</span>
       <span class="row-actions">${a.version
         ? html`<${Button} size="sm" variant="outline" onClick=${() => onRun("addon-install", { name: a.name }, "Update the add-on " + a.name)}>Update<//><${Button} size="sm" variant="destructive" onClick=${() => onRun("addon-uninstall", { name: a.name }, "Remove the add-on " + a.name)}>Remove<//>`
@@ -110,7 +110,7 @@ export function AddonSetupDialog({ repoId, name, onClose, notify }) {
   return html`<${Modal} title=${"Set up " + name} wide onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Close<//><${Button} onClick=${save} busy=${busy} disabled=${busy || !form || missing.length > 0 || !Object.values(typed).some(v => v)} title=${missing.length ? "Fill in: " + missing.map(f => f.label).join(", ") : ""}>Save and test<//>`}>
     <p class="hint">What you type goes to the add-on to keep, the way it does for its own command. git-shuttle does not store, log or show it again: a key shows only as <em>set</em>. Leave a field empty to keep what is saved.</p>
     ${form === null ? html`<p class="hint">Loading…</p>` : html`
-      ${form.ready ? html`<${Badge} tone="ok">ready<//>` : html`<${Badge} tone="warn">not ready yet<//>`}${form.note ? html` <span class="hint">${form.note}</span>` : null}
+      ${form.ready ? html`<span class="field-status">ready</span>` : html`<span class="field-status is-warn">not ready yet</span>`}${form.note ? html` <span class="hint">${form.note}</span>` : null}
       ${fields.map(f => html`<${Field} label=${f.label + (f.required ? " *" : "")} hint=${f.help}>
         <${Input} type=${f.kind === "secret" ? "password" : "text"} class=${f.kind === "path" || f.kind === "url" ? "mono" : ""} autocomplete=${f.kind === "secret" ? "new-password" : "off"} spellcheck="false"
           value=${typed[f.key] !== undefined ? typed[f.key] : f.kind === "secret" ? "" : f.value}
@@ -170,7 +170,7 @@ export function TaskPicker({ repoId, version, onPick, picked }) {
     ${shown.length ? html`<ul class="task-list">${shown.map(t => html`<li class=${(picked && picked.id === t.id && picked.addon === t.addon ? "picked " : "") + (newest.has(t.addon + ":" + t.id) ? "is-new" : "")}>
       <button type="button" class="task-row" aria-pressed=${!!(picked && picked.id === t.id && picked.addon === t.addon)} onClick=${() => onPick(t.addon, t)}>
         <span class="task-check" aria-hidden="true">${picked && picked.id === t.id && picked.addon === t.addon ? "✓" : ""}</span><span class="mono">${t.id}</span><strong>${t.title}</strong>
-        <span class="task-pills">${newest.has(t.addon + ":" + t.id) ? html`<${Badge} tone="brand">new<//>` : null}${t.subtitle ? html`<${Badge} tone=${stageTone(t.subtitle)}>${t.subtitle}<//>` : null}</span>
+        <span class="task-pills">${newest.has(t.addon + ":" + t.id) ? html`<span class="task-fresh">new</span>` : null}${t.subtitle ? html`<${Badge} tone=${stageTone(t.subtitle)}>${t.subtitle}<//>` : null}</span>
         ${(t.fields || []).length ? html`<span class="hint">${t.fields.map(x => x.label + ": " + x.value).join(" · ")}</span>` : null}
       </button></li>`)}</ul>` : null}
     ${!state.loading && !state.problems.length && !shown.length ? html`<p class="hint">${all.length ? "No task matches the filters." : "No task listed."}</p>` : null}
@@ -261,7 +261,7 @@ export function TasksDialog({ repoId, branches, current, onRun, onClose, notify 
       <h3 class="sub">Link a branch to a task</h3>
       <p class="hint">For a branch that already has commits (or a pull request). The branch remembers the task, and what it already did (start, commits, pull request, merge) is added to the trace with its real dates. Run again, it adds only what is missing. Shared branches (the base, the integration and the release branch) cannot be linked.</p>
       ${linking ? html`
-        <${Field} label="1. The branch" hint=${branch === current ? "the one you are on: type to search another" : !branch ? "type to search the branches" : local.includes(branch) ? "" : "there is no such branch here"}><${Combobox} label="Branch" exactOnly options=${names.map(n => ({ name: n }))} value=${branch} onChange=${setBranch} placeholder="Type to search the branches" /><//>
+        <${Field} label="1. The branch" hint=${branch === current ? "the one you are on: type to search another" : !branch ? "type to search the branches" : local.includes(branch) ? "" : "there is no such branch here"}><${Combobox} label="Branch" exactOnly options=${names.map(n => ({ name: n, where: "local" }))} value=${branch} onChange=${setBranch} placeholder="Type to search the branches" /><//>
         <span class="field-label">2. The task</span>
         <${TaskPicker} repoId=${repoId} picked=${pick && !typed.trim() ? { addon: pick.addon, id: pick.task.id } : null} onPick=${(a, t) => { setPick({ addon: a, task: t }); setTyped(""); }} />
         <${Field} label="Or type it" hint="the number or the link of the task"><${Input} value=${typed} placeholder="e.g. 15530" onInput=${e => setTyped(e.target.value)} /><//>
