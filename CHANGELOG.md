@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.2] - 2026-10-29
+
 ### Changed
 
 - A known value is quiet text in the field, using the same word as the list (remote, local, local + remote, in use), instead of a green "exists" line. A missing name is still a warning.
