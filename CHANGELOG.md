@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.5] - 2026-10-30
+
 ### Added
 
 - Tasks has Sync beside Report. It records a merge the pull request already has, then writes the Customer report from that trace, including a deploy made with git shuttle deploy when that merge is in what was deployed.
