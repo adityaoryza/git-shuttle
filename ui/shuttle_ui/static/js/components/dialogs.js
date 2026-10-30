@@ -37,9 +37,8 @@ export function AddRepoDialog({ onAdd, onClose }) {
   const submit = () => canAdd && onAdd(listing && listing.repo ? listing.path : path.trim(), name.trim());
   const tail = p => p.split("/").filter(Boolean).pop() || "/";
   return html`<${Modal} title="Add a repository" onClose=${onClose} footer=${html`<${Button} variant="ghost" onClick=${onClose}>Cancel<//><${Button} onClick=${submit} disabled=${!canAdd} title=${canAdd ? "" : "Open a folder that is a git repository"}>Add ${listing && listing.repo ? tail(listing.path) : typed ? tail(path.trim()) : ""}<//>`}>
-    <${Field} label="Folder" hint="Type a path and press Enter, or click through the folders. Only folders inside your home folder are listed.">
-      <${Input} class="mono" autofocus value=${path} placeholder="/home/you/projects/my-repo" onInput=${e => setPath(e.target.value)} onKeyDown=${e => e.key === "Enter" && go(path.trim())} /><//>
-    ${error ? html`<span class="field-hint warn" role="alert">${error}${typed ? " The path can still be added if it is a git repository." : ""}</span>` : null}
+    <${Field} label="Folder" hint="Type a path and press Enter, or click through the folders. Only folders inside your home folder are listed." error=${error ? error + (typed ? " The path can still be added if it is a git repository." : "") : ""}>
+      <${Input} class="mono" autofocus value=${path} placeholder="/home/you/projects/my-repo" aria-invalid=${error ? "true" : undefined} onInput=${e => setPath(e.target.value)} onKeyDown=${e => e.key === "Enter" && go(path.trim())} /><//>
     ${listing ? html`<div class="folders" role="listbox" aria-label="Folders">
       ${listing.parent ? html`<button type="button" role="option" class="folder" onClick=${() => go(listing.parent)}><span aria-hidden="true">↰</span> <span>..</span> <span class="hint">up</span></button>` : null}
       ${listing.dirs.length === 0 ? html`<p class="hint pad">No folders here.</p>` : listing.dirs.map(d => html`<button type="button" role="option" class="folder" onClick=${() => go(listing.path + "/" + d.name)}><span aria-hidden="true">▸</span> <span class="mono">${d.name}</span>${d.repo ? html`<${Status}>git repository<//>` : null}</button>`)}
@@ -87,25 +86,24 @@ export function SettingsDialog({ status, branches, repoName, onSave, onRemove, o
     onSave({ name: cleanName, nameChanged, settings: { ...form, branchPrefix: prefix }, settingsChanged });
   };
 
-  return html`<${Modal} title=${"Settings · " + repoName} wide onClose=${onClose} footer=${html`<${Button} variant="destructive" class="push-left" onClick=${onRemove}>Remove from list<//><${Button} variant="ghost" onClick=${onClose}>Cancel<//>${missing.length ? html`<span class="field-hint warn settings-warn" role="alert">Pick an existing branch of the remote for: ${missing.map(f => f[1]).join(", ")}</span>` : null}<${Button} onClick=${save} disabled=${missing.length > 0 || !cleanName}>Save<//>`}>
+  return html`<${Modal} title=${"Settings · " + repoName} wide onClose=${onClose} footer=${html`<${Button} variant="destructive" class="push-left" onClick=${onRemove}>Remove from list<//><${Button} variant="ghost" onClick=${onClose}>Cancel<//><${Button} onClick=${save} disabled=${missing.length > 0 || !cleanName}>Save<//>`}>
     <${Field} label="Display name" hint="How this repository is listed. Two repositories may have the same name: the list then shows where each one is."><${Input} maxlength="80" value=${name} onInput=${e => setName(e.target.value)} /><//>
 
     ${BRANCH_FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Combobox} label=${label} exactOnly scope="on the remote" options=${remoteOptions} value=${form[key]} onChange=${v => set(key, v)} placeholder="Type to search the branches" /><//>`)}
 
-    <${Field} label="Task branch prefix" hint=${html`the start of the branches “Start a task” makes. Branch: <code>${prefix || "feature/"}my_task</code>`}>
+    <${Field} label="Task branch prefix" hint=${html`the start of the branches “Start a task” makes. Branch: <code>${prefix || "feature/"}my_task</code>`} error=${form.branchPrefix && prefix !== form.branchPrefix ? "A prefix must end with “/”: “" + prefix + "” will be saved." : ""}>
       <${Combobox} label="Task branch prefix" options=${prefixOptions(branches)} value=${form.branchPrefix} onChange=${v => set("branchPrefix", v)} placeholder="feature/" />
-      ${form.branchPrefix && prefix !== form.branchPrefix ? html`<span class="field-hint warn">A prefix must end with “/”: “${prefix}” will be saved.</span>` : null}
     <//>
 
-    <${Field} label="Release branch name" hint="the name “Release” proposes. {yymmdd} 261021 · {date} 20261021 · {n} the first free number from 0">
-      <${Input} class="mono" value=${form.releasePattern} placeholder=${DEFAULT_RELEASE_PATTERN} onInput=${e => set("releasePattern", e.target.value)} />
+    <${Field} label="Release branch name" hint="the name “Release” proposes. {yymmdd} 261021 · {date} 20261021 · {n} the first free number from 0" error=${preview.error || ""}>
+      <${Input} class="mono" value=${form.releasePattern} placeholder=${DEFAULT_RELEASE_PATTERN} aria-invalid=${preview.error ? "true" : undefined} onInput=${e => set("releasePattern", e.target.value)} />
       <div class="chips">
         ${["{yymmdd}", "{date}", "{n}"].map(t => html`<button type="button" class="chip" onClick=${() => set("releasePattern", form.releasePattern + t)}>${t}</button>`)}
       </div>
       <div class="chips">
         ${presets.map(p => html`<button type="button" class=${cn("chip", "chip-preset", p === form.releasePattern && "on")} onClick=${() => set("releasePattern", p)} title="Use this pattern">${p}${p === detected ? html` <em>from your branches</em>` : ""}</button>`)}
       </div>
-      ${preview.error ? html`<span class="field-hint warn">${preview.error}</span>` : html`<span class="field-hint">Next release branch: <code>${preview.name}</code></span>`}
+      ${preview.error ? null : html`<span class="field-hint">Next release branch: <code>${preview.name}</code></span>`}
     <//>
 
     ${RULE_FIELDS.map(([key, label, hint]) => html`<${Field} label=${label} hint=${hint}><${Input} class="mono" value=${form[key]} onInput=${e => set(key, e.target.value)} /><//>`)}

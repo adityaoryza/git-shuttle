@@ -49,13 +49,18 @@ export function Facts({ children }) {
   return html`<dl class="facts">${children}</dl>`;
 }
 
-export function Field({ label, hint, children }) {
-  return html`<label class="field"><span class="field-label">${label}</span>${children}${hint ? html`<span class="field-hint">${hint}</span>` : null}</label>`;
+export function Field({ label, hint, error, children }) {
+  return html`<label class="field"><span class="field-label">${label}</span>${children}${hint ? html`<span class="field-hint">${hint}</span>` : null}${error ? html`<span class="field-hint warn is-alert" role="alert">${error}</span>` : null}</label>`;
 }
 
 // `inputRef`: a ref of the <input> (a plain `ref` does not reach a function component).
 export function Input({ class: klass, inputRef, ...props }) {
   return html`<input class=${cn("input", klass)} spellcheck="false" ref=${inputRef} ...${props} />`;
+}
+
+// The same field as Input, for more than one line. The class is still "input", so the width rules apply.
+export function Textarea({ class: klass, rows = 3, ...props }) {
+  return html`<textarea class=${cn("input", klass)} rows=${rows} spellcheck="false" ...${props}></textarea>`;
 }
 
 export const SearchIcon = () => html`<svg class="search-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="M20 20l-3.5-3.5" /></svg>`;

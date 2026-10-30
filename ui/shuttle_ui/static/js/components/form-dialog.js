@@ -2,7 +2,7 @@
 import { html, useState, useEffect } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { formProblem, initialValues } from "../ops.js";
-import { Button, Field, Input, Modal, cn } from "./ui.js";
+import { Button, Field, Input, Modal, Textarea, cn } from "./ui.js";
 
 const remembered = key => { try { return localStorage.getItem("shuttle." + key) === "1"; } catch (e) { return false; } };
 const remember = (key, value) => { try { localStorage.setItem("shuttle." + key, value ? "1" : "0"); } catch (e) { /* not remembered */ } };
@@ -42,7 +42,7 @@ export function FormDialog({ title, fields, repoId, commit, submitLabel = "Conti
       : html`<${Field} label=${f.label} hint=${f.hint}>${f.type === "select"
         ? html`<select class="input" value=${values[f.name]} onChange=${e => set(f, e.target.value)}>${f.options.map(o => html`<option value=${o.value}>${o.label}</option>`)}</select>`
         : f.type === "textarea"
-          ? html`<textarea class=${"input" + (f.mono ? " mono" : "")} rows="6" disabled=${loading} autofocus=${f.autofocus} value=${values[f.name]} onInput=${e => set(f, e.target.value)}></textarea>`
+          ? html`<${Textarea} class=${f.mono ? "mono" : ""} rows="6" disabled=${loading} autofocus=${f.autofocus} value=${values[f.name]} onInput=${e => set(f, e.target.value)} />`
           : html`<${Input} class=${f.mono ? "mono" : ""} autofocus=${f.autofocus} placeholder=${f.placeholder} value=${values[f.name]} onInput=${e => set(f, e.target.value)} onKeyDown=${e => e.key === "Enter" && go()} />${f.templates ? html`<${TemplateChips} templates=${f.templates} value=${values[f.name]} onPick=${t => pickTemplate(f, t)} />` : null}`}<//>`)}
     ${problem && problem !== "loading" && Object.values(values).some(Boolean) ? html`<span class="field-hint warn" role="alert">${problem}</span>` : null}
   <//>`;

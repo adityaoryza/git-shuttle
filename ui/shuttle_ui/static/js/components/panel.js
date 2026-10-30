@@ -9,7 +9,7 @@ import { FileRow } from "./file-row.js";
 import { stageOfCandidate } from "../release-state.js";
 import { TaskBadge } from "./graph-view.js";
 import { StateChip } from "./state-chip.js";
-import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, Status, cn } from "./ui.js";
+import { Alert, Badge, Button, Field, Input, Output, Segmented, Skeleton, Status, Textarea, cn } from "./ui.js";
 
 // ---- what the repository says, in the words of the settings
 export function settings(status) {
@@ -251,7 +251,7 @@ export function ShipTab({ status, runner, groups, setGroups, tested, setTested, 
       <${Segmented} value=${how} onChange=${v => { setHow(v); runner.clearPreview(); }} options=${[{ value: "merge", label: "Merge into " + into }, { value: "pr", label: "Pull request" }]} />
       ${how === "pr" && ghMissing(status) ? html`<${Alert} tone="warn" title=${GH_MISSING.title}>${GH_MISSING.text}<//>` : null}
       ${how === "pr" ? html`<${Field} label="Title" hint="empty = first commit message"><${Input} value=${pr.title} onInput=${e => { setPr({ ...pr, title: e.target.value }); runner.clearPreview(); }} /><//>
-        <${Field} label="Description"><textarea class="input" rows="4" value=${pr.body} onInput=${e => { setPr({ ...pr, body: e.target.value }); runner.clearPreview(); }} /><//>
+        <${Field} label="Description"><${Textarea} rows="4" value=${pr.body} onInput=${e => { setPr({ ...pr, body: e.target.value }); runner.clearPreview(); }} /><//>
         <label class="check"><input type="checkbox" checked=${pr.draft} onChange=${e => { setPr({ ...pr, draft: e.target.checked }); runner.clearPreview(); }} /> Draft</label>` : null}
     </div>
 

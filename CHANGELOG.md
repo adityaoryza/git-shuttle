@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+### Fixed
+
+- The side panel no longer slides sideways when a deploy lists a long module line or a long server name. The modules wrap in the field.
+- A wrong deploy field and a wrong settings value say so under that field. The panel no longer clips the focus ring to stop the sideways slide.
+- Field outlines meet the contrast of a control, and the small labels share one size. On a narrow window the fields stay large enough that a phone does not zoom in.
+
 ## [0.14.3] - 2026-10-29
 
 ### Changed

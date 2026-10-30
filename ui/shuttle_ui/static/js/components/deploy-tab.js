@@ -5,7 +5,7 @@ import { api } from "../api.js";
 import { branchOptions } from "../logic.js";
 import { MODULES_RE, deployParams, deployProblems, emptyForm, formOf, lastDeployText, setupParams, setupProblems, suggestRequireName, tidyModules } from "../deploy.js";
 import { PreviewBox, settings } from "./panel.js";
-import { Alert, Button, Facts, Field, Input, Skeleton, Status } from "./ui.js";
+import { Alert, Button, Facts, Field, Input, Skeleton, Status, Textarea } from "./ui.js";
 
 export function DeployTab({ repoId, status, branches, runner, onError, confirm }) {
   const c = settings(status);
@@ -81,6 +81,10 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
   const saved = !!(target && target.saved) && !other;
   const params = target ? deployParams(target, { modules, typed }) : {};
   const problems = deployProblems(target, plan, { modules, typed, password: password || (saved ? "saved" : "") });
+  const moduleError = problems.find(p => p.startsWith("Modules:") || p.startsWith("Name the modules")) || "";
+  const confirmError = problems.find(p => p.startsWith("Type “")) || "";
+  const passwordError = problems.find(p => p.includes("password of the server")) || "";
+  const serverError = problems.find(p => p.startsWith("Choose")) || "";
   const ready = !!target && !!plan && !planning && problems.length === 0;
   const label = target ? "Deploy to " + target.target : "Deploy";
 
@@ -131,23 +135,23 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
 
   if (form) {
     const bad = setupProblems(form, { editing });
+    const said = prefix => { const hit = bad.find(p => p.startsWith(prefix)); return hit ? hit.slice(prefix.length).trim() : ""; };
     return html`<div class="deploy">
       <h3>${editing ? "Edit " + form.target : "Add a server"}</h3>
-      ${editing ? null : html`<${Field} label="Name" hint="staging, production…"><${Input} value=${form.target} onInput=${e => patch({ target: e.target.value })} placeholder="staging" autofocus /><//>`}
-      <${Field} label="Server" hint="Its address, or an alias of ~/.ssh/config."><${Input} value=${form.host} onInput=${e => patch({ host: e.target.value })} placeholder="203.0.113.10" /><//>
-      <${Field} label="User" hint="The user you log in with on that server. Empty: ssh uses your own user name, or the User of ~/.ssh/config."><${Input} value=${form.user} onInput=${e => patch({ user: e.target.value })} placeholder="deploy" autocomplete="off" /><//>
-      <${Field} label="Command" hint="What the server runs to update itself. {modules} is replaced by the modules that changed."><${Input} value=${form.command} onInput=${e => patch({ command: e.target.value })} placeholder="staging-update {modules}" /><//>
+      ${editing ? null : html`<${Field} label="Name" hint="staging, production…" error=${said("Name:")}><${Input} value=${form.target} onInput=${e => patch({ target: e.target.value })} placeholder="staging" autofocus aria-invalid=${said("Name:") ? "true" : undefined} /><//>`}
+      <${Field} label="Server" hint="Its address, or an alias of ~/.ssh/config." error=${said("Server:")}><${Input} value=${form.host} onInput=${e => patch({ host: e.target.value })} placeholder="203.0.113.10" aria-invalid=${said("Server:") ? "true" : undefined} /><//>
+      <${Field} label="User" hint="The user you log in with on that server. Empty: ssh uses your own user name, or the User of ~/.ssh/config." error=${said("User:")}><${Input} value=${form.user} onInput=${e => patch({ user: e.target.value })} placeholder="deploy" autocomplete="off" aria-invalid=${said("User:") ? "true" : undefined} /><//>
+      <${Field} label="Command" hint="What the server runs to update itself. {modules} is replaced by the modules that changed." error=${said("Command:")}><${Input} value=${form.command} onInput=${e => patch({ command: e.target.value })} placeholder="staging-update {modules}" aria-invalid=${said("Command:") ? "true" : undefined} /><//>
       <label class="check"><input type="checkbox" checked=${form.login} onChange=${e => patch({ login: e.target.checked })} /> It works in my own login on the server, but not here (an alias): run it in a login shell</label>
-      <${Field} label="Branch the server runs"><select class="input" value=${form.branch} onChange=${e => patch({ branch: e.target.value, ...(editing ? {} : { require_name: suggestRequireName(e.target.value, { integration: c.integration, release: c.release, base: c.release }) }) })}>
+      <${Field} label="Branch the server runs" error=${said("Branch:")}><select class="input" aria-invalid=${said("Branch:") ? "true" : undefined} value=${form.branch} onChange=${e => patch({ branch: e.target.value, ...(editing ? {} : { require_name: suggestRequireName(e.target.value, { integration: c.integration, release: c.release, base: c.release }) }) })}>
         ${[...new Set([form.branch, ...remoteBranches].filter(Boolean))].map(b => html`<option value=${b}>${b}</option>`)}</select><//>
       <p class="hint">The password is not asked here: you type it when you deploy, and it is never saved.</p>
       <details class="advanced"><summary>More options</summary>
         <${Field} label="Modules"><select class="input" value=${form.detector} onChange=${e => patch({ detector: e.target.value })}>
           <option value="none">I do not use {modules}</option><option value="odoo">Odoo: the folders with a __manifest__.py that changed</option></select><//>
         <label class="check"><input type="checkbox" checked=${form.require_name} onChange=${e => patch({ require_name: e.target.checked })} /> Type the name of the server before each deploy (use it for production)</label>
-        <${Field} label="ssh port" hint="Empty: the default."><${Input} value=${form.port} onInput=${e => patch({ port: e.target.value })} inputmode="numeric" /><//>
+        <${Field} label="ssh port" hint="Empty: the default." error=${said("Port:")}><${Input} value=${form.port} onInput=${e => patch({ port: e.target.value })} inputmode="numeric" aria-invalid=${said("Port:") ? "true" : undefined} /><//>
       </details>
-      ${bad.length ? html`<${Alert} tone="warn" title="Not ready"><ul>${bad.map(p => html`<li>${p}</li>`)}</ul><//>` : null}
       <div class="actions"><${Button} onClick=${save} disabled=${bad.length > 0 || runner.busy}>Save<//><${Button} variant="ghost" onClick=${() => setForm(null)}>Cancel<//></div>
     </div>`;
   }
@@ -161,7 +165,7 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
   }
   return html`<div class="deploy">
     <div class="deploy-pick">
-      <${Field} label="Server"><select class="input" value=${name} onChange=${e => setName(e.target.value)}>${targets.map(t => html`<option value=${t.target}>${t.target} — ${t.host}</option>`)}</select><//>
+      <${Field} label="Server" error=${serverError}><select class="input" aria-invalid=${serverError ? "true" : undefined} value=${name} onChange=${e => setName(e.target.value)}>${targets.map(t => html`<option value=${t.target}>${t.target} — ${t.host}</option>`)}</select><//>
       <${Button} variant="ghost" size="sm" onClick=${() => open(target)} disabled=${!target}>Edit<//>
       <${Button} variant="ghost" size="sm" onClick=${() => open(null)}>Add<//>
       <${Button} variant="ghost" size="sm" onClick=${remove} disabled=${!target || runner.busy}>Remove<//>
@@ -174,13 +178,13 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
       <dt>To</dt><dd><code>${plan.host}${plan.port ? ":" + plan.port : ""}</code>${plan.host.includes("@") ? "" : html` <span class="hint">no user: ssh uses your own (Edit the server to add it)</span>`}</dd>
       <dt>Runs</dt><dd><code>${plan.command}</code></dd>
     <//>` : null}
-    ${target && target.command.includes("{modules}") && (plan || edited !== null) ? html`<${Field} label="Modules" hint=${edited === null ? (plan && plan.modules ? "Found from what changed since the last deploy. Change them if needed." : "None found: name them.") : planning ? "Typed by hand · reading what would run…" : "Typed by hand."}>
-      <${Input} value=${edited === null ? (plan ? plan.modules : "") : edited} onInput=${e => { setEdited(e.target.value); runner.clearPreview(); }} placeholder="sale_documents,custom_technicien" /><//>` : null}
-    ${target && target.confirm === "name" ? html`<${Field} label=${"Type “" + target.target + "” to confirm"} hint=${typed && typed !== target.target ? "It does not match: type exactly “" + target.target + "”." : ""}><${Input} value=${typed} onInput=${e => setTyped(e.target.value)} autocomplete="off" aria-invalid=${typed && typed !== target.target ? "true" : undefined} /><//>` : null}
+    ${target && target.command.includes("{modules}") && (plan || edited !== null) ? html`<${Field} label="Modules" hint=${edited === null ? (plan && plan.modules ? "Found from what changed since the last deploy. Change them if needed." : "None found: name them.") : planning ? "Typed by hand · reading what would run…" : "Typed by hand."} error=${moduleError}>
+      <${Textarea} rows="3" aria-invalid=${moduleError ? "true" : undefined} value=${edited === null ? ((plan && plan.modules) || "").replace(/,/g, ", ") : edited} onInput=${e => { setEdited(e.target.value); runner.clearPreview(); }} placeholder="sale_documents, custom_technicien" /><//>` : null}
+    ${target && target.confirm === "name" ? html`<${Field} label=${"Type “" + target.target + "” to confirm"} error=${confirmError}><${Input} value=${typed} onInput=${e => setTyped(e.target.value)} autocomplete="off" aria-invalid=${confirmError ? "true" : undefined} /><//>` : null}
     ${target && saved ? html`<div class="deploy-saved"><${Status}>Password saved on this computer (${vaultInfo.label || "the keychain"}) · ${target.saved.replace("T", " ").slice(0, 16)}<//>
       <span class="deploy-saved-actions"><${Button} variant="ghost" size="sm" onClick=${() => setOther(true)}>Use another<//><${Button} variant="ghost" size="sm" onClick=${forgetPassword} disabled=${runner.busy}>Forget<//></span></div>` : null}
-    ${target && !saved ? html`<${Field} label="Password of the server" hint="For the login and for sudo, when the server asks. Not saved unless you tick the box below. Empty: you log in with a key.">
-      <${Input} type="password" value=${password} onInput=${e => setPassword(e.target.value)} autocomplete="new-password" /><//>
+    ${target && !saved ? html`<${Field} label="Password of the server" hint="For the login and for sudo, when the server asks. Not saved unless you tick the box below. Empty: you log in with a key." error=${passwordError}>
+      <${Input} type="password" value=${password} onInput=${e => setPassword(e.target.value)} autocomplete="new-password" aria-invalid=${passwordError ? "true" : undefined} /><//>
       ${vaultInfo.available
         ? html`<label class="check"><input type="checkbox" checked=${remember} onChange=${e => setRemember(e.target.checked)} /> Remember on this computer</label>
             <p class="hint">${remember ? "Kept by " + vaultInfo.label + ", only after the login worked: never in the repository or a file in clear, and this page never gets it back. You can forget it here at any time." : "So that you do not type it again. It is kept by " + vaultInfo.label + "."}</p>`
@@ -195,7 +199,7 @@ export function DeployTab({ repoId, status, branches, runner, onError, confirm }
       <${Button} variant="secondary" onClick=${test} disabled=${runner.busy || !target}>Test the connection<//>
       <${Button} variant="ghost" onClick=${() => runner.preview("deploy", params)} disabled=${runner.busy || !plan || problems.some(p => /modules/i.test(p))}>Show the exact command<//>
     </div>
-    ${problems.length && plan ? html`<p class="hint deploy-why"><strong>Cannot run yet:</strong> ${problems[0]}</p>` : null}
+    ${problems.some(p => p !== moduleError && p !== confirmError && p !== passwordError && p !== serverError && !p.startsWith("Reading")) ? html`<p class="hint deploy-why" role="alert"><strong>Cannot run yet:</strong> ${problems.find(p => p !== moduleError && p !== confirmError && p !== passwordError && p !== serverError && !p.startsWith("Reading"))}</p>` : null}
     <${PreviewBox} runner=${runner} action="deploy" />
   </div>`;
 }

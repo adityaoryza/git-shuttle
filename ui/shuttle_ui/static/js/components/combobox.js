@@ -37,6 +37,6 @@ export function Combobox({ value, onChange, options, placeholder, label, exactOn
     ${open && list.length ? html`<ul class="combo-list" role="listbox">${list.map((o, i) => html`
       <li role="option" aria-selected=${i === active} class=${cn(i === active && "on")} onMouseDown=${e => { e.preventDefault(); choose(o); }} onMouseEnter=${() => setActive(i)}>
         <span class="mono">${o.name}</span><span class="where">${o.where}</span></li>`)}</ul>` : null}
-    ${value && !open && !exists && exactOnly ? html`<span class="field-hint warn">No branch named “${value}”${scope ? " " + scope : ""}.${near.length ? html` Did you mean <button type="button" class="link" onClick=${() => onChange(near[0].name)}>${near[0].name}</button>?` : ""}</span>` : null}
+    ${value && !open && !exists && exactOnly ? html`<span class="field-hint warn is-alert" role="alert">No branch named “${value}”${scope ? " " + scope : ""}.${near.length ? html` Did you mean <button type="button" class="link" onClick=${() => onChange(near[0].name)}>${near[0].name}</button>?` : ""}</span>` : null}
   </div>`;
 }
