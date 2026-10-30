@@ -4,6 +4,8 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.4] - 2026-10-30
+
 ### Fixed
 
 - The side panel no longer slides sideways when a deploy lists a long module line or a long server name. The modules wrap in the field.
