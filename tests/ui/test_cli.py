@@ -375,6 +375,70 @@ class TestRestartHook(unittest.TestCase):
         self.assertEqual(made.call_args.kwargs["token"], "abc_DEF-123", "the token comes from the restart")
 
 
+class TestRestartKeepsThePort(unittest.TestCase):
+    """The browser stays on the port it opened. A restart that binds a new one is refused: its Host is not the page's."""
+
+    def _stop(self, proc):
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGINT)
+            proc.wait(timeout=15)
+
+    def test_restart_leaves_the_listening_socket_for_the_new_process(self):
+        from argparse import Namespace
+        from unittest import mock
+        from shuttle_ui.store import Store
+        config = tempfile.mkdtemp(prefix="shuttle-handover.")
+        self.addCleanup(lambda: __import__("shutil").rmtree(config, True))
+        server = cli.make_server(0, Store(os.path.join(config, "git-shuttle")), token="handover-token")
+        self.addCleanup(server.server_close)
+        fd = server.socket.fileno()
+        with mock.patch("shuttle_ui.cli.os.execv"):
+            cli.restart(server.server_address[1], server.token, Namespace(verbose=False, quiet=True), server)
+        self.addCleanup(os.environ.pop, "GIT_SHUTTLE_RESTART_FD", None)
+        self.addCleanup(os.environ.pop, "GIT_SHUTTLE_RESTART_TOKEN", None)
+        self.assertTrue(os.get_inheritable(fd), "the new process must inherit the socket")
+        self.assertEqual(os.environ.get("GIT_SHUTTLE_RESTART_FD"), str(fd))
+        self.assertEqual(server.socket.getsockname()[1], server.server_address[1], "the socket stays open")
+
+    def test_the_new_process_answers_on_the_port_the_page_already_has(self):
+        from shuttle_ui.store import Store
+        config = tempfile.mkdtemp(prefix="shuttle-same-port.")
+        self.addCleanup(lambda: __import__("shutil").rmtree(config, True))
+        server = cli.make_server(0, Store(os.path.join(config, "git-shuttle")), token="same-port-token")
+        self.addCleanup(server.server_close)
+        port = server.server_address[1]
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", "/", headers={"Host": "127.0.0.1:%d" % port, "Connection": "close"})
+        self.assertEqual(conn.getresponse().status, 200)
+        conn.close()
+        server.shutdown()       # stop accepting, keep the socket: closing it parks the port in TIME_WAIT
+        fd = server.socket.fileno()
+        os.set_inheritable(fd, True)
+        env = {**os.environ, "PYTHONPATH": os.path.abspath(UI_DIR), "XDG_CONFIG_HOME": config, "NO_COLOR": "1", "PYTHONUNBUFFERED": "1",
+               "GIT_SHUTTLE_NO_UPDATE_CHECK": "1", "GIT_SHUTTLE_RESTART_FD": str(fd), "GIT_SHUTTLE_RESTART_TOKEN": server.token}
+        proc = subprocess.Popen([sys.executable, "-m", "shuttle_ui", "--port", str(port), "--no-open", "--quiet"],
+                                env=env, pass_fds=(fd,), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(self._stop, proc)
+        text = ""
+        deadline = time.time() + 15
+        while "#token=" not in text and time.time() < deadline:
+            line = proc.stdout.readline()
+            if not line:
+                break
+            text += line
+        err = ""
+        if proc.poll() is not None:
+            err = proc.stderr.read()
+        self.assertIn("http://127.0.0.1:%d/#token=%s" % (port, server.token), text, text + err)
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.request("GET", "/api/version", headers={"Host": "127.0.0.1:%d" % port, "X-Shuttle-Token": server.token})
+        resp = conn.getresponse()
+        body = resp.read()
+        conn.close()
+        self.assertEqual(resp.status, 200, body)
+
+
 class TestTerminalOutput(Terminal):
     def test_default_log_has_the_banner_the_jobs_and_the_refusals_only(self):
         self.start()

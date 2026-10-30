@@ -2,6 +2,7 @@
 import hmac
 import json
 import os
+import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
@@ -163,12 +164,52 @@ class Handler(BaseHTTPRequestHandler):
     do_DELETE = do_PATCH = do_PUT
 
 
+def take_listener():
+    """The listening socket a restart handed over, or None on an ordinary start.
+
+    The new process serves that socket instead of binding again. Closing the old one first leaves the port in TIME_WAIT
+    (the browser connection sits there for a minute) and the new process would have to pick another port: the open page
+    then calls the old port and is refused. A value that is not a loopback listening socket is ignored, and only the
+    duplicate is closed, so a stray number cannot close some other file this process already had.
+    """
+    raw = os.environ.pop("GIT_SHUTTLE_RESTART_FD", "")
+    if not raw:
+        return None
+    try:
+        fd = int(raw)
+    except ValueError:
+        return None
+    if fd <= 2:
+        return None
+    try:
+        sock = socket.fromfd(fd, socket.AF_INET, socket.SOCK_STREAM)
+    except OSError:
+        return None
+    try:
+        listening = sock.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+        host = sock.getsockname()[0]
+    except OSError:
+        sock.close()
+        return None
+    if sock.fileno() == fd or not listening or host != "127.0.0.1":
+        sock.close()
+        return None
+    os.close(fd)        # fromfd duplicated it; the server holds the duplicate
+    return sock
+
+
 class UIServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = False
 
-    def __init__(self, address, store, token, verbose=False):
-        super().__init__(address, Handler)
+    def __init__(self, address, store, token, verbose=False, bound=None):
+        if bound is None:
+            super().__init__(address, Handler)
+        else:
+            super().__init__(address, Handler, bind_and_activate=False)     # already listening: binding again would take a new port
+            self.socket.close()
+            self.socket = bound
+            self.server_address = bound.getsockname()
         self.store = store
         self.token = token
         self.jobs = Jobs(store)

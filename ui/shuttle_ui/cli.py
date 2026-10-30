@@ -12,7 +12,7 @@ import threading
 import webbrowser
 
 from . import __author__, __version__, log, updates
-from .http import UIServer
+from .http import UIServer, take_listener
 from .runner import child_env
 from .store import Store, config_dir
 
@@ -23,7 +23,13 @@ WINDOWS_CWD = "/mnt/c"      # Windows programs started from a Linux folder compl
 
 
 def make_server(port=0, store=None, token=None, verbose=False):
-    """A server on 127.0.0.1 (never another interface); port 0 picks a free one."""
+    """A server on 127.0.0.1 (never another interface); port 0 picks a free one.
+
+    After an update the previous process hands over its listening socket, so the open page keeps its port and its link.
+    """
+    bound = take_listener()
+    if bound is not None:
+        return UIServer(bound.getsockname(), store or Store(config_dir()), token or secrets.token_urlsafe(32), verbose, bound)
     return UIServer(("127.0.0.1", port), store or Store(config_dir()), token or secrets.token_urlsafe(32), verbose)
 
 
@@ -47,8 +53,15 @@ def request_restart(server, restarting):
     return True
 
 
-def restart(port, token, args):
-    """Start this program again in place (same process, same port, same link, no new tab). Does not return."""
+def restart(port, token, args, server):
+    """Start this program again in place (same process, same port, same link, no new tab). Does not return.
+
+    The listening socket stays open and is inherited. Closing it first would leave the port in TIME_WAIT, the new
+    process would pick another port, and the open page would be refused (its Host is the old port).
+    """
+    fd = server.socket.fileno()
+    os.set_inheritable(fd, True)
+    os.environ["GIT_SHUTTLE_RESTART_FD"] = str(fd)       # read, and forgotten, by the new process
     flags = ["--verbose"] if args.verbose else ["--quiet"] if args.quiet else []
     log.LOGGER.info("restarting with the new version")
     os.environ["GIT_SHUTTLE_RESTART_TOKEN"] = token     # read, and forgotten, by the new process
@@ -171,9 +184,10 @@ def main(argv=None):
     try:
         server.serve_forever()
     finally:
-        server.server_close()
+        if not restarting.is_set():
+            server.server_close()      # a restart keeps this socket: the new process inherits it
     if restarting.is_set():
-        restart(port, server.token, args)
+        restart(port, server.token, args, server)
     if stopping.is_set():
         log.LOGGER.info("stopped")
 
