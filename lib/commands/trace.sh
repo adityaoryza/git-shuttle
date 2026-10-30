@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# git shuttle trace [list] [--porcelain] | show ID [--addon NAME] [--porcelain]
+# git shuttle trace [list] [--porcelain] | show ID [--addon NAME] [--porcelain] | sync TASK --branch NAME
 #
 # What happened to a task, from its first commit to the deploy that carried it. A branch that was started from a task (git shuttle start --task N,
 # with an add-on) remembers it; every step git-shuttle takes on that branch adds a line to <git dir>/shuttle-trace/events.jsonl: start (with what
@@ -18,6 +18,11 @@ trace_python() {
 }
 
 trace_file() {
+    # a dry run of trace sync reads the report from a copy, so a merge that is only about to be recorded is in the preview
+    if (( DRY_RUN )) && [[ -n "${TRACE_FILE_OVERRIDE:-}" ]]; then
+        printf '%s\n' "$TRACE_FILE_OVERRIDE"
+        return 0
+    fi
     local dir
     dir=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || return 1
     printf '%s/shuttle-trace/events.jsonl' "$dir"
@@ -100,11 +105,14 @@ trace_bind() {
     info "for:        $addon #$ref_id${ref_title:+  $ref_title}"
     info "history:    $count commit(s) not in $base${count:+; the pull request and its merge are added when gh finds them}"
     confirm "Link '$branch' to the task #$ref_id?"
-    (( DRY_RUN )) && return 0
-    git config "branch.$branch.shuttle-ref-addon" "$addon"
-    git config "branch.$branch.shuttle-ref-id" "$ref_id"
-    git config "branch.$branch.shuttle-ref-title" "$ref_title"
-    git config "branch.$branch.shuttle-ref-link" "$ref_link"
+    if (( DRY_RUN )); then
+        [[ -n "${TRACE_FILE_OVERRIDE:-}" ]] || return 0
+    else
+        git config "branch.$branch.shuttle-ref-addon" "$addon"
+        git config "branch.$branch.shuttle-ref-id" "$ref_id"
+        git config "branch.$branch.shuttle-ref-title" "$ref_title"
+        git config "branch.$branch.shuttle-ref-link" "$ref_link"
+    fi
     trace_python || { warn "the trace cannot be written (no python3): the branch is linked, its past is not recorded"; return 0; }
     local file pr_file="" gh=${GIT_SHUTTLE_GH:-gh} who summary
     file=$(trace_file) || return 0
@@ -116,8 +124,23 @@ trace_bind() {
     summary=$(TRACE_BASE=$base TRACE_PR=$pr_file "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" backfill "$file" "$who" "$REPO_ROOT" 2>&1) || warn "the past of the branch could not be recorded: $summary"
     [[ -z "$pr_file" ]] || rm -f "$pr_file"
     TRACE_VERB=append-once trace_event bind "$branch" "linked=later" "${ref_trace[@]}"
-    step "'$branch' is linked to $addon #$ref_id"
+    (( DRY_RUN )) || step "'$branch' is linked to $addon #$ref_id"
     info "recorded: $summary"
+}
+
+# trace_report_branch BRANCH — the Customer report of the task this branch is for.
+trace_report_branch() {
+    local rtarget=$1 rpr
+    load_branches
+    [[ -n "$rtarget" ]] || die "report: you are not on a branch: name it with --branch"
+    report_applicable "$rtarget" || die "report: '$rtarget' is not for a task whose add-on has the report turned on (git shuttle addon report NAME on)"
+    rpr=$(mktemp)
+    "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName,commits >"$rpr" 2>/dev/null || : >"$rpr"
+    if [[ ! -s "$rpr" ]] && ! report_has_steps "$REPORT_ADDON" "$REPORT_ID"; then
+        rm -f "$rpr"; die "report: there is no pull request for '$rtarget' and the trace has no step of the task (git shuttle pr, or git shuttle trace bind)"
+    fi
+    task_report_flow "$rtarget" "$INTEGRATION" "$rpr"
+    rm -f "$rpr"
 }
 
 cmd_trace() {
@@ -147,19 +170,27 @@ cmd_trace() {
             return 0 ;;
         report)
             # the pull request (when there is one) and the steps of the branch, added to the Customer report of its task (the same as after `git shuttle pr`)
-            local rtarget rpr
-            load_branches
-            rtarget=${branch:-$(git symbolic-ref -q --short HEAD || true)}
-            [[ -n "$rtarget" ]] || die "report: you are not on a branch: name it with --branch"
-            report_applicable "$rtarget" || die "report: '$rtarget' is not for a task whose add-on has the report turned on (git shuttle addon report NAME on)"
-            rpr=$(mktemp)
-            # without a pull request (a merge made by git shuttle, or by hand) the report is the steps of the task in the trace
-            "${GIT_SHUTTLE_GH:-gh}" pr view "$rtarget" --json url,number,title,baseRefName,commits >"$rpr" 2>/dev/null || : >"$rpr"
-            if [[ ! -s "$rpr" ]] && ! report_has_steps "$REPORT_ADDON" "$REPORT_ID"; then
-                rm -f "$rpr"; die "report: there is no pull request for '$rtarget' and the trace has no step of the task (git shuttle pr, or git shuttle trace bind)"
+            trace_report_branch "${branch:-$(git symbolic-ref -q --short HEAD || true)}"
+            return 0 ;;
+        sync)
+            # record what the pull request already has (its merge), then write the Customer report from that trace
+            [[ -n "$id" ]] || die "trace sync needs the task:  git shuttle trace sync TASK --branch NAME"
+            [[ -n "$branch" ]] || die "trace sync needs the branch: --branch NAME"
+            if (( DRY_RUN )); then
+                local copy
+                copy=$(mktemp)
+                chmod 600 "$copy"
+                [[ -s "$file" ]] && cp "$file" "$copy"
+                trap 'rm -f "$copy"' EXIT
+                TRACE_FILE_OVERRIDE=$copy
+                trace_bind "$id" "$addon" "$branch" 0
+                trace_report_branch "$branch"
+                unset TRACE_FILE_OVERRIDE
+                rm -f "$copy"
+                return 0
             fi
-            task_report_flow "$rtarget" "$INTEGRATION" "$rpr"
-            rm -f "$rpr"
+            trace_bind "$id" "$addon" "$branch" 0
+            trace_report_branch "$branch"
             return 0 ;;
         unbind)
             # a branch that was linked to a task by mistake: it forgets the task, and its steps leave the trace
@@ -221,6 +252,6 @@ for e in data["events"]:
     for k, v in (e.get("details") or {}).items():
         print("                         %s: %s" % (k, v))'
             ;;
-        *) die "trace: '$sub' is not a command (list, show, bind, unbind, report, map)" ;;
+        *) die "trace: '$sub' is not a command (list, show, bind, unbind, sync, report, map)" ;;
     esac
 }

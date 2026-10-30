@@ -593,7 +593,7 @@ kbd { font: 600 12px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .task-badge:first-child { margin-left: 0; margin-right: 6px; }
 .empty-note { display: grid; gap: 4px; padding: 14px; border: 1px dashed var(--border); border-radius: var(--radius); text-align: center; }
 .task-accordion { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 8px; }
-.task-line { display: flex; align-items: center; gap: 8px; padding-right: 8px; } .task-line .task-head { flex: 1; width: auto; } .task-line > .btn { flex: none; align-self: center; }
+.task-line { display: flex; align-items: center; gap: 8px; padding-right: 8px; } .task-line .task-head { flex: 1; width: auto; } .task-line > .btn, .task-line > .task-actions { flex: none; align-self: center; } .task-actions { display: inline-flex; gap: 6px; }
 .task-accordion > li { border: 1px solid var(--border); border-radius: 8px; min-width: 0; background: var(--background); } .task-accordion > li.open { border-color: color-mix(in srgb, var(--foreground) 40%, var(--border)); }
 .task-head { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; font: inherit; padding: 10px 12px; cursor: pointer; min-width: 0; border-radius: 8px; }
 .task-head:hover { background: var(--accent); } .task-head:focus-visible { outline: 2px solid var(--ring); }
@@ -601,7 +601,7 @@ kbd { font: 600 12px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .task-branches { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px 32px; } .task-body { padding: 0 12px 12px 32px; display: grid; gap: 8px; }
 .timeline li { position: relative; } .timeline li::before { content: ""; position: absolute; left: -17px; top: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--muted-foreground); }
 .timeline .ev-start::before, .timeline .ev-bind::before { background: var(--brand); } .timeline .ev-merge::before, .timeline .ev-release::before { background: var(--ok); } .timeline .ev-pr::before { background: var(--warn); } .timeline .ev-deploy::before { background: var(--ok); } .timeline .ev-fold::before { display: none; }
-@media (max-width: 700px) { .task-head { flex-wrap: wrap; row-gap: 2px; } .task-head .msg { flex-basis: 100%; order: 3; white-space: normal; } .task-body, .task-branches { padding-left: 12px; } }
+@media (max-width: 700px) { .task-line, .task-head { flex-wrap: wrap; row-gap: 2px; } .task-head .msg { flex-basis: 100%; order: 3; white-space: normal; } .task-body, .task-branches { padding-left: 12px; } }
 .task-badge-link { color: var(--brand); text-decoration: none; cursor: pointer; } .task-badge-link:hover { text-decoration: underline; } .task-badge-link:focus-visible { outline: 2px solid var(--ring); }
 .task-list li.picked { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 45%, var(--border)); border-radius: 4px; } .task-list li.picked .task-row { background: var(--muted); }
 .task-check { width: 14px; color: var(--foreground); font-weight: 700; flex: none; }

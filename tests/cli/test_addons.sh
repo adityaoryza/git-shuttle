@@ -578,4 +578,52 @@ assert_contains "$OUT" "no step of the task" "...says why"
 git checkout -q develop
 shuttle -y addon report reporter off
 
+# --- sync: record a merge the pull request already has, then write the report; a dry run leaves the trace as it is ----------------
+cat >"$AD/git-shuttle-flow" <<'EOF'
+#!/usr/bin/env bash
+case "${1:-}" in
+    --shuttle-manifest) echo '{"protocol":1,"name":"flow","hooks":["start","report"],"flags":{"start":["--task"]},"env":["FAKE_LOG","FAKE_MODE"]}' ;;
+    hook)
+        input=$(cat)
+        action=$(python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("action") or d.get("hook") or "")' <<<"$input")
+        case "$2:$action" in
+            start:*) echo '{"branch":"Synced","reference":{"id":"42","title":"Synced","link":"https://odoo.example/web#id=42"}}' ;;
+            report:preview) printf '%s' "$input" >"$FAKE_LOG.flow.preview"; echo '{"ok":true,"message":"would add the steps","text":"the steps","field":"x_customer_report"}' ;;
+            report:post) printf '%s' "$input" >"$FAKE_LOG.flow.post"; echo '{"ok":true,"message":"Added to x_customer_report of task 42","text":"","field":"x_customer_report"}' ;;
+            *) echo '{}' ;;
+        esac ;;
+esac
+EOF
+chmod +x "$AD/git-shuttle-flow"
+shuttle -y addon enable flow
+shuttle -y addon report flow on
+git checkout -q -b synced develop
+echo s >synced.txt; git add synced.txt; git commit -q -m "[FEAT] shop: synced"
+FAKE_MODE=ok GIT_SHUTTLE_GH="$SB/gh-nopr" shuttle -y trace bind 42 --addon flow --branch synced
+assert_status 0 "$RC" "link the branch before a sync"
+assert_eq "" "$(grep '"task": "42"' "$TRACE" | grep '"type": "merge"' || true)" "the merge of this task is not in the trace yet"
+git checkout -q develop
+git merge -q --no-ff synced -m "Merge branch 'synced' into develop"
+MERGE=$(git rev-parse HEAD)
+python3 -c 'import json,sys; open(sys.argv[1],"a").write(json.dumps({"time":"2026-03-01T00:00:00Z","type":"deploy","target":"staging","tip":sys.argv[2],"branch":"develop","modules":""})+"\n")' "$TRACE" "$MERGE"
+before=$(cat "$TRACE")
+cat >"$SB/gh-merged" <<EOF
+#!/bin/sh
+printf '%s\n' '{"url":"https://github.example/a/b/pull/9","number":9,"title":"Synced","state":"MERGED","baseRefName":"develop","createdAt":"2026-02-01T00:00:00Z","mergedAt":"2026-02-02T00:00:00Z","mergeCommit":{"oid":"$MERGE"},"commits":[]}'
+EOF
+chmod +x "$SB/gh-merged"
+rm -f "$FAKE_LOG.flow.preview" "$FAKE_LOG.flow.post"
+FAKE_MODE=ok GIT_SHUTTLE_GH="$SB/gh-merged" shuttle -n trace sync 42 --addon flow --branch synced
+assert_status 0 "$RC" "trace sync --dry-run"
+assert_eq "$before" "$(cat "$TRACE")" "...writes nothing to the trace"
+assert_not_contains "$(cat "$FAKE_LOG.flow.post" 2>/dev/null)" "post" "...and does not write the report"
+assert_contains "$(cat "$FAKE_LOG.flow.preview")" '"title": "Merged"' "...the preview has the merge that would be recorded"
+assert_contains "$(cat "$FAKE_LOG.flow.preview")" '"title": "Deployed"' "...and the deploy that carried it"
+rm -f "$FAKE_LOG.flow.preview" "$FAKE_LOG.flow.post"
+FAKE_MODE=ok GIT_SHUTTLE_GH="$SB/gh-merged" shuttle -y trace sync 42 --addon flow --branch synced
+assert_status 0 "$RC" "trace sync"
+assert_contains "$(cat "$TRACE")" '"type": "merge"' "...the merge is recorded"
+assert_contains "$(cat "$FAKE_LOG.flow.post")" '"title": "Merged"' "...and the report is written from that trace"
+assert_contains "$(cat "$FAKE_LOG.flow.post")" '"title": "Deployed"' "...including the deploy"
+
 finish

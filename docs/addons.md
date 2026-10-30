@@ -76,7 +76,7 @@ made before this was recorded is recognized by its patch when the trace is read.
 A branch that already had work is linked afterwards: `git shuttle trace bind 15530 [--addon NAME] [--branch NAME] [--force]`, or **Tasks**, then **Link a
 branch** in the web UI (after a preview). The add-on is asked for the task (its `start` hook), the branch remembers it, and what the branch already
 did is written with its real dates: its start, its commits that the integration branch does not have, and, when `gh` finds them, its pull request
-and the merge (a merged branch has its commits from the pull request). Run again, it adds only what is missing. A shared branch (the integration
+and the merge (a merged branch has its commits from the pull request). Run again, it adds only what is missing. `git shuttle trace sync TASK --branch NAME` does that and then writes the Customer report (the same as Sync in Tasks). A shared branch (the integration
 or the release branch) cannot be linked, and a branch that is for another task needs `--force`.
 
 A branch remembers what it is for: `branch.NAME.shuttle-ref-addon`, `-id`, `-title` and `-link` in the settings of the repository.

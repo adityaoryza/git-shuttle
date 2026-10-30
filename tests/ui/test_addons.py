@@ -175,8 +175,12 @@ class TestAddons(Base):
         self.assertEqual(build_commands("addon-report", {"name": "odoo-task", "on": True}), [["addon", "report", "odoo-task", "on"]])
         self.assertEqual(build_commands("addon-report", {"name": "odoo-task", "on": False}), [["addon", "report", "odoo-task", "off"]])
         self.assertEqual(build_commands("task-report", {"branch": "feature/x"}), [["trace", "report", "--branch", "feature/x"]])
+        self.assertEqual(build_commands("task-sync", {"task": "15607", "addon": "tracker", "branch": "feature/x"}),
+                         [["trace", "sync", "15607", "--addon", "tracker", "--branch", "feature/x"]])
         for action, bad in (("addon-report", {"name": "odoo-task", "on": "yes"}), ("addon-report", {"name": "../x", "on": True}), ("addon-report", {"on": True}),
-                            ("task-report", {}), ("task-report", {"branch": "--evil"})):
+                            ("task-report", {}), ("task-report", {"branch": "--evil"}),
+                            ("task-sync", {}), ("task-sync", {"task": "15607"}), ("task-sync", {"task": "-x", "branch": "feature/x"}),
+                            ("task-sync", {"task": "1", "branch": "--evil"}), ("task-sync", {"task": "1", "addon": "../x", "branch": "feature/x"})):
             with self.assertRaises(BadRequest):
                 build_commands(action, bad)
 

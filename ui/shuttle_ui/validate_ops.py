@@ -221,6 +221,17 @@ def build(action, p):
         return [["addon", "report", addon, "on" if p["on"] else "off"]]
     if action == "task-report":
         return [["trace", "report", "--branch", name(p.get("branch"), "the branch")]]
+    if action == "task-sync":
+        addon = p.get("addon")
+        if addon is not None and (not isinstance(addon, str) or not ADDON_RE.match(addon)):
+            raise BadRequest("the name of the add-on is not valid: lowercase letters, digits and -")
+        task = text(p.get("task"), "the task", 300, True, True)
+        if task.startswith("-"):
+            raise BadRequest("the task cannot start with -")
+        args = ["trace", "sync", task]
+        if addon:
+            args += ["--addon", addon]
+        return [args + ["--branch", name(p.get("branch"), "the branch")]]
     if action == "task-unbind":
         return [["trace", "unbind", "--branch", name(p.get("branch"), "the branch")]]
     if action == "task-bind":

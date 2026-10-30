@@ -243,6 +243,7 @@ export const OPS = {
   "addon-disable": { label: "Disable an add-on", special: "addons", reason: () => "" },
   "addon-report": { label: "Turn the Customer report of an add-on on or off", special: "addons", reason: () => "" },
   "task-report": { label: "Add the pull request and commits to the Customer report", special: "tasks", reason: () => "" },
+  "task-sync": { label: "Record a missing merge, then write the Customer report", special: "tasks", reason: () => "" },
   "task-unbind": { label: "Unlink a branch from its task", special: "tasks", reason: () => "" },
   "task-bind": { label: "Link a branch to a task", special: "tasks", reason: () => "" },
   "addon-install": { label: "Install an add-on", special: "addons", reason: () => "" },
