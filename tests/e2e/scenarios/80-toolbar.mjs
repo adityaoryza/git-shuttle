@@ -17,9 +17,9 @@ export const scenarios = {
     await page.locator(".panel-strip").waitFor();
     t.ok("it is remembered after a reload", !(await page.locator("aside.panel").isVisible()));
     await page.getByRole("button", { name: /Unfold the side panel/ }).click();
-    await page.locator("aside.panel").waitFor();
+    await page.getByRole("tab", { name: "Start" }).waitFor();
     t.ok("the strip unfolds it, with its tabs", (await page.locator(".panel-strip").count()) === 0 && (await page.getByRole("tab", { name: "Start" }).isVisible()));
-    await page.locator(".graph-pane").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.evaluate(() => document.activeElement && document.activeElement.blur());   // a shortcut is not taken while a field has the focus
     await page.keyboard.press("]");
     await page.locator(".panel-strip").waitFor();
     t.ok("] folds it", !(await page.locator("aside.panel").isVisible()));
