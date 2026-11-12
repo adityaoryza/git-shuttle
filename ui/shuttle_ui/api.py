@@ -438,6 +438,8 @@ def handle(server, method, route, body):
             return trace_json(repo, ["map"])
         if method == "GET" and rest == ["trace", "tasks"]:
             return trace_json(repo, ["list"])
+        if method == "GET" and rest == ["trace", "status"]:
+            return trace_json(repo, ["status"])
         if method == "POST" and rest == ["trace", "show"]:
             from .validate_ops import ADDON_RE, TASK_ID_RE
             addon, task = body.get("addon"), body.get("task")

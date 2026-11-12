@@ -144,6 +144,15 @@ assert_contains "$OUT" '"id": "15607"' "...and gives it as JSON with --porcelain
 shuttle trace show 15607 --addon task
 assert_status 0 "$RC" "trace show"
 assert_contains "$OUT" "commit" "...lists the steps"
+git fetch -q origin
+shuttle trace status 15607
+assert_status 0 "$RC" "trace status"
+assert_contains "$OUT" "task 15607" "...names the task"
+assert_contains "$OUT" "branch only" "...a commit that was not merged yet is on its branch only"
+shuttle trace status --porcelain
+assert_contains "$OUT" '"state": "branch"' "trace status --porcelain is JSON, every task"
+shuttle trace status 99999
+assert_status 1 "$RC" "trace status of a task that has no trace"
 git checkout -q -b plain-branch develop
 echo plain >plain.txt; git add plain.txt
 before=$(wc -l <"$TRACE")

@@ -6,6 +6,7 @@ import { linkify, stageTone } from "../logic.js";
 import { ExternalLink } from "./links.js";
 import { Alert, Badge, Button, Facts, Field, Input, ItemList, ItemRow, Modal, Segmented, Skeleton, Status } from "./ui.js";
 import { Combobox } from "./combobox.js";
+import { STATE_LABEL, STATE_TONE, commitNote, countsText, leftToPick, segments, taskRows, totals } from "../task-release.js";
 
 const webAddress = link => (typeof link === "string" && /^https?:\/\//.test(link) ? link : "");
 
@@ -206,6 +207,50 @@ function Timeline({ events }) {
     </li>`))}</ol>`;
 }
 
+// Where the commits of every task are on their way to production (GET /trace/status): in prod, in a release branch that is not merged yet,
+// only merged into the integration branch, or only on their branch. A pick that needed a hand counts as released (same author, date, subject).
+function TaskRelease({ repoId, onRun, notify }) {
+  const [data, setData] = useState(null);
+  const [show, setShow] = useState("todo");
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(null);
+  const load = () => { setData(null); api("GET", "repos/" + repoId + "/trace/status").then(setData, e => { setData({ tasks: [] }); notify({ variant: "error", title: "Cannot read where the tasks are", detail: e.message }); }); };
+  useEffect(load, []);
+  if (data === null) return html`<${Skeleton} rows=${4} />`;
+  const all = taskRows(data, "all", ""), todo = taskRows(data, "todo", "");
+  const rows = taskRows(data, show, query), sum = totals(rows);
+  return html`
+    <p class="hint">Where the commits of each task are. <strong>In prod</strong>: on <code>${data.release || "?"}</code>, also when a pick needed a hand (same author, date and subject). <strong>On its way</strong>: in a release branch not merged yet${(data.open || []).length ? html` (${data.open.map((n, i) => html`${i ? ", " : ""}<code>${n}</code>`)})` : null}. <strong>Not in prod</strong>: merged into <code>${data.integration || "?"}</code> only.</p>
+    <div class="task-release-bar">
+      <${Segmented} value=${show} onChange=${setShow} options=${[{ value: "todo", label: "To release (" + todo.length + ")" }, { value: "all", label: "All (" + all.length + ")" }]} />
+      <${Input} value=${query} placeholder="Filter: task, title, branch" aria-label="Filter the tasks" onInput=${e => setQuery(e.target.value)} />
+      <${Button} size="sm" variant="ghost" title="Read again (after a fetch, a merge or a release)" onClick=${load}>Refresh<//>
+    </div>
+    ${rows.length ? html`<p class="hint">${rows.length} task(s): ${countsText(sum)}.</p>` : null}
+    ${rows.length === 0 ? html`<div class="empty-note"><strong>${show === "todo" && all.length ? "Everything is in prod" : "No task here"}</strong><span class="hint">${show === "todo" && all.length ? "Every traced commit of every task is released. All shows them." : "Start a branch from a task, or link a branch that already has work."}</span></div>` : html`<ul class="task-accordion task-release">${rows.map(task => {
+      const key = task.addon + ":" + task.id, isOpen = open === key, parts = segments(task.counts);
+      const left = leftToPick([task]).map(c => c.sha);
+      return html`<li class=${isOpen ? "open" : ""}>
+        <div class="task-line">
+          <button type="button" class="task-head" aria-expanded=${isOpen} onClick=${() => setOpen(isOpen ? null : key)}>
+            <span class="chev" aria-hidden="true">${isOpen ? "▾" : "▸"}</span><span class="mono">${task.id}</span><strong class="msg">${task.title || "(no title)"}</strong>
+            <span class="release-meter" role="img" aria-label=${countsText(task.counts)} title=${countsText(task.counts)}>${parts.map(p => html`<span class=${"seg seg-" + p.state} style=${{ width: p.pct + "%" }}></span>`)}</span>
+            <span class="hint release-counts">${parts.map(p => html`<span class=${"count count-" + p.state}>${p.n} ${STATE_LABEL[p.state].toLowerCase()}</span>`)}</span>
+          </button>
+          <span class="task-actions">
+            <${Button} size="sm" variant="outline" disabled=${!left.length} title=${left.length ? "Makes a release branch from " + data.release + " with the " + left.length + " commit(s) of this task that are merged and not in prod, in their order. A preview comes first." : "Nothing of this task is waiting in " + data.integration} onClick=${() => onRun("release", { onto: "auto", commits: left }, "Release task " + task.id)}>Release ${left.length || ""}<//>
+          </span>
+        </div>
+        ${isOpen ? html`<div class="task-body"><table class="history release-commits"><thead><tr><th scope="col">Where</th><th scope="col">Commit</th><th scope="col">Subject</th></tr></thead><tbody>
+          ${task.commits.map(c => html`<tr>
+            <td><${Badge} tone=${STATE_TONE[c.state]}>${STATE_LABEL[c.state]}<//></td>
+            <td class="mono" title=${c.sha}>${c.sha.slice(0, 8)}</td>
+            <td><span class="msg">${c.subject || "(unknown)"}</span>${commitNote(c) ? html`<span class="hint"> ${commitNote(c)}</span>` : null}</td>
+          </tr>`)}</tbody></table></div>` : null}
+      </li>`;
+    })}</ul>`}`;
+}
+
 // every step that git-shuttle took for the tasks, in order: start, commit, push, pull request, merge, release, deploy.
 // A branch that had work before can be linked to a task: its past (commits, pull request, merge) is written with the dates it had.
 export function TasksDialog({ repoId, branches, current, onRun, onClose, notify }) {
@@ -234,8 +279,8 @@ export function TasksDialog({ repoId, branches, current, onRun, onClose, notify 
   const addon = typed.trim() ? "" : pick ? pick.addon : "";
   const goLink = () => { setTab("branches"); setLinking(true); };
   return html`<${Modal} title="Tasks" wide onClose=${onClose} initialFocus=".segmented button.on">
-    <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "tasks", label: "Tasks" + (tasks ? " (" + tasks.length + ")" : "") }, { value: "branches", label: "Branches" + (linked ? " (" + linked.length + ")" : "") }]} />
-    ${tab === "tasks" ? html`
+    <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "tasks", label: "Tasks" + (tasks ? " (" + tasks.length + ")" : "") }, { value: "release", label: "Release" }, { value: "branches", label: "Branches" + (linked ? " (" + linked.length + ")" : "") }]} />
+    ${tab === "release" ? html`<${TaskRelease} repoId=${repoId} onRun=${onRun} notify=${notify} />` : tab === "tasks" ? html`
       <p class="hint">What happened to each task you started from an add-on, from the first commit to the deploy. Click a task to see it. Times are in your time zone; nothing leaves this repository.</p>
       ${tasks === null ? html`<${Skeleton} rows=${3} />` : tasks.length === 0 ? html`<div class="empty-note"><strong>No task yet</strong><span class="hint">Start one from the Start tab, or link a branch that already has work.</span></div>` : html`<ul class="task-accordion">${tasks.map(t => {
         const key = t.addon + ":" + t.id, isOpen = open === key;

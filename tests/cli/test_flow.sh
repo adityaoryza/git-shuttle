@@ -116,6 +116,13 @@ git checkout -q -b manual release; git cherry-pick "$(git rev-parse feat/c1)" >/
 PJ=$(porcelain_json candidates --porcelain)
 assert_contains "$(pj commit)" "-"$'\x1f'"c1 commit" "a commit that is in the release branch is marked -"
 assert_contains "$(pj commit)" "+"$'\x1f'"c2 second" "...the others stay +"
+# a pick that needed a hand (another change, the same author, date and subject) is released too: '-', not '+'
+git checkout -q -b manual2 origin/release; git cherry-pick --no-commit "$(git rev-parse feat/c2~1)" >/dev/null 2>&1
+echo "c2, as prod needs it" > c2.txt; git add c2.txt; git commit -q -C "$(git rev-parse feat/c2~1)"; git push -q origin manual2:release; git checkout -q main
+PJ=$(porcelain_json candidates --porcelain)
+assert_contains "$(pj commit)" "-"$'\x1f'"c2 first" "a commit picked by hand into the release branch is marked -"
+assert_contains "$(pj commit)" "+"$'\x1f'"c2 second" "...its neighbour that was not picked stays +"
+git push -q -f origin manual:release
 # a release branch that is on its way: its commits are "~", not "+" (they are not in the release branch, but they are in a release)
 git config shuttle.releasePattern "rel-q/{n}"
 shuttle -y release --onto rel-q/1 --push feat/c2

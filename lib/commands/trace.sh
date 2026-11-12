@@ -1,5 +1,5 @@
 # shellcheck shell=bash
-# git shuttle trace [list] [--porcelain] | show ID [--addon NAME] [--porcelain] | sync TASK --branch NAME
+# git shuttle trace [list] [--porcelain] | show ID [--addon NAME] [--porcelain] | status [ID] [--addon NAME] [--porcelain] | sync TASK --branch NAME
 #
 # What happened to a task, from its first commit to the deploy that carried it. A branch that was started from a task (git shuttle start --task N,
 # with an add-on) remembers it; every step git-shuttle takes on that branch adds a line to <git dir>/shuttle-trace/events.jsonl: start (with what
@@ -168,6 +168,47 @@ cmd_trace() {
             load_branches
             TRACE_SHARED="$BASE $INTEGRATION $RELEASE" TRACE_BASE=${remote_ref:-HEAD} "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" map "$file" "$REPO_ROOT"
             return 0 ;;
+        status)
+            # where the commits of each task are: on the release line (prod), in a release branch on its way, on the integration branch only, on their branch
+            local remote rel_ref int_ref open="" ref task_args=()
+            load_branches
+            remote=$(cfg_remote)
+            rel_ref="refs/remotes/$remote/$RELEASE"; int_ref="refs/remotes/$remote/$INTEGRATION"
+            have_ref "$rel_ref" || die "the branch '$RELEASE' does not exist on '$remote' (git fetch first?)"
+            have_ref "$int_ref" || die "the branch '$INTEGRATION' does not exist on '$remote' (git fetch first?)"
+            while read -r ref; do
+                [[ -n "$ref" ]] && open+="${ref#"refs/remotes/$remote/"}"$'\t'"$ref"$'\n'
+            done < <(open_release_refs "$remote" "$rel_ref")
+            if [[ -n "$id" ]]; then
+                if [[ -z "$addon" ]]; then
+                    addon=$("$TRACE_PY" -I "$ROOT/lib/addons/trace.py" tasks "$file" | "$TRACE_PY" -I -c '
+import json, sys
+print(next((t["addon"] for t in json.load(sys.stdin)["tasks"] if t["id"] == sys.argv[1]), ""))' "$id")
+                    [[ -n "$addon" ]] || die "no trace of the task '$id' in this repository (git shuttle trace list)"
+                fi
+                task_args=("$addon" "$id")
+            fi
+            local json
+            json=$(TRACE_OPEN=$open "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" status "$file" "$REPO_ROOT" \
+                "$RELEASE"$'\t'"$rel_ref" "$INTEGRATION"$'\t'"$int_ref" "${task_args[@]}") || die "the trace cannot be read"
+            if (( porcelain )); then printf '%s\n' "$json"; return 0; fi
+            printf '%s\n' "$json" | "$TRACE_PY" -I -c '
+import json, sys
+data = json.load(sys.stdin)
+say = {"prod": "released", "release": "on its way", "staging": "staging only", "branch": "branch only", "missing": "not here"}
+how = {"patch": "same change", "picked": "picked by hand"}
+print("released = on %s; on its way = in a release branch not merged yet%s" % (data["release"], (" (" + ", ".join(data["open"]) + ")") if data["open"] else ""))
+if not data["tasks"]:
+    print("No task has been traced yet: start a branch from a task (git shuttle start --task N, with an add-on enabled).")
+for t in data["tasks"]:
+    c = t["counts"]
+    print()
+    print("task %s: %s" % (t["id"], t["title"] or "(no title)"))
+    print("  " + ", ".join("%d %s" % (c[k], say[k]) for k in ("prod", "release", "staging", "branch", "missing") if c[k]) if t["commits"] else "  no commit traced")
+    for r in t["commits"]:
+        extra = " (%s, %s)" % (how[r["match"]], r["as"][:8]) if r["match"] in how else (" (%s)" % r["where"] if r["state"] == "release" else "")
+        print("  %-13s %s %s%s" % (say[r["state"]], r["sha"][:8], r["subject"], extra))'
+            return 0 ;;
         report)
             # the pull request (when there is one) and the steps of the branch, added to the Customer report of its task (the same as after `git shuttle pr`)
             trace_report_branch "${branch:-$(git symbolic-ref -q --short HEAD || true)}"
@@ -252,6 +293,6 @@ for e in data["events"]:
     for k, v in (e.get("details") or {}).items():
         print("                         %s: %s" % (k, v))'
             ;;
-        *) die "trace: '$sub' is not a command (list, show, bind, unbind, sync, report, map)" ;;
+        *) die "trace: '$sub' is not a command (list, show, status, bind, unbind, sync, report, map)" ;;
     esac
 }

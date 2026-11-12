@@ -4,6 +4,9 @@
 # Read from the merge commits of the integration branch since the release branch. A branch merged by fast-forward or squash
 # leaves no merge commit: it is not listed (pick its commits by hash).
 
+# What a cherry-pick keeps of a commit even when its patch changed: the author, the author date and the subject (trace.py uses the same).
+PICK_KEY_FORMAT='%ae%x1f%at%x1f%s'
+
 # open_release_refs REMOTE RELEASE_REF — the release branches that are not in the release branch yet (made with shuttle.releasePattern), newest first
 open_release_refs() {
     local remote=$1 release=$2 pattern glob ref
@@ -34,15 +37,23 @@ cmd_candidates() {
     have_ref "$release" || die "the branch '$RELEASE' does not exist on '$remote' (git fetch first?)"
 
     # '~' = not in the release branch, but in a release branch that is on its way (a pull request that is not merged yet)
-    local -A queued=()
-    local ref name
+    local -A queued=() queued_key=() shipped_key=()
+    local ref name key
     while read -r ref; do
         [[ -n "$ref" ]] || continue
         name=${ref#"refs/remotes/$remote/"}
         while read -r mark hash; do
             [[ "$mark" == "-" && -n "${hash:-}" && -z "${queued[$hash]:-}" ]] && queued[$hash]=$name
         done < <(git cherry "$ref" "$integration" "$release" 2>/dev/null)
+        while IFS= read -r key; do
+            [[ -n "$key" && -z "${queued_key[$key]:-}" ]] && queued_key[$key]=$name
+        done < <(git log --no-merges --format="$PICK_KEY_FORMAT" "$release..$ref" 2>/dev/null)
     done < <(open_release_refs "$remote" "$release")
+    # a pick that needed a hand (a conflict, a version kept) has another patch: it is the same commit when its author, author date and
+    # subject are there (a cherry-pick keeps them)
+    while IFS= read -r key; do
+        [[ -n "$key" ]] && shipped_key[$key]=1
+    done < <(git log --no-merges --max-count=3000 --format="$PICK_KEY_FORMAT" "$release" 2>/dev/null)
 
     local found=0
     while IFS=$'\x1f' read -r m date subject; do
@@ -53,12 +64,18 @@ cmd_candidates() {
         else
             info "$(git rev-parse --short "$m")  $date  $subject"
         fi
-        # '+' = the commit is not in the release branch (by patch), '-' = an equivalent is already there
+        # '+' = the commit is not in the release branch, '-' = an equivalent is already there (the same patch, or the same author, date and subject)
         while read -r mark hash; do
             [[ -n "$hash" ]] || continue
             line=$(git log -1 --format=%s "$hash")
             name=""
-            if [[ "$mark" == "+" && -n "${queued[$hash]:-}" ]]; then mark="~"; name=${queued[$hash]}; fi
+            if [[ "$mark" == "+" ]]; then
+                key=$(git log -1 --format="$PICK_KEY_FORMAT" "$hash")
+                if [[ -n "${shipped_key[$key]:-}" ]]; then mark="-"
+                elif [[ -n "${queued[$hash]:-}" ]]; then mark="~"; name=${queued[$hash]}
+                elif [[ -n "${queued_key[$key]:-}" ]]; then mark="~"; name=${queued_key[$key]}
+                fi
+            fi
             if (( porcelain )); then
                 printf 'commit=%s\x1f%s\x1f%s\x1f%s\x1f%s\0' "$m" "$hash" "$mark" "$line" "$name"
             else

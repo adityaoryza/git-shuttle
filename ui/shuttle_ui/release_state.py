@@ -1,7 +1,8 @@
 """Where the commits of the integration branch are on their way to production: read-only `git` with fixed arguments.
 
 A commit that was cherry-picked into the release branch has another hash there: git compares the patches (`git cherry`), the way the
-Release tab does, so that it counts as released."""
+Release tab does, so that it counts as released. A pick that needed a hand (a conflict, a version kept) has another patch too: it is
+the same commit when its author, author date and subject are there (a cherry-pick keeps them; candidates and trace status do the same)."""
 import re
 
 from .runner import git_output
@@ -27,6 +28,20 @@ def _cherry(repo_path, upstream, head, limit=None):
     done = git_output(repo_path, "cherry", upstream, head, *([limit] if limit else []))
     rows = [line.split() for line in done.stdout.decode("utf-8", "replace").splitlines()] if done.returncode == 0 else []
     return [(row[0], row[1]) for row in rows if len(row) == 2]
+
+
+PICK_KEY = "%ae%x1f%at%x1f%s"
+
+
+def _keys(repo_path, *args):
+    """{sha: author\x1fdate\x1fsubject} of the commits `git log` lists."""
+    done = git_output(repo_path, "log", "--no-merges", "--format=%H%x1f" + PICK_KEY, *args)
+    out = {}
+    for line in (done.stdout.decode("utf-8", "replace").splitlines() if done.returncode == 0 else []):
+        sha, _, key = line.partition("\x1f")
+        if sha and key:
+            out[sha] = key
+    return out
 
 
 def _open_releases(repo_path, remote, release, pattern):
@@ -63,15 +78,22 @@ def release_state(repo_path):
     key = (repo_path, integration_sha, release_sha, tuple((ref, _sha(repo_path, ref)) for ref in opens))
     if key in _CACHE:
         return _CACHE[key]
-    queued = {}
+    queued, queued_keys = {}, {}
     for ref in opens:
+        name = ref[len("refs/remotes/%s/" % remote):]
         for mark, sha in _cherry(repo_path, ref, integration, release):
             if mark == "-":
-                queued.setdefault(sha, ref[len("refs/remotes/%s/" % remote):])
+                queued.setdefault(sha, name)
+        for pick_key in _keys(repo_path, release + ".." + ref).values():
+            queued_keys.setdefault(pick_key, name)
+    shipped = set(_keys(repo_path, "--max-count=3000", release).values())
+    own = _keys(repo_path, release + ".." + integration)
     staging, equivalent = [], []
     for mark, sha in _cherry(repo_path, release, integration):
-        if mark == "-":
+        if mark == "-" or own.get(sha) in shipped:
             equivalent.append(sha)
+        elif sha not in queued and own.get(sha) in queued_keys:
+            queued[sha] = queued_keys[own[sha]]
         elif sha not in queued:
             staging.append(sha)
     # a merge commit has no patch of its own: it is in staging as long as the release branch does not have it

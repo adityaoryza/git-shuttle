@@ -73,6 +73,13 @@ commits belong to. A deploy of the release line shows on that task when the rele
 made before this was recorded is recognized by its patch when the trace is read. `git shuttle trace list` and `trace show ID --addon NAME` read it
 (in your time zone); the web UI shows it in **Tasks**.
 
+`git shuttle trace status [ID] [--porcelain]` says where each traced commit of a task is: in prod (on the release line), on its way (in a release
+branch whose pull request is not merged yet), not in prod (merged into the integration branch only) or not merged (on its branch only). A commit is
+found under another hash too: the same patch (a cherry-pick, or a rebase before the merge), or the same author, author date and subject (a pick
+that needed a hand: a conflict, a version kept). The web UI shows it in **Tasks**, then **Release**: the tasks that still have work to release,
+one bar per task, its commits, and a **Release** button that makes a release branch with the commits that are merged and not in prod (after a
+preview). `candidates` and the Prod column of the graph count a pick that needed a hand as released in the same way.
+
 A branch that already had work is linked afterwards: `git shuttle trace bind 15530 [--addon NAME] [--branch NAME] [--force]`, or **Tasks**, then **Link a
 branch** in the web UI (after a preview). The add-on is asked for the task (its `start` hook), the branch remembers it, and what the branch already
 did is written with its real dates: its start, its commits that the integration branch does not have, and, when `gh` finds them, its pull request
