@@ -4,6 +4,16 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.7] - 2026-11-12
+
+### Added
+
+- The side panel (Start, Ship, Release, Deploy) folds to a thin strip with the button beside its tabs, or `]`: the graph takes the width. The strip says which tab it holds and when a job runs, and unfolds it again; the choice is remembered. Choosing a tab from the palette unfolds it.
+
+### Fixed
+
+- A Refresh of an add-on card is no longer undone by a reload of the cards that answers after it.
+
 ## [0.14.6] - 2026-11-12
 
 ### Added
