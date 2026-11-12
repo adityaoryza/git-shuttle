@@ -138,6 +138,10 @@ class TestAddons(Base):
         self.assertIn("15607", [t["id"] for t in listed["tasks"]], "the start is in the trace")
         status, shown = self.api("POST", "repos/%s/trace/show" % self.rid(), {"addon": "tracker", "task": "15607"})
         self.assertEqual((status, shown["events"][0]["type"]), (200, "start"))
+        status, where = self.api("GET", "repos/%s/trace/status" % self.rid())
+        self.assertEqual(status, 200, where)
+        self.assertIn("15607", [t["id"] for t in where["tasks"]], "the Release view of the Tasks dialog lists the task")
+        self.assertEqual((where["release"], where["integration"]), ("release", "develop"))
 
     def test_a_flag_that_no_enabled_add_on_declared_is_refused_by_the_command(self):
         params = {"addon": {"name": "tracker", "flag": "task", "value": "1"}}
@@ -407,6 +411,80 @@ class TestReportSteps(unittest.TestCase):
             deploys = [(p["title"], p["items"][0]["text"]) for p in doc["phases"] if p["title"].startswith("Deployed")]
             self.assertEqual(deploys, [("Deployed to prod", "to preaucess_prod (branch line)")])
             self.assertLess(titles.index("Released"), titles.index("Deployed to prod"))
+
+
+class TestTaskReleaseStatus(unittest.TestCase):
+    def test_each_commit_of_a_task_says_where_it_is_on_its_way_to_production(self):
+        import importlib.util
+        import subprocess
+        import tempfile
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("shuttle_trace_status", os.path.join(here, "..", "..", "lib", "addons", "trace.py"))
+        tr = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tr)
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL="a@a")
+            when = iter("2026-10-28T08:%02d:00Z" % m for m in range(60))
+
+            def run(*args):
+                env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = next(when)
+                return subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True, text=True).stdout.strip()
+
+            def commit(name, text, message):
+                with open(os.path.join(tmp, name), "w") as handle:
+                    handle.write(text)
+                run("add", name)
+                run("commit", "-q", "-m", message)
+                return run("rev-parse", "HEAD")
+
+            run("init", "-q", "-b", "prod")
+            run("commit", "-q", "--allow-empty", "-m", "base")
+            run("checkout", "-q", "-b", "staging")
+            run("checkout", "-q", "-b", "feat")
+            same = commit("a.txt", "a\n", "same: merged then the line was merged")
+            patch = commit("b.txt", "b\n", "patch: picked as is")
+            hand = commit("c.txt", "c\n", "hand: picked with a change")
+            queued = commit("d.txt", "d\n", "queued: in a release branch not merged yet")
+            waiting = commit("e.txt", "e\n", "waiting: merged into staging only")
+            run("checkout", "-q", "staging")
+            run("merge", "-q", "--no-ff", "-m", "Merge branch 'feat'", "feat")
+            run("checkout", "-q", "-b", "feat2", "staging")
+            rebased = commit("f.txt", "f\n", "rebased: traced before a rebase")
+            run("checkout", "-q", "staging")
+            run("cherry-pick", rebased)                    # what reached staging has another hash than the one the trace recorded
+            run("checkout", "-q", "-b", "alone", "prod")
+            alone = commit("g.txt", "g\n", "alone: on its branch only")
+            run("checkout", "-q", "prod")
+            run("merge", "-q", "--no-ff", "-m", "release same", same)
+            run("cherry-pick", patch)
+            with open(os.path.join(tmp, "c.txt"), "w") as handle:
+                handle.write("c, kept as prod needs it\n")
+            run("add", "c.txt")
+            subprocess.run(["git", "commit", "-q", "-C", hand], cwd=tmp, env=env, check=True, capture_output=True)
+            run("checkout", "-q", "-b", "rel/1", "prod")
+            run("cherry-pick", queued)
+            run("checkout", "-q", "prod")
+            trace = os.path.join(tmp, "events.jsonl")
+            base = ["addon=odoo-task", "task=42", "title=Where", "branch=feat"]
+            for sha in (same, patch, hand, queued, waiting, rebased, alone, "f" * 40):
+                tr.append(trace, ["type=commit", "sha=" + sha] + base)
+            tr.append(trace, ["type=commit", "sha=" + same, "task=7", "addon=odoo-task", "title=Other", "branch=x"])
+            data = tr.release_status(trace, tmp, ("prod", "prod"), ("staging", "staging"), [("rel/1", "rel/1")], "odoo-task", "42")
+            self.assertEqual([t["id"] for t in data["tasks"]], ["42"], "only the task asked for")
+            rows = {r["subject"].split(":")[0] or r["sha"]: r for r in data["tasks"][0]["commits"]}
+            self.assertEqual((rows["same"]["state"], rows["same"]["match"]), ("prod", "same"))
+            self.assertEqual((rows["patch"]["state"], rows["patch"]["match"]), ("prod", "patch"))
+            self.assertEqual((rows["hand"]["state"], rows["hand"]["match"]), ("prod", "picked"), "a pick that needed a hand is released")
+            self.assertNotEqual(rows["hand"]["as"], hand)
+            self.assertEqual((rows["queued"]["state"], rows["queued"]["where"]), ("release", "rel/1"))
+            self.assertEqual(rows["waiting"]["state"], "staging")
+            self.assertEqual((rows["rebased"]["state"], rows["rebased"]["match"]), ("staging", "patch"), "found on staging under its new hash")
+            self.assertEqual(rows["alone"]["state"], "branch")
+            self.assertEqual(rows["f" * 40]["state"], "missing", "a commit that is not in the repository")
+            self.assertEqual(data["tasks"][0]["counts"], {"prod": 3, "release": 1, "staging": 2, "branch": 1, "missing": 1})
+            self.assertEqual(len(tr.release_status(trace, tmp, ("prod", "prod"), ("staging", "staging"), [])["tasks"]), 2, "every task when none is named")
+            with self.assertRaises(ValueError):
+                tr.release_status(trace, tmp, ("nope", "nope"), ("staging", "staging"), [])
 
 
 if __name__ == "__main__":

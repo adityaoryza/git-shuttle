@@ -60,7 +60,7 @@ CATALOG = [
     {"id": "task-unbind", "label": "Unlink a branch from its task", "group": "Branch", "cli": "git shuttle trace unbind", "where": "Tasks dialog"},
     {"id": "addon-install", "label": "Install an add-on", "group": "App", "cli": "git shuttle addon install NAME", "where": "Add-ons dialog"},
     {"id": "addon-uninstall", "label": "Remove an installed add-on", "group": "App", "cli": "git shuttle addon uninstall NAME", "where": "Add-ons dialog"},
-    {"id": "tasks", "label": "Tasks", "group": "App", "cli": "git shuttle trace list | show TASK", "where": "toolbar Tasks, Start tab, task cards"},
+    {"id": "tasks", "label": "Tasks", "group": "App", "cli": "git shuttle trace list | show TASK | status [TASK]", "where": "toolbar Tasks, Start tab, task cards; Tasks dialog, Release"},
     {"id": "addon-disable", "label": "Disable an add-on", "group": "App", "cli": "git shuttle addon disable NAME", "where": "Add-ons dialog"},
     {"id": "worktree-list", "label": "Worktrees", "group": "Worktree", "cli": "git shuttle worktree list | remove PATH", "where": "toolbar Actions"},
     # finishing work

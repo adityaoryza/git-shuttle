@@ -104,6 +104,8 @@ Commands:
                                 none does anything until it is enabled (docs/addons.md)
   trace [list] | show TASK [--addon NAME] [--porcelain]
                                 what happened to a task, from its first commit to the deploy that carried it (the branch must have been started from a task)
+  trace status [TASK] [--porcelain]
+                                where the commits of each task are: released, in a release branch on its way, on the integration branch only
   update [--check] [--to TAG]   bring git-shuttle to the latest release (a copy made by install.sh); --check only looks
 
 Options:

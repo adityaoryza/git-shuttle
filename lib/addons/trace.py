@@ -331,6 +331,94 @@ def show(path, addon, task_id, repo=None):
     return {"task": head, "events": rows}
 
 
+# What a cherry-pick keeps of a commit even when its patch changed (a conflict, a version kept): the same as PICK_KEY_FORMAT of candidates.sh.
+PICK_KEY = "%ae%x1f%at%x1f%s"
+STATES = ("prod", "release", "staging", "branch", "missing")
+
+
+def keyed(repo, *args):
+    """{author\\x1fdate\\x1fsubject: sha} of the commits `git log` lists (the first one wins)."""
+    out = {}
+    for line in git_lines(repo, "log", "--no-merges", "--format=%H%x1f" + PICK_KEY, *args):
+        sha, _, key = line.partition("\x1f")
+        if SHA_RE.match(sha) and key:
+            out.setdefault(key, sha)
+    return out
+
+
+def found_on(repo, sha, key, patch, ref, keys, patches):
+    """How the commit is on `ref`: (match, sha there), or None. 'same' is the commit itself, 'patch' the same change under
+    another hash, 'picked' the same author, date and subject with another change (a pick that needed a hand)."""
+    if is_ancestor(repo, sha, ref):
+        return "same", sha
+    if patch and patch in patches:
+        return "patch", patches[patch]
+    if key in keys:
+        return "picked", keys[key]
+    return None
+
+
+def release_status(path, repo, release, integration, open_refs, addon=None, task_id=None):
+    """Where each traced commit of the tasks is: on the release line (prod), in a release branch on its way, on the
+    integration branch only (staging), or only on its branch. `release` and `integration` are (name, ref), `open_refs` [(name, ref)]."""
+    release, integration = (release[0], resolve_ref(repo, release[1])), (integration[0], resolve_ref(repo, integration[1]))
+    open_refs = [(name, resolve_ref(repo, ref)) for name, ref in open_refs if resolve_ref(repo, ref)]
+    if not release[1] or not integration[1]:
+        raise ValueError("the release line or the integration branch is not in this repository")
+    groups = {}
+    for event in events(path):
+        if task_id and (event.get("task") != task_id or (addon and event.get("addon", "") != addon)):
+            continue
+        if not event.get("task"):
+            continue
+        group = groups.setdefault((event.get("addon", ""), event["task"]), {
+            "addon": event.get("addon", ""), "id": event["task"], "title": "", "link": "", "branches": [], "last": "", "shas": []})
+        group["title"] = event.get("title") or group["title"]
+        group["link"] = event.get("link") or group["link"]
+        group["last"] = max(group["last"], event.get("time", ""))
+        if event.get("branch") and event["branch"] not in group["branches"]:
+            group["branches"].append(event["branch"])
+        if event.get("type") == "commit" and SHA_RE.match(event.get("sha") or "") and event["sha"] not in group["shas"]:
+            group["shas"].append(event["sha"])
+    every = [sha for group in groups.values() for sha in group["shas"]]
+    existing = [sha for sha in every if _exists(repo, sha)]
+    info = {}
+    for line in git_lines(repo, "show", "-s", "--format=%H%x1f" + PICK_KEY, *existing) if existing else []:
+        sha, _, key = line.partition("\x1f")
+        info[sha] = key
+    own_patch = patch_ids(repo, existing)
+
+    def side(ref, other):
+        # the commits a commit can be found among under another hash (a pick, or a rebase before the merge): what `ref` has that
+        # `other` has not (patches), and its recent history (author keys, which also hold after a merge back)
+        picks = git_lines(repo, "rev-list", "--no-merges", "--max-count=300", "%s..%s" % (other, ref))
+        return keyed(repo, "--max-count=3000", ref), {p: s for s, p in patch_ids(repo, picks).items()}
+
+    lines = ([("prod", release[0], release[1], side(release[1], integration[1]))]
+             + [("release", name, ref, side(ref, integration[1])) for name, ref in open_refs]
+             + [("staging", integration[0], integration[1], side(integration[1], release[1]))])
+    tasks_out = []
+    for group in sorted(groups.values(), key=lambda g: g["last"], reverse=True):
+        counts = dict.fromkeys(STATES, 0)
+        commits = []
+        for sha in group["shas"]:
+            key = info.get(sha, "")
+            parts = key.split("\x1f")
+            row = {"sha": sha, "subject": parts[2] if len(parts) == 3 else "", "state": "missing", "where": "", "match": "", "as": ""}
+            if sha in info:
+                for state, name, ref, (keys, patches) in lines:
+                    found = found_on(repo, sha, key, own_patch.get(sha), ref, keys, patches)
+                    if found:
+                        row.update(state=state, where=name, match=found[0], **{"as": found[1]})
+                        break
+                else:
+                    row["state"] = "branch"
+            counts[row["state"]] += 1
+            commits.append(row)
+        tasks_out.append(dict({k: group[k] for k in ("addon", "id", "title", "link", "branches", "last")}, counts=counts, commits=commits))
+    return {"release": release[0], "integration": integration[0], "open": [name for name, _ in open_refs], "tasks": tasks_out}
+
+
 def branches_of(path, shas):
     """The branches whose traced commits are among shas, in the order the trace recorded them."""
     want, found, seen = set(shas), [], set()
@@ -515,11 +603,18 @@ def main(argv):
             print(json.dumps(mapping(argv[2], argv[3], os.environ.get("TRACE_BASE", "HEAD")), ensure_ascii=False))
         elif len(argv) == 3 and argv[1] == "tasks":
             print(json.dumps(tasks(argv[2]), ensure_ascii=False))
+        elif len(argv) in (6, 8) and argv[1] == "status":
+            # status FILE REPO NAME<TAB>REF NAME<TAB>REF [ADDON ID]: the release line, the integration branch; the release branches on their
+            # way in TRACE_OPEN, one "name<TAB>ref" per line (a tab cannot be in the name of a branch)
+            pair = lambda text: tuple(text.split("\t", 1)) if "\t" in text else (text, text)  # noqa: E731
+            opened = [pair(line) for line in os.environ.get("TRACE_OPEN", "").splitlines() if line.strip()]
+            addon, task = (argv[6], argv[7]) if len(argv) == 8 else (None, None)
+            print(json.dumps(release_status(argv[2], argv[3], pair(argv[4]), pair(argv[5]), opened, addon, task), ensure_ascii=False))
         elif len(argv) >= 5 and argv[1] == "show":
             repo = argv[argv.index("--repo") + 1] if "--repo" in argv else None
             print(json.dumps(show(argv[2], argv[3], argv[4], repo), ensure_ascii=False))
         else:
-            sys.stderr.write("usage: trace.py append FILE key=value... | tasks FILE | show FILE ADDON ID [--repo DIR] | branches-of FILE SHA...\n")
+            sys.stderr.write("usage: trace.py append FILE key=value... | tasks FILE | show FILE ADDON ID [--repo DIR] | status FILE REPO NAME<TAB>REF NAME<TAB>REF [ADDON ID] | branches-of FILE SHA...\n")
             return 2
     except (ValueError, IndexError) as error:
         sys.stderr.write("%s\n" % error)

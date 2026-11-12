@@ -729,6 +729,20 @@ class TestActions(Base):
         self.assertIn(first, state["equivalent"], "released under another hash")
         self.assertNotIn(first, state["staging"])
         self.assertEqual(state["release"], git(work, "rev-parse", "origin/release"))
+        # a pick that needed a hand (another change, the same author, date and subject) is released too
+        self.world.feature("feat/state2", {"s2.txt": "2\n"})
+        git(work, "add", "-A"); git(work, "commit", "-q", "-m", "[FIX] s: two")
+        second = git(work, "rev-parse", "HEAD")
+        self.assertEqual(self.run_job("ship", {})["state"], "done")
+        git(work, "checkout", "-q", "-b", "tmp-prod2", "origin/release")
+        write(os.path.join(work, "s2.txt"), "2, as it was released\n")
+        git(work, "add", "-A"); git(work, "commit", "-q", "-C", second)
+        git(work, "push", "-q", "origin", "tmp-prod2:release")
+        git(work, "checkout", "-q", "main")
+        self.api("POST", "repos/%s/fetch" % rid, {})
+        state = self.api("GET", "repos/%s/release-state" % rid)[1]["state"]
+        self.assertIn(second, state["equivalent"], "picked by hand: released under another hash and another patch")
+        self.assertNotIn(second, state["staging"])
         # nothing is said until the repository has its two branches
         git(work, "config", "--unset", "shuttle.release")
         self.assertEqual(self.api("GET", "repos/%s/release-state" % rid)[1]["state"], {"set": False})
