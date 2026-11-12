@@ -120,6 +120,8 @@ t("shortcuts: with modifiers anywhere, plain keys never while typing", () => {
   assert.strictEqual(shortcutFor(e("k", { ctrlKey: true }, "INPUT")), "palette");
   assert.strictEqual(shortcutFor(e("f", { metaKey: true })), "search");
   assert.strictEqual(shortcutFor(e("b")), "branch");
+  assert.strictEqual(shortcutFor(e("]")), "panel", "] folds or unfolds the side panel");
+  assert.strictEqual(shortcutFor(e("]", {}, "INPUT")), "", "...not while typing");
   assert.strictEqual(shortcutFor(e("b", {}, "INPUT")), "");
   assert.strictEqual(shortcutFor(e("z", { ctrlKey: true })), "undo");
   assert.strictEqual(shortcutFor(e("Z", { ctrlKey: true, shiftKey: true })), "redo");

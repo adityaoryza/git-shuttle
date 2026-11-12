@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { bounds, clampSize, clearSize, dragSize, fitSize, keySize, loadSize, saveSize } from "../../ui/shuttle_ui/static/js/splitter.js";
+import { bounds, clampSize, clearSize, dragSize, fitSize, keySize, loadFolded, loadSize, saveFolded, saveSize } from "../../ui/shuttle_ui/static/js/splitter.js";
 
 let n = 0; const t = (name, fn) => { fn(); n++; console.log("  ✔ " + name); };
 const store = (init = {}) => { const m = { ...init }; return { getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = v; }, removeItem: k => { delete m[k]; }, m }; };
@@ -42,5 +42,18 @@ t("the size is remembered, versioned, and a bad value gives the default", () => 
   assert.strictEqual(loadSize({ getItem() { throw new Error("denied"); } }, "graph", 7), 7);
   assert.doesNotThrow(() => saveSize({ setItem() { throw new Error("full"); } }, "graph", 1));
   clearSize(s, "graph"); assert.strictEqual(loadSize(s, "graph", 360), 360);
+});
+t("a folded pane is remembered, unfolding forgets it, and a browser that refuses the storage only loses the memory", () => {
+  const s = store();
+  assert.strictEqual(loadFolded(s, "panel"), false, "unfolded until it is folded");
+  saveFolded(s, "panel", true);
+  assert.strictEqual(loadFolded(s, "panel"), true);
+  assert.strictEqual(loadFolded(s, "detail"), false, "each pane on its own");
+  saveFolded(s, "panel", false);
+  assert.strictEqual(loadFolded(s, "panel"), false);
+  assert.deepStrictEqual(Object.keys(s.m), [], "nothing left behind");
+  const broken = { getItem: () => { throw new Error("denied"); }, setItem: () => { throw new Error("denied"); }, removeItem: () => { throw new Error("denied"); } };
+  assert.strictEqual(loadFolded(broken, "panel"), false);
+  saveFolded(broken, "panel", true);
 });
 console.log("  " + n + " passed, 0 failed");

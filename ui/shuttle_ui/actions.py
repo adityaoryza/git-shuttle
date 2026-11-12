@@ -82,6 +82,7 @@ CATALOG = [
     {"id": "settings", "label": "Settings", "group": "App", "cli": "git shuttle init", "where": "top bar Settings"},
     {"id": "add-repo", "label": "Add a repository", "group": "App", "cli": "", "where": "top bar Add"},
     {"id": "shortcuts", "label": "Keyboard shortcuts", "group": "App", "cli": "", "where": "?", "key": "?"},
+    {"id": "panel", "label": "Fold or unfold the side panel", "group": "App", "cli": "", "where": "the button beside the tabs of the side panel, its folded strip", "key": "]"},
     {"id": "about", "label": "About git-shuttle", "group": "App", "cli": "", "where": "top bar logo, footer"},
     {"id": "update", "label": "Check for updates", "group": "App", "cli": "git shuttle update --check", "where": "About dialog"},
 ]

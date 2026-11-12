@@ -72,6 +72,16 @@ ul { margin: 6px 0 0; padding-left: 18px; }
   .modal-foot { flex-wrap: wrap; } .push-left { margin-right: 0; width: 100%; }
 }
 @media (max-width: 900px) { .split { grid-template-columns: 1fr; grid-template-rows: 40vh 1fr; } .split > .splitter-x { display: none; } .graph-pane { border-right: 0; border-bottom: 1px solid var(--border); } }
+/* the side panel folded to a strip: the graph takes the width; the panel stays mounted (hidden), so a tab keeps what was typed */
+.panel[hidden] { display: none; }
+.split.is-folded { grid-template-columns: minmax(0, 1fr) 34px; }
+.panel-strip { display: flex; min-width: 0; background: var(--card); border-left: 1px solid var(--border); }
+.strip-open { flex: 1; display: flex; align-items: center; gap: 10px; padding: 14px 0; writing-mode: vertical-rl; border: 0; background: transparent; color: var(--muted-foreground); font: inherit; font-size: 12.5px; cursor: pointer; }
+.strip-open:hover { background: var(--accent); color: var(--foreground); } .strip-open:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+.panel-tabs { display: flex; flex: none; align-items: stretch; gap: 6px; } .panel-tabs > .segmented { flex: 1; min-width: 0; }
+.panel-fold { flex: none; width: 34px; border: 1px solid var(--border); border-radius: var(--radius); background: transparent; color: var(--muted-foreground); font: inherit; cursor: pointer; }
+.panel-fold:hover { background: var(--accent); color: var(--foreground); } .panel-fold:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }
+@media (max-width: 900px) { .split.is-folded { grid-template-columns: 1fr; grid-template-rows: 1fr auto; } .panel-strip { border-left: 0; border-top: 1px solid var(--border); } .strip-open { writing-mode: horizontal-tb; padding: 8px 12px; justify-content: center; } .strip-open > :first-child { transform: rotate(90deg); } }
 
 /* graph */
 .graph { min-width: 0; }

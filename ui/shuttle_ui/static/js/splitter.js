@@ -50,3 +50,14 @@ export function keySize(key, shift, size, min, max, axis, grow) {
   if (key === "End") return max;
   return null;
 }
+
+// A pane that can be folded away (the side panel): whether it is folded, remembered per browser like its size.
+const foldKey = id => "shuttle.fold." + SPLIT_VERSION + "." + id;
+
+export function loadFolded(storage, id) {
+  try { return storage.getItem(foldKey(id)) === "1"; } catch (e) { return false; }
+}
+
+export function saveFolded(storage, id, folded) {
+  try { folded ? storage.setItem(foldKey(id), "1") : storage.removeItem(foldKey(id)); } catch (e) { /* not remembered */ }
+}
