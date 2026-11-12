@@ -1,6 +1,6 @@
 /* Add-ons: the cards that the enabled ones show for the branch, and the dialog that lists them (docs/addons.md).
  * What an add-on says was checked by the command (a size, a safe alphabet, http or https for a link); it is shown as text, never as HTML. */
-import { html, useState, useEffect } from "../../vendor/preact-htm.js";
+import { html, useState, useEffect, useRef } from "../../vendor/preact-htm.js";
 import { api } from "../api.js";
 import { linkify, stageTone } from "../logic.js";
 import { ExternalLink } from "./links.js";
@@ -24,15 +24,21 @@ export function AddonCards({ repoId, branch, version }) {
   const [groups, setGroups] = useState([]);
   const [problems, setProblems] = useState([]);
   const [busy, setBusy] = useState(false);
+  // an answer is shown only when its request is newer than the one on screen: a reload asked before a Refresh that answers after it
+  // must not put the older cards back
+  const asked = useRef(0), shown = useRef(0);
+  const show = (ask, cards, found) => { if (ask <= shown.current) return; shown.current = ask; setGroups(cards); setProblems(found); };
   useEffect(() => {
     let alive = true;
-    api("GET", "repos/" + repoId + "/addons/cards").then(d => { if (alive) { setGroups(d.cards || []); setProblems(d.problems || []); } }, () => { if (alive) { setGroups([]); setProblems([]); } });
+    const ask = ++asked.current;
+    api("GET", "repos/" + repoId + "/addons/cards").then(d => { if (alive) show(ask, d.cards || [], d.problems || []); }, () => { if (alive) show(ask, [], []); });
     return () => { alive = false; };
   }, [repoId, branch, version]);
   // ask the add-ons to read their source again (odoo-task fetches the task from Odoo: a read), then show what they say now
   const refresh = () => {
+    const ask = ++asked.current;
     setBusy(true);
-    api("GET", "repos/" + repoId + "/addons/cards?refresh=1").then(d => { setGroups(d.cards || []); setProblems(d.problems || []); }, e => setProblems([{ addon: "?", problem: e.message }])).then(() => setBusy(false));
+    api("GET", "repos/" + repoId + "/addons/cards?refresh=1").then(d => show(ask, d.cards || [], d.problems || []), e => show(ask, groups, [{ addon: "?", problem: e.message }])).then(() => setBusy(false));
   };
   const cards = groups.flatMap(g => (g.cards || []).map(c => ({ ...c, addon: g.addon })));
   if (!cards.length && !problems.length) return null;
