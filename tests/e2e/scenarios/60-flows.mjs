@@ -94,7 +94,8 @@ export const scenarios = {
     await release.fill("local");
     t.ok("a branch that only exists here is not offered", (await page.locator(".combo-list").count()) === 0);
     await release.fill("19.0-nonexistent");
-    t.ok("an unknown branch disables Save and says which field", (await dialog.getByRole("button", { name: "Save" }).isDisabled()) && (await dialog.locator(".modal-foot").innerText()).includes("Release branch"));
+    await release.press("Escape");                  // the field says what is wrong once its list is closed
+    t.ok("an unknown branch disables Save and says which field", (await dialog.getByRole("button", { name: "Save" }).isDisabled()) && (await dialog.locator(".is-alert").allInnerTexts()).some(s => s.includes("No branch named “19.0-nonexistent”")));
     await release.fill("main");
     t.ok("a real one enables it", await dialog.getByRole("button", { name: "Save" }).isEnabled());
     await dialog.getByLabel("Task branch prefix", { exact: true }).fill("work");
@@ -102,7 +103,7 @@ export const scenarios = {
     const pattern = dialog.locator("input[placeholder='release/{date}-v1.{n}']");
     await pattern.fill("rel/{yymmdd}-{n}");
     const stamp = new Date(); const yymmdd = String(stamp.getFullYear()).slice(2) + String(stamp.getMonth() + 1).padStart(2, "0") + String(stamp.getDate()).padStart(2, "0");
-    t.ok("the next release name is shown", (await dialog.locator(".field-hint.ok code").last().innerText()) === `rel/${yymmdd}-0`);
+    t.ok("the next release name is shown", (await dialog.locator(".field-hint", { hasText: "Next release branch" }).locator("code").innerText()) === `rel/${yymmdd}-0`);
     await dialog.getByLabel("Display name").fill("Acme Shop");
     await dialog.getByRole("button", { name: "Save" }).click();
     // two toasts come (the new name, then the settings): wait for the one that matters by looking at the configuration itself

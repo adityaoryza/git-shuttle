@@ -172,6 +172,8 @@ textarea.input { height: auto; min-height: 4.5em; padding: 8px 10px; resize: ver
 
 /* branch picker */
 .picker { position: relative; }
+/* a phone: the branch button is not at the left edge, so the list hangs from the whole top bar, a margin on each side */
+@media (max-width: 520px) { .topbar { position: relative; } .picker { position: static; } .picker > .popover { left: 12px; right: 12px; width: auto; max-width: none; } }
 .branch-btn { max-width: min(320px, 42vw); }
 .picker { min-width: 0; }
 .branch-name { overflow: hidden; text-overflow: ellipsis; }

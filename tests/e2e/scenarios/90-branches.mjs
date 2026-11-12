@@ -156,7 +156,13 @@ export const scenarios = {
   async "branch menu on a narrow screen"(t) {
     const page = await t.page({ viewport: { width: 390, height: 800 } });
     await openPicker(page);
-    t.ok("the list and its buttons fit", !(await overflowsHorizontally(page)));
+    // when it fails, say which boxes go past the right edge
+    t.ok("the list and its buttons fit", !(await overflowsHorizontally(page)), await page.evaluate(() => [...document.querySelectorAll("body *")]
+      .filter(el => el.getBoundingClientRect().right > innerWidth + 1 && el.getClientRects().length).slice(0, 6)
+      .map(el => el.tagName.toLowerCase() + "." + [...el.classList].join(".") + " right=" + Math.round(el.getBoundingClientRect().right)).join(" | ")));
+    const list = await page.locator(".picker > .popover").boundingBox();
+    const button = await page.locator(".branch-btn").boundingBox();
+    t.ok("...the list opens under the button, inside the screen", list.y >= button.y + button.height && list.x >= 0 && list.x + list.width <= 390);
     t.ok("every row still has its menu button", (await page.getByRole("button", { name: /^Actions for / }).count()) > 3);
   },
 };

@@ -11,7 +11,8 @@ permissions:
 jobs:
   test:
     name: test (Python ${{ matrix.python }}, Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
+    # the oldest Python git-shuttle supports has no build for the newest Ubuntu (26.04): it runs on 24.04
+    runs-on: ${{ matrix.python == '3.9' && 'ubuntu-24.04' || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
       matrix:
