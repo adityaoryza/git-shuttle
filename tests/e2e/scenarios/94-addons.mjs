@@ -33,7 +33,7 @@ export const scenarios = {
     const rows = () => page.locator(".task-row");
     await rows().first().waitFor();
     t.ok("the tasks of the add-on are listed, the newest first", (await rows().count()) === 2 && (await rows().first().innerText()).includes("15607"));
-    t.ok("the newest tasks are marked", (await rows().first().innerText()).includes("new") && (await page.locator(".task-list li.is-new").count()) >= 1);
+    t.ok("the newest tasks are marked", /\bnew\b/i.test(await rows().first().innerText()) && (await page.locator(".task-list li.is-new").count()) >= 1);
     t.ok("...with how many there are", (await page.getByText("2 of 2 tasks").count()) === 1);
     await page.getByLabel("All stages").selectOption("To Validate");
     t.ok("a stage filters them", (await rows().count()) === 1 && (await rows().first().innerText()).includes("15490"));

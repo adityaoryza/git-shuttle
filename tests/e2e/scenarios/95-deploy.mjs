@@ -32,10 +32,16 @@ const quiet = async page => {
 const settled = page => page.waitForFunction(() => !document.querySelector(".toast-title"), null, { timeout: 20000 }).catch(async e => { throw new Error("a toast stays: " + (await page.locator(".toast").allInnerTexts()).join(" // ")); });
 // a finished job; a failed one raises its error toast a moment later: wait for it, then let the toasts go (they sit over the buttons of the panel)
 const finished = async (page, label) => {
-  const badge = page.locator(".result", { hasText: label }).locator(".badge", { hasText: /done|failed|stopped/ });
+  // a settled job says "done" quietly (a status), a failed or stopped one in a badge
+  const badge = page.locator(".result", { hasText: label }).locator(".badge, .field-status", { hasText: /done|failed|stopped/ });
   await badge.waitFor();
   if (/failed|stopped/.test(await badge.innerText())) await page.locator(".toast").first().waitFor({ timeout: 5000 }).catch(() => {});
   await quiet(page);
+};
+// the error a field of the form says under itself ("" when it has none)
+const fieldError = async (form, label) => {
+  const hint = form.locator(".field").filter({ has: form.page().locator(".field-label", { hasText: new RegExp("^" + label + "$") }) }).locator(".is-alert");
+  return (await hint.count()) ? (await hint.first().innerText()).trim() : "";
 };
 const press = async (page, name) => { await quiet(page); await page.getByRole("button", { name, exact: true }).click(); };
 const dismissResult = async page => { const close = page.locator(".result").getByRole("button", { name: "Dismiss" }); if (await close.count()) await close.click(); };
@@ -51,15 +57,15 @@ export const scenarios = {
     t.ok("the branch is the integration branch by default", (await form.getByLabel("Branch the server runs").inputValue()) === "staging");
     t.ok("the form does not ask for a password, and says so", (await form.innerText()).includes("The password is not asked here"));
     await form.getByPlaceholder("203.0.113.10").fill("-oProxyCommand=id");
-    t.ok("a server that starts with a dash is refused in the form", (await page.getByRole("button", { name: "Save" }).isDisabled()) && (await form.innerText()).includes("Server:"));
+    t.ok("a server that starts with a dash is refused in the form", (await page.getByRole("button", { name: "Save" }).isDisabled()) && (await fieldError(form, "Server")).length > 0);
     await form.getByPlaceholder("203.0.113.10").fill("203.0.113.10");
     await form.getByPlaceholder("deploy", { exact: true }).fill("-o");
-    t.ok("a user that starts with a dash is refused", (await page.getByRole("button", { name: "Save" }).isDisabled()) && (await form.innerText()).includes("User:"));
+    t.ok("a user that starts with a dash is refused", (await page.getByRole("button", { name: "Save" }).isDisabled()) && (await fieldError(form, "User")).length > 0);
     await form.getByPlaceholder("deploy", { exact: true }).fill("deploy");
     await page.getByRole("button", { name: "Save" }).click();
     await finished(page, "Save the server");
-    await page.locator(".deploy-facts").waitFor();
-    const facts = await page.locator(".deploy-facts").innerText();
+    await page.locator(".deploy .facts").waitFor();
+    const facts = await page.locator(".deploy .facts").innerText();
     t.ok("the server is listed with what it would run", facts.includes("staging-update") && facts.includes("deploy@203.0.113.10"), facts);
     t.ok("...and nothing connected yet", sshLog(t) === "");
     await press(page, "Show the exact command");
@@ -84,11 +90,11 @@ export const scenarios = {
     await page.getByRole("button", { name: "Save" }).click();
     await finished(page, "Save the server");
     await page.getByLabel(/Type “production”/).waitFor();
-    await page.locator(".deploy-facts").waitFor();
+    await page.locator(".deploy .facts").waitFor();
     t.ok("without the name, Deploy is not possible", await page.getByRole("button", { name: "Deploy to production" }).isDisabled());
     await page.getByLabel(/Type “production”/).fill("prod");
     t.ok("a wrong name keeps it disabled", await page.getByRole("button", { name: "Deploy to production" }).isDisabled());
-    t.ok("...and says so at the field and under the buttons", (await page.locator(".deploy").innerText()).includes("It does not match") && (await page.locator(".deploy-why").innerText()).includes("Cannot run yet"));
+    t.ok("...and says so at the field, not again under the buttons", (await page.locator(".deploy .is-alert").allInnerTexts()).some(s => s.includes("Type “production” to confirm")) && (await page.locator(".deploy-why").count()) === 0);
     t.ok("...the field is marked", (await page.getByLabel(/Type “production”/).getAttribute("aria-invalid")) === "true");
     await page.getByLabel(/Type “production”/).fill("production");
     await press(page, "Deploy to production");
@@ -124,21 +130,21 @@ export const scenarios = {
     await addServer(page, { name: "mods", host: "deploy@203.0.113.70", command: "staging-update {modules}", branch: "staging" });
     await page.getByRole("button", { name: "Save" }).click();
     await finished(page, "Save the server");
-    await page.locator(".deploy-facts").waitFor();
-    const modules = page.getByPlaceholder("sale_documents,custom_technicien");
+    await page.locator(".deploy .facts").waitFor();
+    const modules = page.getByPlaceholder("sale_documents, custom_technicien");
     await modules.waitFor();
     await modules.click();
     let lostFocus = 0, skeleton = 0;
     for (const ch of "sale_documents,stock") {
       await page.keyboard.type(ch);
-      if (!(await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("placeholder") === "sale_documents,custom_technicien"))) lostFocus++;
-      if ((await page.locator(".deploy .skeleton").count()) > 0 || (await page.locator(".deploy-facts").count()) === 0) skeleton++;
+      if (!(await page.evaluate(() => document.activeElement && document.activeElement.getAttribute("placeholder") === "sale_documents, custom_technicien"))) lostFocus++;
+      if ((await page.locator(".deploy .skeleton").count()) > 0 || (await page.locator(".deploy .facts").count()) === 0) skeleton++;
     }
     t.ok("every key goes to the field: it keeps the focus while the plan is read again", lostFocus === 0, lostFocus);
     t.ok("...the plan stays on screen meanwhile (no loading blocks)", skeleton === 0, skeleton);
     t.ok("...so no key reaches the shortcuts of the page (the command log did not open)", (await page.getByRole("dialog").count()) === 0);
     t.ok("...and the field has what was typed", (await modules.inputValue()) === "sale_documents,stock");
-    await page.waitForFunction(() => /staging-update sale_documents,stock/.test(document.querySelector(".deploy-facts").innerText), null, { timeout: 8000 });
+    await page.waitForFunction(() => /staging-update sale_documents,stock/.test(document.querySelector(".deploy .facts").innerText), null, { timeout: 8000 });
     t.ok("a moment after the last key the exact command follows what was typed", true);
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
   },
@@ -165,7 +171,7 @@ export const scenarios = {
     t.ok("the keychain (the stand-in) has it, and no file of the demo repository does", fs.readdirSync(keyring).length === 1 && !fs.readFileSync(path.join(t.demo.work, ".git", "config"), "utf8").includes("e2e-secret"));
     await press(page, "Test the connection");
     await finished(page, "Test the connection");
-    t.ok("with it saved, a test runs without typing anything", (await resultText(page)).length > 0 && (await page.locator(".result .badge").innerText()).includes("done"));
+    t.ok("with it saved, a test runs without typing anything", (await resultText(page)).length > 0 && (await page.locator(".result .field-status").innerText()).includes("done"));
     const history = await page.evaluate(async () => { const token = sessionStorage.getItem("shuttle.token"); const r = await fetch("/api/history?limit=50", { headers: { "X-Shuttle-Token": token } }); return r.text(); });
     t.ok("the history does not have it", !history.includes("e2e-secret"));
     await press(page, "Deploy to kept");
@@ -216,7 +222,7 @@ export const scenarios = {
     await addServer(page, { name: "alias", host: "nf@203.0.113.40", command: "staging-update", branch: "staging" });
     await page.getByRole("button", { name: "Save" }).click();
     await finished(page, "Save the server");
-    await page.locator(".deploy-facts").waitFor();
+    await page.locator(".deploy .facts").waitFor();
     await press(page, "Test the connection");
     await finished(page, "Test the connection");
     t.ok("the test only runs `true` on the server", /\[true\]/.test(sshLog(t)) && !sshLog(t).includes("[staging-update]"), sshLog(t));
@@ -226,8 +232,8 @@ export const scenarios = {
     t.ok("a command that is not found says it is probably an alias", true);
     await press(page, "Run it in a login shell");
     await finished(page, "Run the command of alias in a login shell");
-    await page.locator(".deploy-facts").waitFor();
-    t.ok("one click saved it with a login shell", (await page.locator(".deploy-facts").innerText()).includes("bash -ic 'staging-update'"));
+    await page.locator(".deploy .facts").waitFor();
+    t.ok("one click saved it with a login shell", (await page.locator(".deploy .facts").innerText()).includes("bash -ic 'staging-update'"));
     await page.locator(".deploy").getByRole("button", { name: "Edit" }).click();
     t.ok("the form shows the command without the wrapper, with the box ticked", (await page.getByPlaceholder("staging-update {modules}").inputValue()) === "staging-update" && await page.getByLabel(/run it in a login shell/).isChecked());
     t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
@@ -239,7 +245,7 @@ export const scenarios = {
     await addServer(page, { name: "locked", host: "pw@203.0.113.50", command: "staging-update", branch: "staging" });
     await page.getByRole("button", { name: "Save" }).click();
     await finished(page, "Save the server");
-    await page.locator(".deploy-facts").waitFor();
+    await page.locator(".deploy .facts").waitFor();
     await press(page, "Test the connection");
     await finished(page, "Test the connection");
     await page.getByText("The server asks for a password").waitFor();
@@ -254,12 +260,12 @@ export const scenarios = {
     await addServer(page, { name: "staging", host: "deploy@203.0.113.10", command: "staging-update", branch: "staging" });
     await page.getByRole("button", { name: "Save" }).click();
     await finished(page, "Save the server");
-    await page.locator(".deploy-facts").waitFor();
+    await page.locator(".deploy .facts").waitFor();
     t.ok("nothing overflows the page", !(await overflowsHorizontally(page)));
     for (const scheme of ["dark", "light"]) {
       const themed = await t.page({ colorScheme: scheme });
       await tab(themed).click();
-      await themed.locator(".deploy-facts").waitFor();
+      await themed.locator(".deploy .facts").waitFor();
       await themed.evaluate(() => Promise.all(document.getAnimations().map(a => a.finished.catch(() => {}))));    // a colour that is still fading is not measured
       t.ok(`no text under 4.5:1 (${scheme})`, (await lowContrast(themed)).length === 0, JSON.stringify((await lowContrast(themed)).slice(0, 3)));
     }

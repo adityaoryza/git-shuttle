@@ -14,6 +14,8 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 - A commit that was picked into the release branch with a change (a conflict, a version kept) is no longer listed as not released. The Release tab, `candidates` and the Prod column of the graph recognise it by its author, author date and subject, which a cherry-pick keeps.
 - An update restart keeps the port of the open page.
+- On a phone the list of branches opens inside the screen, under the top bar (it went past the right edge).
+- The checks of every pull request run again: the Python 3.9 jobs run on Ubuntu 24.04 (the newest Ubuntu has no Python 3.9), and the browser tests follow the page as it is since 0.14.2.
 
 ## [0.14.5] - 2026-10-30
 
