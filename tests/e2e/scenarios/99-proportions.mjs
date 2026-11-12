@@ -41,8 +41,8 @@ export const scenarios = {
     const filter = await sizes(page, "input[aria-label='Filter files']");
     const tools = await sizes(page, ".files-tools .search-input, .files-tools .segmented");
     t.ok("the file filter and its List/Tree control are of one height", one(tools, "h") && tools.length === 2, JSON.stringify(tools));
-    const tabs = await sizes(page, ".panel > .segmented");
-    t.ok("the Start/Ship/Release tabs keep their height (they do not shrink in the panel)", tabs.length === 1 && tabs[0].h >= 36, JSON.stringify(tabs));
+    const tabs = await sizes(page, ".panel-tabs > .segmented, .panel-tabs > .panel-fold");
+    t.ok("the Start/Ship/Release tabs keep their height (they do not shrink in the panel), and the fold button is as tall", tabs.length === 2 && tabs[0].h >= 36 && one(tabs, "h"), JSON.stringify(tabs));
     await page.locator(".branch-btn").click();
     await page.locator(".popover .search-input").waitFor();
     const picker = await sizes(page, ".popover .search-input");

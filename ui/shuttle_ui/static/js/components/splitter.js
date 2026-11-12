@@ -1,6 +1,6 @@
 /* A draggable divider between two panes, with the keyboard, a double click to reset, and a remembered size. */
 import { html, useState, useEffect, useRef, useCallback } from "../../vendor/preact-htm.js";
-import { bounds, clearSize, dragSize, fitSize, keySize, loadSize, saveSize } from "../splitter.js";
+import { bounds, clearSize, dragSize, fitSize, keySize, loadFolded, loadSize, saveFolded, saveSize } from "../splitter.js";
 import { cn } from "./ui.js";
 
 // The size of an element, kept up to date.
@@ -25,6 +25,13 @@ export function useSplit(id, { initial, min, otherMin, total }) {
   const set = useCallback(value => { setChosen(value); saveSize(localStorage, id, value); }, [id]);
   const reset = useCallback(() => { setChosen(initial); clearSize(localStorage, id); }, [id, initial]);
   return { size, set, reset, min: limits.min, max: limits.max };
+}
+
+// [folded, setFolded] of a pane that can be folded away, remembered per browser.
+export function useFold(id) {
+  const [folded, setState] = useState(() => loadFolded(localStorage, id));
+  const set = useCallback(value => { setState(value); saveFolded(localStorage, id, value); }, [id]);
+  return [folded, set];
 }
 
 // axis: "x" for a handle between left and right panes, "y" for one between top and bottom panes.

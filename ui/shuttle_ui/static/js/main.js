@@ -25,7 +25,7 @@ import { Palette } from "./components/palette.js";
 import { LogPanel } from "./components/log-panel.js";
 import { NEEDS_TARGET, OPS, branchMenuIds, commitMenuIds, labelOf, lineFrom, menuItems, pushedShas, reasonOf, shortcutFor } from "./ops.js";
 import { CommitPanel } from "./components/commit-panel.js";
-import { Splitter, useSize, useSplit } from "./components/splitter.js";
+import { Splitter, useFold, useSize, useSplit } from "./components/splitter.js";
 import { ThemeToggle } from "./components/theme-toggle.js";
 import { repoLabels } from "./repos.js";
 import { suggestTab } from "./tabs.js";
@@ -97,6 +97,7 @@ function App() {
   const mainRef = useRef(null), paneRef = useRef(null);
   const mainSize = useSize(mainRef), paneSize = useSize(paneRef);
   const panelSplit = useSplit("panel", { initial: 400, min: 320, otherMin: 420, total: mainSize.width });       // the side panel
+  const [folded, setFolded] = useFold("panel");     // the side panel folded to a strip: the graph takes the width
   const detailSplit = useSplit("detail", { initial: 360, min: 160, otherMin: 120, total: paneSize.height });     // the details under the graph
 
   const notify = spec => queue.push(spec);
@@ -303,8 +304,9 @@ function App() {
     switch (op.special) {
       case "fetch": fetchRemote(); return;
       case "push": if (push.kind === "none") { notify({ variant: "info", title: "Nothing to push" }); return; } startPush(); return;
-      case "start": setTab("start"); return;
-      case "tab": setTab(id === "release" ? "release" : /^deploy/.test(id) ? "deploy" : "ship"); return;
+      case "start": setFolded(false); setTab("start"); return;
+      case "tab": setFolded(false); setTab(id === "release" ? "release" : /^deploy/.test(id) ? "deploy" : "ship"); return;
+      case "panel": setFolded(!folded); return;
       case "compare": setModal({ name: "compare", a: args.a || (args.commit && args.commit.sha), b: args.b }); return;
       case "rewrite": { const line = lineFrom(ctx, args.commit.sha); if (line) setModal({ name: "rewrite", line }); return; }
       case "patch": setModal({ name: "patch", commit: args.commit }); return;
@@ -326,6 +328,8 @@ function App() {
     if (op.form) { setModal({ name: "form", id, args, fields: op.form(ctx, args), commit: args.commit }); return; }
     submitRequest(op.request(ctx, args, {}));
   }
+  // what the folded strip says: the tab it holds, and that a job runs (its result is in the panel)
+  const stripLabel = ({ start: "Start", ship: "Ship", release: "Release", deploy: "Deploy" }[tab] || "Panel") + (runner.busy ? " · running" : "");
   const paletteEntries = () => catalog.filter(a => OPS[a.id] && !["files", "palette"].includes(OPS[a.id].special))
     .map(a => ({ ...a, label: labelOf(a.id, ctx, {}, a.label), reason: NEEDS_TARGET.has(a.id) ? "choose a " + (/branch|rename|upstream|merge-in|rebase-on|update-branch|delete|switch$/.test(a.id) ? "branch" : "commit") + " in the list, then use its menu" : reasonOf(a.id, ctx, {}) }));
   useEffect(() => { api("GET", "actions").then(d => setCatalog(d.actions)).catch(() => {}); }, []);
@@ -404,20 +408,25 @@ function App() {
     ${status && repos.length ? html`<${Toolbar} ctx=${ctx} perform=${perform} search=${search} setSearch=${setSearch} searchRef=${searchRef} push=${push} taskList=${taskList} taskFilter=${activeTask} setTaskFilter=${setTaskFilter} />` : null}
 
     ${!repos.length ? html`<main class="onboarding"><${BrandMark} size=${56} class="onboarding-mark" /><h1>Add your first repository</h1><p class="lead">git-shuttle shows the commit graph and walks a task from branch to merge to release.</p>
-      <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class="split" ref=${mainRef} style=${{ "--panel-w": panelSplit.size + "px" }}>
+      <${Button} onClick=${() => setDialog("add")}>Add a repository<//></main>` : html`<main class=${"split" + (folded ? " is-folded" : "")} ref=${mainRef} style=${{ "--panel-w": panelSplit.size + "px" }}>
       <section class="graph-pane" aria-label="Commit graph" ref=${paneRef}>
         <div class="graph-scroll"><${GraphView} graph=${graph} changes=${changeCount(status)} loading=${loading} onMenu=${openMenu} hidden=${hidden} selected=${selected} onSelect=${setSelected} onOpen=${openCommit} fresh=${freshShas} onCopy=${copy} filter=${search} tasks=${taskMap} stages=${stages} names=${branchNames} taskFilter=${activeTask} onClearTask=${() => setTaskFilter("")} /></div>
         ${selected && repoId ? html`<${Splitter} split=${detailSplit} axis="y" grow=${-1} label="Resize the details" />
           <${CommitPanel} key=${selected.type === "worktree" ? "worktree" : selected.sha} repoId=${repoId} selected=${selected} remotes=${(graph && graph.remotes) || []} height=${detailSplit.size} stages=${stages} names=${branchNames} onSelectCommit=${selectCommit} onClose=${() => setSelected(null)} onCopy=${copy} actions=${fileActions} />` : null}
       </section>
-      <${Splitter} split=${panelSplit} axis="x" grow=${-1} label="Resize the side panel" />
-      <aside class="panel" aria-label="Next step">
+      ${folded ? null : html`<${Splitter} split=${panelSplit} axis="x" grow=${-1} label="Resize the side panel" />`}
+      ${folded ? html`<aside class="panel-strip" aria-label="Next step (folded)">
+        <button type="button" class="strip-open" aria-expanded="false" aria-label=${"Unfold the side panel: " + stripLabel} title="Unfold the side panel (])" onClick=${() => setFolded(false)}>
+          <span aria-hidden="true">«</span><span class="strip-label" aria-hidden="true">${stripLabel}</span>
+        </button></aside>` : null}
+      <aside class="panel" aria-label="Next step" hidden=${folded}>
         ${repo && repo.error ? html`<${Alert} tone="bad" title="Cannot read this repository">${repo.error}<//>` : null}
         ${status ? html`
           <${ResultCard} runner=${runner} onPullRequest=${releasePullRequest} ready=${!!releaseReady(status)} />
           <${OperationBanner} status=${status} runner=${runner} confirm=${confirm} onResolve=${resolveFile} onHunks=${file => setModal({ name: "conflict", file })} />
           ${status["config.set"] === "0" ? html`<${Alert} tone="info" title="Using the default settings"><span>Integration <code>${c.integration || "?"}</code>, release <code>${c.release || "?"}</code>.</span> <a href="#" onClick=${e => { e.preventDefault(); setDialog("settings"); }}>Change</a><//>` : null}
-          <${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }, { value: "deploy", label: "Deploy" }]} />
+          <div class="panel-tabs"><${Segmented} value=${tab} onChange=${setTab} options=${[{ value: "start", label: "Start" }, { value: "ship", label: "Ship" + (changeCount(status) ? " · " + changeCount(status) : "") }, { value: "release", label: "Release" }, { value: "deploy", label: "Deploy" }]} />
+            <button type="button" class="panel-fold" aria-expanded="true" aria-label="Fold the side panel" title="Fold the side panel: the graph takes the width (])" onClick=${() => setFolded(true)}><span aria-hidden="true">»</span></button></div>
           ${tab === "start" || tab === "ship" ? html`<${AddonCards} repoId=${repoId} branch=${status.branch} version=${tab + ":" + (runner.job && runner.job.state !== "running" ? runner.job.id : "")} />` : null}
           ${tab === "start" ? html`<${StartTab} repoId=${repoId} status=${status} branches=${branches} runner=${runner} onContinue=${() => setTab("ship")} onSwitch=${switchTo} />` : null}
           ${tab === "ship" ? html`<${ShipTab} status=${status} runner=${runner} groups=${groups} setGroups=${setGroups} tested=${!!tested[key]} setTested=${v => setTested({ ...tested, [key]: v })} worktree=${worktree} onOpenFile=${openFile} />` : null}

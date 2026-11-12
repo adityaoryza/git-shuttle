@@ -276,6 +276,7 @@ export const OPS = {
   "settings": { label: "Settings", special: "settings", reason: () => "" },
   "add-repo": { label: "Add a repository", special: "add", reason: () => "" },
   "shortcuts": { label: "Keyboard shortcuts", special: "shortcuts", reason: () => "" },
+  "panel": { label: "Fold or unfold the side panel", special: "panel", reason: () => "" },
   "about": { label: "About git-shuttle", special: "about", reason: () => "" },
   "update": { label: "Check for updates", special: "about", reason: () => "" },
 };
@@ -345,6 +346,7 @@ export const SHORTCUTS = [
   { keys: "Ctrl+K", id: "palette", text: "Open the actions palette" },
   { keys: "Ctrl+F", id: "search", text: "Search the commits" },
   { keys: "?", id: "shortcuts", text: "Show this list" },
+  { keys: "]", id: "panel", text: "Fold or unfold the side panel (the graph takes the width)" },
   { keys: "Shift+F", id: "fetch", text: "Fetch" },
   { keys: "Shift+P", id: "push", text: "Push or publish" },
   { keys: "B", id: "branch", text: "New branch" },
@@ -371,6 +373,7 @@ export function shortcutFor(e) {
   if (mod && key === "z") return e.shiftKey ? "redo" : "undo";
   if (mod) return "";
   if (e.key === "?") return "shortcuts";
+  if (e.key === "]") return "panel";
   if (e.shiftKey && key === "f") return "fetch";
   if (e.shiftKey && key === "p") return "push";
   if (e.shiftKey && key === "s") return "stash-pop";

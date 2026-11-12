@@ -4,6 +4,42 @@ const tool = (page, id) => page.locator(`.toolbar [data-tool="${id}"]`);
 const confirmWith = async (page, verb) => { const d = page.locator(".modal"); const b = d.getByRole("button", { name: verb, exact: true }); await b.waitFor(); await page.waitForFunction(el => !el.disabled, await b.elementHandle()); await b.click(); };
 
 export const scenarios = {
+  async "side panel: folds to a strip so the graph takes the width, is remembered, and comes back"(t) {
+    const page = await t.page();
+    const graph = () => page.locator(".graph-pane").boundingBox();
+    const wide = (await graph()).width;
+    await page.getByRole("button", { name: "Fold the side panel" }).click();
+    await page.locator(".panel-strip").waitFor();
+    t.ok("folded: the panel is hidden and a strip says which tab it holds", !(await page.locator("aside.panel").isVisible()) && /Unfold the side panel: (Start|Ship|Release|Deploy)/.test(await page.locator(".strip-open").getAttribute("aria-label")));
+    t.ok("...the graph takes the width", (await graph()).width > wide + 250, wide + " -> " + (await graph()).width);
+    t.ok("...the handle to resize is gone", (await page.locator(".splitter-x").count()) === 0);
+    await page.reload();
+    await page.locator(".panel-strip").waitFor();
+    t.ok("it is remembered after a reload", !(await page.locator("aside.panel").isVisible()));
+    await page.getByRole("button", { name: /Unfold the side panel/ }).click();
+    await page.locator("aside.panel").waitFor();
+    t.ok("the strip unfolds it, with its tabs", (await page.locator(".panel-strip").count()) === 0 && (await page.getByRole("tab", { name: "Start" }).isVisible()));
+    await page.locator(".graph-pane").click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.keyboard.press("]");
+    await page.locator(".panel-strip").waitFor();
+    t.ok("] folds it", !(await page.locator("aside.panel").isVisible()));
+    await page.keyboard.press("]");
+    await page.locator("aside.panel").waitFor();
+    t.ok("...and unfolds it", (await page.locator(".panel-strip").count()) === 0);
+    await page.keyboard.press("]");
+    await page.locator(".panel-strip").waitFor();
+    await page.keyboard.press("Control+k");
+    await page.getByPlaceholder(/action/i).first().fill("release");
+    await page.keyboard.press("Enter");
+    await page.locator("aside.panel").waitFor();
+    t.ok("choosing a tab from the palette unfolds the panel on it", (await page.getByRole("tab", { name: "Release" }).getAttribute("aria-selected")) === "true");
+    await page.setViewportSize({ width: 700, height: 900 });
+    await page.getByRole("button", { name: "Fold the side panel" }).click();
+    await page.locator(".panel-strip").waitFor();
+    t.ok("on a narrow window the strip is a bar under the graph and nothing overflows", !(await overflowsHorizontally(page)) && (await page.locator(".panel-strip").boundingBox()).y > (await graph()).y);
+    t.ok("no page errors", page.errors.length === 0, page.errors.join("\n"));
+  },
+
   async "toolbar: every button, with a reason when it is unavailable"(t) {
     const page = await t.page();
     for (const id of ["undo", "redo", "push", "branch", "stash", "stash-pop", "sync-smart", "log", "palette"]) t.ok(`the ${id} button is there`, (await tool(page, id).count()) === 1);
