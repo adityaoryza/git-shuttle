@@ -4,6 +4,17 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.6] - 2026-11-12
+
+### Added
+
+- Tasks has a Release view: for each task, how many of its commits are in prod, on their way in a release branch, merged only, or on their branch only, with the list of its commits and a Release button for the ones that are merged and not in prod. `git shuttle trace status [TASK]` prints the same.
+
+### Fixed
+
+- A commit that was picked into the release branch with a change (a conflict, a version kept) is no longer listed as not released. The Release tab, `candidates` and the Prod column of the graph recognise it by its author, author date and subject, which a cherry-pick keeps.
+- An update restart keeps the port of the open page.
+
 ## [0.14.5] - 2026-10-30
 
 ### Added
