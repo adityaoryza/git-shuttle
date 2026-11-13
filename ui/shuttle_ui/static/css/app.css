@@ -475,6 +475,7 @@ kbd { font: 600 12px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 
 /* dialogs of the actions */
 .sub { margin: 4px 0 0; font-size: 13px; color: var(--muted-foreground); font-weight: 600; }
+.task-body .sub { margin-top: 14px; }
 .plan { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .plan-row { display: grid; grid-template-columns: auto 190px auto minmax(0, 1fr); align-items: center; gap: 8px; }
 .plan-drop .msg { text-decoration: line-through; color: var(--muted-foreground); } .plan-move { display: inline-flex; }

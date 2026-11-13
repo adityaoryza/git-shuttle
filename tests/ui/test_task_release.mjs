@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { chainOf, chainToPick, commitNote, countsText, leftToPick, segments, taskRows, toRelease, totals } from "../../ui/shuttle_ui/static/js/task-release.js";
+import { chainOf, chainToPick, commitNote, neededCommits, countsText, leftToPick, segments, taskRows, toRelease, totals } from "../../ui/shuttle_ui/static/js/task-release.js";
 
 let n = 0; const t = (name, fn) => { fn(); n++; console.log("  ✔ " + name); };
 const zero = { prod: 0, release: 0, staging: 0, branch: 0, missing: 0 };
@@ -56,6 +56,8 @@ t("a task that needs another releases both, in the order of the integration bran
   assert.deepStrictEqual(chainToPick([accent, layout], accent).map(c => c.sha), ["019692c8", "b37e022c", "c1014900"]);
   assert.deepStrictEqual(chainToPick([accent, layout], layout).map(c => c.sha), ["019692c8", "b37e022c"], "the task it is needed by is not taken");
   assert.deepStrictEqual(chainToPick([half], half).map(c => c.sha), ["ea3d6e66b659", "22fb69dc0000"], "without pos the order of the trace stays");
+  assert.deepStrictEqual(neededCommits([accent, layout], accent).map(n => n.task + ":" + n.commit.sha), ["15493:019692c8", "15493:b37e022c"], "what it takes from the tasks it needs, in staging order");
+  assert.deepStrictEqual(neededCommits([accent, layout], layout), [], "a task that needs nothing shows nothing more");
 });
 t("the totals add the counts of the tasks shown", () => {
   assert.deepStrictEqual(totals([half, done]), { ...zero, prod: 11, staging: 4 });

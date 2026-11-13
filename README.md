@@ -70,6 +70,10 @@ commands, with a preview before every run.
 | ![Staged, not staged and untracked files with their diffs](docs/images/17-working-tree.png) | ![The same screen in the light theme](docs/images/18-theme-light.png) |
 | **See what you are about to ship** | **An old server is told** |
 | ![The Ship tab lists the files of each module; a click opens the diff](docs/images/20-ship-files.png) | ![The banner shown when the server is older than the page](docs/images/21-old-server.png) |
+| **Tasks, Release: where each task is on its way to prod** | **Deploy to a saved server** |
+| ![The Release view of Tasks: a task that needs another one lists the commits its Release button takes from it](docs/images/22-tasks-release.png) | ![The Deploy tab: server, what it deploys, the modules, the password field](docs/images/24-deploy.png) |
+| **Fold the side panel (`]`): the graph takes the width** | |
+| ![The side panel folded to a strip on the right, the graph with its Prod column across the page](docs/images/23-panel-folded.png) | |
 
 ### More commands: branches, commits, the stash, undo
 
@@ -233,6 +237,7 @@ Running `init` again keeps what is already set; an empty value (`--message-patte
 | `git shuttle hook install\|uninstall\|status` | a `commit-msg` hook that applies the message rules to every commit |
 | `git shuttle config` | the settings in effect |
 | `git shuttle deploy [TARGET] [--modules A,B]` | run the update command of a saved server over ssh, after a push (`--setup NAME`, `--list`, `--forget NAME`, `--plan`, `--check`) |
+| `git shuttle trace list \| show \| status \| bind \| unbind \| link \| unlink \| sync \| report` | the trace of the tasks: what happened to each, where its commits are on their way to production, which task needs which (see [Tasks](#tasks-from-the-task-to-production)) |
 | `git shuttle addon list \| info \| enable \| disable \| check \| cards` | add-ons: programs `git-shuttle-NAME` that tell git-shuttle the task of a branch, the text of a pull request ([docs/addons.md](docs/addons.md)) |
 | `git shuttle update [--check] [--to TAG]` | bring git-shuttle to the latest release (a copy made by the installer); `--check` only looks |
 
@@ -303,12 +308,51 @@ It opens on the tab that fits where you are.
 - **Start**: name a task, get a branch cut from the integration branch.
 - **Ship**: your changed files grouped by module, one commit each, in the order you set; the test command to copy; then merge
   directly or open a pull request.
-- **Release**: the commits that were merged since the last release, with a search, "Hide released" and Select all. Tick the ones to
+- **Release**: the commits that were merged since the last release, with a search, "Not released" / "All" and Select all. Tick the ones to
   release, order them, and create the release branch (named from the pattern in Settings), or add them to a release branch that exists.
   With nothing ticked the button makes the branch with no commit yet. "Copy release notes" gives Markdown for the pull request, by module.
+  A commit picked with a change (a conflict, a version kept) still counts as released: it is found by its author, date and subject.
+- **Deploy**: pick a saved server, the modules (found from what changed), type the name of the target to confirm, and follow the output.
+  A sudo password typed there is written once to the prompt of sudo, never stored (see [Deploy to a server](#deploy-to-a-server)).
+- **Fold the side panel**: the button beside its tabs, or `]`, folds Start, Ship, Release and Deploy to a thin strip so the graph takes
+  the width. The strip says which tab it holds and when a job runs; a click (or `]` again) unfolds it, and the choice is remembered.
+- **The Prod column** of the graph marks the commits that are not in production yet: on their way in a release branch, or merged only.
 
 Every button first **previews** the exact git commands (`--dry-run`); Run only unlocks for the preview of exactly what is on
 the screen. A conflict shows its files with Continue and Abort. See [docs/ui.md](docs/ui.md) for the design and the security model.
+
+**Keys**: `Ctrl+K` the actions palette (every action, with its command and where its button is), `?` this list, `]` fold the side panel,
+`Ctrl+F` search the commits, `Shift+F` fetch, `Shift+P` push, `B` new branch, `S` / `Shift+S` stash and pop, `L` the command
+log, `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo, `Shift+F10` the menu of the selected row.
+
+### Tasks: from the task to production
+
+With an add-on that knows your tasks (for example `git-shuttle-odoo-task`, see [docs/addons.md](docs/addons.md)), **Start** can cut the
+branch from a task, the Start and Ship tabs show the card of the task (with **Refresh**), and every step on that branch is written to a
+private trace in `.git` (never pushed). The **Tasks** button of the top bar opens three views:
+
+- **Tasks**: each task with its timeline (started, commits, pushed, pull request, merged, released, deployed), **Sync** (records a merge the
+  pull request already has, then writes the Customer report) and **Report** (adds the steps to the Customer report of the task).
+- **Release**: for each task, a bar of where its commits are: *In prod*, *On its way* (a release branch not merged yet), *Not in prod*
+  (merged into the integration branch only) or *Not merged*. "To release" keeps the tasks with work left; a filter reads the number, the
+  title and the branches. A task opens on its commits, and **Release N** makes a release branch with the ones that are merged and not in
+  prod, after a preview. A task built on another one shows **needs #15493** (the other shows **needed by #17553**): its Release button
+  takes the commits of both, in their order on the integration branch, and lists the ones it takes from the other task under its own.
+- **Branches**: the branches linked to a task, and **Link a branch** for one that already has work: what it did is written with its real dates.
+
+The same from the terminal:
+
+```bash
+git shuttle trace list                           # the tasks of the trace
+git shuttle trace show 17553                     # the timeline of one task
+git shuttle trace status 17553                   # where its commits are (and those of the tasks it needs)
+git shuttle trace bind 15493 --branch NAME       # link a branch that already has work
+git shuttle trace bind 15493 --commit 019692c8   # add one commit whose branch is gone
+git shuttle trace link 17553 --needs 15493       # 17553 is built on 15493: release them together (unlink undoes it)
+git shuttle trace sync 17553 --branch NAME       # record the merge, then write the Customer report
+```
+
+Nothing of this is written to the tracker except the Customer report, and only when its add-on has the report turned on.
 
 Python 3 (standard library only) is needed for it; the commands do not need it.
 
