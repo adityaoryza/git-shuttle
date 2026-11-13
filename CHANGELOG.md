@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.8] - 2026-11-13
+
+### Added
+
+- A task can need another one released first: `git shuttle trace link 17553 --needs 15493` (and `unlink`). `trace status` shows the tasks together, and the Release view marks "needs #15493" / "needed by #17553" and releases the commits of both, in their order on the integration branch. Nothing is written to the tracker.
+- `git shuttle trace bind TASK --commit SHA` adds one commit to a task when its branch is gone or it was made on a shared branch.
+
 ## [0.14.7] - 2026-11-12
 
 ### Added
