@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { commitNote, countsText, leftToPick, segments, taskRows, toRelease, totals } from "../../ui/shuttle_ui/static/js/task-release.js";
+import { chainOf, chainToPick, commitNote, countsText, leftToPick, segments, taskRows, toRelease, totals } from "../../ui/shuttle_ui/static/js/task-release.js";
 
 let n = 0; const t = (name, fn) => { fn(); n++; console.log("  ✔ " + name); };
 const zero = { prod: 0, release: 0, staging: 0, branch: 0, missing: 0 };
@@ -43,6 +43,19 @@ t("a commit says how it reached prod, or which release branch has it", () => {
 });
 t("what is left to pick are the merged commits, under the hash the integration branch has", () => {
   assert.deepStrictEqual(leftToPick([half, done]).map(c => c.sha), ["ea3d6e66b659", "22fb69dc0000"]);
+});
+t("a task that needs another releases both, in the order of the integration branch", () => {
+  const layout = { addon: "odoo-task", id: "15493", needs: [], needed_by: ["17553"], counts: { ...zero, staging: 2 },
+    commits: [{ sha: "b37e022c", subject: "layout", state: "staging", as: "b37e022c", pos: 3 }, { sha: "019692c8", subject: "column", state: "staging", as: "019692c8", pos: 1 }] };
+  const accent = { addon: "odoo-task", id: "17553", needs: ["15493", "404"], needed_by: [], counts: { ...zero, staging: 1, prod: 1 },
+    commits: [{ sha: "c1014900", subject: "accent", state: "staging", as: "c1014900", pos: 7 }, { sha: "aaaa", subject: "old", state: "prod", as: "aaaa" }] };
+  const loop = { ...layout, needs: ["17553"] };
+  assert.deepStrictEqual(chainOf([accent, layout], accent).map(t => t.id), ["17553", "15493"], "a task that is not in the status is left out");
+  assert.deepStrictEqual(chainOf([accent, loop], loop).map(t => t.id), ["15493", "17553"], "a loop is followed once");
+  assert.deepStrictEqual(chainOf([accent, { ...layout, addon: "other" }], accent).map(t => t.id), ["17553"], "only tasks of the same add-on");
+  assert.deepStrictEqual(chainToPick([accent, layout], accent).map(c => c.sha), ["019692c8", "b37e022c", "c1014900"]);
+  assert.deepStrictEqual(chainToPick([accent, layout], layout).map(c => c.sha), ["019692c8", "b37e022c"], "the task it is needed by is not taken");
+  assert.deepStrictEqual(chainToPick([half], half).map(c => c.sha), ["ea3d6e66b659", "22fb69dc0000"], "without pos the order of the trace stays");
 });
 t("the totals add the counts of the tasks shown", () => {
   assert.deepStrictEqual(totals([half, done]), { ...zero, prod: 11, staging: 4 });

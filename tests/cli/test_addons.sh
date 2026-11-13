@@ -196,6 +196,48 @@ assert_status 0 "$RC" "trace map (for the graph of the web UI)"
 assert_contains "$OUT" '"plain-branch"' "...has the branches that are for a task"
 assert_contains "$OUT" "$(git rev-parse HEAD)" "...and the commits of those branches, also the ones that were not made by git-shuttle"
 assert_not_contains "$OUT" "\"$(git rev-parse develop)\"" "...but not the commits of the integration branch"
+# a commit whose branch is gone is added to a task by hand; a task can need another one released first
+git checkout -q -b gone-branch develop
+echo column >column.txt; git add column.txt; git commit -q -m "[IMP] export: the invoice number in column CU"
+column=$(git rev-parse HEAD)
+git checkout -q plain-branch
+shuttle -n trace bind 15607 --commit "$column"
+assert_status 0 "$RC" "trace bind --commit --dry-run"
+assert_not_contains "$(cat "$TRACE")" "$column" "...writes nothing"
+shuttle -y trace bind 15607 --commit "$column"
+assert_status 0 "$RC" "trace bind --commit"
+assert_contains "$(grep "$column" "$TRACE")" '"linked": "by hand"' "...the commit is a step of the task, without a branch"
+before=$(wc -l <"$TRACE")
+shuttle -y trace bind 15607 --commit "$column"
+assert_eq "$before" "$(wc -l <"$TRACE")" "...once"
+shuttle -y trace bind 15607 --commit nope
+assert_status 1 "$RC" "a commit that is not here"
+shuttle -y trace bind 99999 --commit "$column"
+assert_status 1 "$RC" "a task with no trace"
+python3 -I "$(dirname "$SHUTTLE")/../lib/addons/trace.py" append "$TRACE" type=commit addon=task task=200 title=Base "sha=$column" branch=base-work
+shuttle -y trace link 15607 --needs 99999
+assert_status 1 "$RC" "trace link to a task with no trace"
+shuttle -y trace link 15607 --needs 15607
+assert_status 1 "$RC" "a task cannot need itself"
+shuttle -n trace link 15607 --needs 200
+assert_status 0 "$RC" "trace link --dry-run"
+assert_not_contains "$(cat "$TRACE")" '"needs"' "...writes nothing"
+shuttle -y trace link 15607 --needs 200
+assert_status 0 "$RC" "trace link"
+shuttle trace status 15607
+assert_contains "$OUT" "needs #200 released first" "trace status of a task says what it needs"
+assert_contains "$OUT" "task 200: Base" "...and shows that task too"
+shuttle trace status 15607 --porcelain
+assert_contains "$OUT" '"needed_by": ["15607"]' "...which knows who needs it"
+before=$(wc -l <"$TRACE")
+shuttle -y trace link 15607 --needs 200
+assert_eq "$before" "$(wc -l <"$TRACE")" "linking again adds nothing"
+shuttle -y trace unlink 15607 --needs 200
+assert_status 0 "$RC" "trace unlink"
+shuttle trace status 15607
+assert_not_contains "$OUT" "task 200" "...the task stands alone again"
+shuttle -y trace unlink 15607 --needs 200
+assert_status 1 "$RC" "unlinking what is not linked"
 shuttle -n trace unbind --branch plain-branch
 assert_status 0 "$RC" "trace unbind --dry-run"
 assert_eq "15607" "$(git config branch.plain-branch.shuttle-ref-id)" "...changes nothing"

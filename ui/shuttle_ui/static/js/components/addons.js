@@ -6,7 +6,7 @@ import { linkify, stageTone } from "../logic.js";
 import { ExternalLink } from "./links.js";
 import { Alert, Badge, Button, Facts, Field, Input, ItemList, ItemRow, Modal, Segmented, Skeleton, Status } from "./ui.js";
 import { Combobox } from "./combobox.js";
-import { STATE_LABEL, STATE_TONE, commitNote, countsText, leftToPick, segments, taskRows, totals } from "../task-release.js";
+import { STATE_LABEL, STATE_TONE, chainOf, chainToPick, commitNote, countsText, segments, taskRows, totals } from "../task-release.js";
 
 const webAddress = link => (typeof link === "string" && /^https?:\/\//.test(link) ? link : "");
 
@@ -186,13 +186,13 @@ export function TaskPicker({ repoId, version, onPick, picked }) {
   </div>`;
 }
 
-const EVENT_SAY = { branch: "Branch made", bind: "Linked to the task", start: "Started", commit: "Commit", push: "Pushed", pr: "Pull request", merge: "Merged", release: "Released", deploy: "Deployed" };
-const eventText = e => [e.branch && "branch " + e.branch, e.sha && e.sha.slice(0, 10), e.title || e.subject, e.url, e.target && "to " + e.target, e.tag && "tag " + e.tag, e.base && "into " + e.base, e.into && "into " + e.into, e.release_branch && "onto " + e.release_branch, e.linked && "added afterwards, with its real date", e.from && e.type === "branch" && "from " + e.from].filter(Boolean).join(" · ");
+const EVENT_SAY = { branch: "Branch made", bind: "Linked to the task", start: "Started", commit: "Commit", push: "Pushed", pr: "Pull request", merge: "Merged", release: "Released", deploy: "Deployed", link: "Needs a task", unlink: "No longer needs" };
+const eventText = e => [e.branch && "branch " + e.branch, e.sha && e.sha.slice(0, 10), e.title || e.subject, e.url, e.target && "to " + e.target, e.tag && "tag " + e.tag, e.base && "into " + e.base, e.into && "into " + e.into, e.release_branch && "onto " + e.release_branch, e.needs && "needs #" + e.needs + " released first", e.linked && "added afterwards, with its real date", e.from && e.type === "branch" && "from " + e.from].filter(Boolean).join(" · ");
 
 // every step that git-shuttle took for the tasks, in order: start, commit, push, pull request, merge, release, deploy
 // a date of the trace (UTC, with a Z) in the time zone of this browser
 const localTime = iso => { const d = new Date(iso); return isNaN(d) ? String(iso || "") : d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }); };
-const LAST_SAY = { branch: "branch made", start: "started", commit: "committed", push: "pushed", pr: "pull request", merge: "merged", release: "released", deploy: "deployed", bind: "linked" };
+const LAST_SAY = { branch: "branch made", start: "started", commit: "committed", push: "pushed", pr: "pull request", merge: "merged", release: "released", deploy: "deployed", bind: "linked", link: "needs a task", unlink: "no longer needs" };
 
 function Timeline({ events }) {
   const [all, setAll] = useState(false);
@@ -235,16 +235,19 @@ function TaskRelease({ repoId, onRun, notify }) {
     ${rows.length ? html`<p class="hint">${rows.length} task(s): ${countsText(sum)}.</p>` : null}
     ${rows.length === 0 ? html`<div class="empty-note"><strong>${show === "todo" && all.length ? "Everything is in prod" : "No task here"}</strong><span class="hint">${show === "todo" && all.length ? "Every traced commit of every task is released. All shows them." : "Start a branch from a task, or link a branch that already has work."}</span></div>` : html`<ul class="task-accordion task-release">${rows.map(task => {
       const key = task.addon + ":" + task.id, isOpen = open === key, parts = segments(task.counts);
-      const left = leftToPick([task]).map(c => c.sha);
+      const chain = chainOf(data.tasks, task), left = chainToPick(data.tasks, task).map(c => c.sha);
+      const others = chain.slice(1).map(t => "#" + t.id).join(", ");
       return html`<li class=${isOpen ? "open" : ""}>
         <div class="task-line">
           <button type="button" class="task-head" aria-expanded=${isOpen} onClick=${() => setOpen(isOpen ? null : key)}>
             <span class="chev" aria-hidden="true">${isOpen ? "▾" : "▸"}</span><span class="mono">${task.id}</span><strong class="msg">${task.title || "(no title)"}</strong>
             <span class="release-meter" role="img" aria-label=${countsText(task.counts)} title=${countsText(task.counts)}>${parts.map(p => html`<span class=${"seg seg-" + p.state} style=${{ width: p.pct + "%" }}></span>`)}</span>
             <span class="hint release-counts">${parts.map(p => html`<span class=${"count count-" + p.state}>${p.n} ${STATE_LABEL[p.state].toLowerCase()}</span>`)}</span>
+            ${(task.needs || []).length ? html`<span class="ref task-needs" title=${"Built on these tasks: released first, the Release button takes their commits too (git shuttle trace link)"}>needs ${task.needs.map(n => "#" + n).join(", ")}</span>` : null}
+            ${(task.needed_by || []).length ? html`<span class="ref task-needs" title="These tasks are built on this one">needed by ${task.needed_by.map(n => "#" + n).join(", ")}</span>` : null}
           </button>
           <span class="task-actions">
-            <${Button} size="sm" variant="outline" disabled=${!left.length} title=${left.length ? "Makes a release branch from " + data.release + " with the " + left.length + " commit(s) of this task that are merged and not in prod, in their order. A preview comes first." : "Nothing of this task is waiting in " + data.integration} onClick=${() => onRun("release", { onto: "auto", commits: left }, "Release task " + task.id)}>Release ${left.length || ""}<//>
+            <${Button} size="sm" variant="outline" disabled=${!left.length} title=${left.length ? "Makes a release branch from " + data.release + " with the " + left.length + " commit(s) of this task" + (others ? " and of the tasks it needs (" + others + ")" : "") + " that are merged and not in prod, in their order on " + data.integration + ". A preview comes first." : "Nothing of this task" + (others ? " or of the tasks it needs" : "") + " is waiting in " + data.integration} onClick=${() => onRun("release", { onto: "auto", commits: left }, "Release task " + task.id + (others ? " with " + others : ""))}>Release ${left.length || ""}<//>
           </span>
         </div>
         ${isOpen ? html`<div class="task-body"><table class="history release-commits"><thead><tr><th scope="col">Where</th><th scope="col">Commit</th><th scope="col">Subject</th></tr></thead><tbody>

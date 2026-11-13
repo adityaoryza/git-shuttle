@@ -3,7 +3,9 @@
  * data is what GET /trace/status answers: { release, integration, open: [name], tasks: [{ addon, id, title, branches, last,
  * counts: { prod, release, staging, branch, missing }, commits: [{ sha, subject, state, where, match, as }] }] }.
  * A commit is "prod" when the release line has it (itself, the same patch, or picked by hand: same author, date and subject), "release"
- * when a release branch that is not merged yet has it, "staging" when only the integration branch has it, "branch" when only its branch does. */
+ * when a release branch that is not merged yet has it, "staging" when only the integration branch has it, "branch" when only its branch does.
+ * A task may need other tasks released first (`needs`, from `git shuttle trace link ID --needs OTHER`; `needed_by` is the other side), and a
+ * commit that is only on the integration branch has `pos`, its place there (oldest first). */
 
 export const STATES = ["prod", "release", "staging", "branch", "missing"];
 export const STATE_LABEL = { prod: "In prod", release: "On its way", staging: "Not in prod", branch: "Not merged", missing: "Not here" };
@@ -44,7 +46,24 @@ export function commitNote(commit) {
 }
 
 // The commits of the tasks that are merged and not released yet, oldest task first: what a release would still have to pick.
-export const leftToPick = tasks => (tasks || []).flatMap(task => (task.commits || []).filter(c => c.state === "staging").map(c => ({ task: task.id, sha: c.as || c.sha, subject: c.subject })));
+export const leftToPick = tasks => (tasks || []).flatMap(task => (task.commits || []).filter(c => c.state === "staging").map(c => ({ task: task.id, sha: c.as || c.sha, subject: c.subject, pos: c.pos })));
+
+// The task and every task it needs, directly or through another one, that this status has (a loop is followed once).
+export function chainOf(tasks, task) {
+  const byId = new Map((tasks || []).filter(t => t.addon === task.addon).map(t => [t.id, t]));
+  const out = [], todo = [task];
+  while (todo.length) {
+    const t = todo.shift();
+    if (!t || out.includes(t)) continue;
+    out.push(t);
+    for (const id of t.needs || []) todo.push(byId.get(id));
+  }
+  return out;
+}
+
+// What the Release button of a task picks: its commits and those of the tasks it needs that are merged and not in prod, in the order of the
+// integration branch (a pick in another order may not apply).
+export const chainToPick = (tasks, task) => leftToPick(chainOf(tasks, task)).sort((a, b) => (a.pos ?? Infinity) - (b.pos ?? Infinity));
 
 // The totals of the tasks shown, for the line above the list.
 export function totals(tasks) {

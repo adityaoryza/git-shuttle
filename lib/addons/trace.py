@@ -358,18 +358,49 @@ def found_on(repo, sha, key, patch, ref, keys, patches):
     return None
 
 
+def needs(path):
+    """{(addon, id): [ids]}: the tasks each task needs released first (`trace link ID --needs OTHER`), in the order they were linked.
+    A link and an unlink are steps of the trace; the last one of a pair wins."""
+    out = {}
+    for event in events(path):
+        if event.get("type") in ("link", "unlink") and event.get("task") and event.get("needs"):
+            wanted = out.setdefault((event.get("addon", ""), event["task"]), [])
+            if event["needs"] in wanted:
+                wanted.remove(event["needs"])
+            if event["type"] == "link":
+                wanted.append(event["needs"])
+    return {key: ids for key, ids in out.items() if ids}
+
+
+def chain(links, addon, task_id):
+    """The task and every task it needs, directly or through another one (a loop is followed once)."""
+    seen, todo = [], [task_id]
+    while todo:
+        current = todo.pop(0)
+        if current not in seen:
+            seen.append(current)
+            todo += links.get((addon, current), [])
+    return seen
+
+
 def release_status(path, repo, release, integration, open_refs, addon=None, task_id=None):
     """Where each traced commit of the tasks is: on the release line (prod), in a release branch on its way, on the
-    integration branch only (staging), or only on its branch. `release` and `integration` are (name, ref), `open_refs` [(name, ref)]."""
+    integration branch only (staging), or only on its branch. `release` and `integration` are (name, ref), `open_refs` [(name, ref)].
+    A task named with task_id comes with the tasks it needs (`needs`); `needed_by` lists the tasks that need it."""
     release, integration = (release[0], resolve_ref(repo, release[1])), (integration[0], resolve_ref(repo, integration[1]))
     open_refs = [(name, resolve_ref(repo, ref)) for name, ref in open_refs if resolve_ref(repo, ref)]
     if not release[1] or not integration[1]:
         raise ValueError("the release line or the integration branch is not in this repository")
+    links = needs(path)
+    if task_id and not addon:
+        addon = next((e.get("addon", "") for e in events(path) if e.get("task") == task_id), "")
+    wanted_order = chain(links, addon or "", task_id) if task_id else []
+    wanted = set(wanted_order) if task_id else None
     groups = {}
     for event in events(path):
-        if task_id and (event.get("task") != task_id or (addon and event.get("addon", "") != addon)):
+        if not event.get("task") or event.get("type") in ("link", "unlink"):
             continue
-        if not event.get("task"):
+        if wanted is not None and (event["task"] not in wanted or event.get("addon", "") != addon):
             continue
         group = groups.setdefault((event.get("addon", ""), event["task"]), {
             "addon": event.get("addon", ""), "id": event["task"], "title": "", "link": "", "branches": [], "last": "", "shas": []})
@@ -394,6 +425,8 @@ def release_status(path, repo, release, integration, open_refs, addon=None, task
         picks = git_lines(repo, "rev-list", "--no-merges", "--max-count=300", "%s..%s" % (other, ref))
         return keyed(repo, "--max-count=3000", ref), {p: s for s, p in patch_ids(repo, picks).items()}
 
+    # the order a release must pick them in: their place on the integration branch, oldest first
+    order = {sha: i for i, sha in enumerate(git_lines(repo, "rev-list", "--reverse", "--no-merges", "--max-count=3000", "%s..%s" % (release[1], integration[1])))}
     lines = ([("prod", release[0], release[1], side(release[1], integration[1]))]
              + [("release", name, ref, side(ref, integration[1])) for name, ref in open_refs]
              + [("staging", integration[0], integration[1], side(integration[1], release[1]))])
@@ -413,9 +446,16 @@ def release_status(path, repo, release, integration, open_refs, addon=None, task
                         break
                 else:
                     row["state"] = "branch"
+            if row["state"] == "staging" and row["as"] in order:
+                row["pos"] = order[row["as"]]
             counts[row["state"]] += 1
             commits.append(row)
-        tasks_out.append(dict({k: group[k] for k in ("addon", "id", "title", "link", "branches", "last")}, counts=counts, commits=commits))
+        key = (group["addon"], group["id"])
+        needed_by = sorted(task for (a, task), ids in links.items() if a == group["addon"] and group["id"] in ids)
+        tasks_out.append(dict({k: group[k] for k in ("addon", "id", "title", "link", "branches", "last")}, counts=counts, commits=commits,
+                              needs=links.get(key, []), needed_by=needed_by))
+    if task_id:  # the task asked for first, then what it needs
+        tasks_out.sort(key=lambda t: wanted_order.index(t["id"]))
     return {"release": release[0], "integration": integration[0], "open": [name for name, _ in open_refs], "tasks": tasks_out}
 
 

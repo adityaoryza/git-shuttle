@@ -106,6 +106,9 @@ Commands:
                                 what happened to a task, from its first commit to the deploy that carried it (the branch must have been started from a task)
   trace status [TASK] [--porcelain]
                                 where the commits of each task are: released, in a release branch on its way, on the integration branch only
+  trace link TASK --needs OTHER | unlink TASK --needs OTHER
+                                TASK is built on OTHER: status and the Release view show them together and release their commits in order
+  trace bind TASK --commit SHA  add one commit to a task (its branch is gone, or it was made on a shared branch)
   update [--check] [--to TAG]   bring git-shuttle to the latest release (a copy made by install.sh); --check only looks
 
 Options:
