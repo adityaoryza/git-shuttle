@@ -4,6 +4,13 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.9] - 2026-11-13
+
+### Added
+
+- In the Release view, a task that needs another one lists, under its own commits, the commits its Release button takes from the other task, in the order they are picked.
+- The README describes the web UI as it is now: the Deploy tab, the folding side panel, the Prod column, the keys, and the Tasks dialog (Tasks, Release, Branches) with the `trace` commands, with three new pictures. `make screenshots` makes them again from the demo repository (it had no scenario left).
+
 ## [0.14.8] - 2026-11-13
 
 ### Added
