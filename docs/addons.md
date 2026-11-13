@@ -86,6 +86,13 @@ did is written with its real dates: its start, its commits that the integration 
 and the merge (a merged branch has its commits from the pull request). Run again, it adds only what is missing. `git shuttle trace sync TASK --branch NAME` does that and then writes the Customer report (the same as Sync in Tasks). A shared branch (the integration
 or the release branch) cannot be linked, and a branch that is for another task needs `--force`.
 
+A task built on another one (a feedback task on top of the first export, both still waiting for prod) is linked to it:
+`git shuttle trace link 17553 --needs 15493` (`unlink` undoes it). Both tasks must be in the trace; nothing is written to the tracker. `trace status 17553`
+then shows #15493 too, each task says what it needs and what needs it, and the **Release** button of #17553 in **Tasks**, then **Release**, picks the
+commits of both that are merged and not in prod, in their order on the integration branch. A commit whose branch is gone (or that was made on a
+shared branch) is added to a task with `git shuttle trace bind 15493 --commit 019692c8`: it counts for that task in status, the Release view and the
+Customer report. Both are steps of the trace, so `trace show` lists them.
+
 A branch remembers what it is for: `branch.NAME.shuttle-ref-addon`, `-id`, `-title` and `-link` in the settings of the repository.
 
 ## What git-shuttle guarantees

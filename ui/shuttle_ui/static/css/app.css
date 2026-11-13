@@ -619,8 +619,9 @@ kbd { font: 600 12px/1 var(--mono); padding: 3px 6px; border: 1px solid var(--bo
 .release-meter { display: inline-flex; flex: none; width: 120px; height: 8px; border-radius: 999px; overflow: hidden; background: var(--muted); box-shadow: inset 0 0 0 1px var(--border); }
 .release-meter .seg { height: 100%; } .seg-prod { background: var(--ok); } .seg-release { background: var(--info); } .seg-staging { background: var(--warn); } .seg-branch { background: var(--muted-foreground); } .seg-missing { background: var(--border); }
 .release-counts { display: inline-flex; flex-wrap: wrap; justify-content: flex-start; gap: 2px 8px; flex: none; width: 160px; font-size: 12px; } .release-counts .count-staging { color: var(--warn); }
+.task-head .task-needs { flex: none; font-size: 12px; white-space: nowrap; }
 .release-commits { table-layout: fixed; } .release-commits th:first-child { width: 112px; } .release-commits th:nth-child(2) { width: 84px; } .release-commits td { vertical-align: top; } .release-commits td:nth-child(3), .release-commits .msg { white-space: normal; overflow-wrap: anywhere; } .release-commits .hint { display: block; }
-@media (max-width: 700px) { .release-meter { width: 100%; order: 4; } .release-counts { order: 5; width: auto; } .release-commits td:nth-child(2) { display: none; } .release-commits th:nth-child(2) { display: none; } }
+@media (max-width: 700px) { .release-meter { width: 100%; order: 4; } .release-counts { order: 5; width: auto; } .task-head .task-needs { order: 6; } .release-commits td:nth-child(2) { display: none; } .release-commits th:nth-child(2) { display: none; } }
 .task-badge-link { color: var(--brand); text-decoration: none; cursor: pointer; } .task-badge-link:hover { text-decoration: underline; } .task-badge-link:focus-visible { outline: 2px solid var(--ring); }
 .task-list li.picked { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--foreground) 45%, var(--border)); border-radius: 4px; } .task-list li.picked .task-row { background: var(--muted); }
 .task-check { width: 14px; color: var(--foreground); font-weight: 700; flex: none; }

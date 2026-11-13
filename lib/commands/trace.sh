@@ -1,5 +1,6 @@
 # shellcheck shell=bash
 # git shuttle trace [list] [--porcelain] | show ID [--addon NAME] [--porcelain] | status [ID] [--addon NAME] [--porcelain] | sync TASK --branch NAME
+#   | link ID --needs OTHER | unlink ID --needs OTHER | bind ID --commit SHA
 #
 # What happened to a task, from its first commit to the deploy that carried it. A branch that was started from a task (git shuttle start --task N,
 # with an add-on) remembers it; every step git-shuttle takes on that branch adds a line to <git dir>/shuttle-trace/events.jsonl: start (with what
@@ -143,8 +144,75 @@ trace_report_branch() {
     rm -f "$rpr"
 }
 
+# trace_task_addon FILE ID — the add-on of a task that is in the trace, or nothing.
+trace_task_addon() {
+    "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" tasks "$1" | "$TRACE_PY" -I -c '
+import json, sys
+print(next((t["addon"] for t in json.load(sys.stdin)["tasks"] if t["id"] == sys.argv[1]), ""))' "$2"
+}
+
+# trace_task_field FILE ADDON ID FIELD — the title or the link of a task that is in the trace.
+trace_task_field() {
+    "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" tasks "$1" | "$TRACE_PY" -I -c '
+import json, sys
+print(next((t[sys.argv[3]] for t in json.load(sys.stdin)["tasks"] if t["addon"] == sys.argv[1] and t["id"] == sys.argv[2]), ""))' "$2" "$3" "$4"
+}
+
+# trace_link FILE link|unlink ID OTHER ADDON — ID needs OTHER released first (both are tasks of the trace, of the same add-on).
+trace_link() {
+    local file=$1 verb=$2 id=$3 other=$4 addon=$5 other_addon linked title
+    [[ "$id" != "$other" ]] || die "$verb: a task cannot need itself"
+    [[ -n "$addon" ]] || addon=$(trace_task_addon "$file" "$id")
+    [[ -n "$addon" ]] || die "no trace of the task '$id' in this repository (git shuttle trace list)"
+    other_addon=$(trace_task_addon "$file" "$other")
+    [[ -n "$other_addon" ]] || die "no trace of the task '$other' in this repository: start or link a branch for it first (git shuttle trace bind)"
+    [[ "$other_addon" == "$addon" ]] || die "$verb: #$id is a task of '$addon' and #$other of '$other_addon'"
+    linked=$("$TRACE_PY" -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("trace", sys.argv[1]); tr = importlib.util.module_from_spec(spec); spec.loader.exec_module(tr)
+print("yes" if sys.argv[5] in tr.needs(sys.argv[2]).get((sys.argv[3], sys.argv[4]), []) else "")' "$ROOT/lib/addons/trace.py" "$file" "$addon" "$id" "$other")
+    if [[ "$verb" == link && -n "$linked" ]]; then info "#$id already needs #$other"; return 0; fi
+    [[ "$verb" == link || -n "$linked" ]] || die "unlink: #$id does not need #$other"
+    title=$(trace_task_field "$file" "$addon" "$id" title)
+    info "task:       $addon #$id${title:+  $title}"
+    if [[ "$verb" == link ]]; then
+        info "needs:      #$other  $(trace_task_field "$file" "$addon" "$other" title)"
+        info "status and the Release view show them together, and its Release button picks the commits of both in their order"
+        confirm "Record that #$id needs #$other released first?"
+    else
+        confirm "Record that #$id no longer needs #$other?"
+    fi
+    (( DRY_RUN )) && return 0
+    "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" append "$file" "type=$verb" "addon=$addon" "task=$id" "title=$title" "needs=$other" || die "the trace cannot be written"
+    if [[ "$verb" == link ]]; then step "#$id needs #$other"; else step "#$id no longer needs #$other"; fi
+}
+
+# trace_bind_commit FILE ID ADDON SHA — one commit that has no branch any more (or that was made on a shared one) is added to a task of the trace.
+trace_bind_commit() {
+    local file=$1 id=$2 addon=$3 sha subject when owner title
+    sha=$(git rev-parse --verify -q "$4^{commit}") || die "bind: there is no commit '$4' here"
+    (( $(git rev-list --parents -n 1 "$sha" | wc -w) <= 2 )) || die "bind: $4 is a merge: give the commits it brought"
+    [[ -n "$addon" ]] || addon=$(trace_task_addon "$file" "$id")
+    [[ -n "$addon" ]] || die "no trace of the task '$id' in this repository: link a branch with it first (git shuttle trace bind $id --branch NAME)"
+    owner=$("$TRACE_PY" -I -c '
+import importlib.util, sys
+spec = importlib.util.spec_from_file_location("trace", sys.argv[1]); tr = importlib.util.module_from_spec(spec); spec.loader.exec_module(tr)
+print(" ".join(sorted({"#" + e["task"] for e in tr.events(sys.argv[2]) if e.get("type") == "commit" and e.get("sha") == sys.argv[3] and e.get("task")})))' "$ROOT/lib/addons/trace.py" "$file" "$sha")
+    [[ " $owner " != *" #$id "* ]] || { info "${sha:0:8} is already a commit of #$id"; return 0; }
+    subject=$(git show -s --format=%s "$sha"); when=$(git show -s --format=%cI "$sha")
+    title=$(trace_task_field "$file" "$addon" "$id" title)
+    info "commit:     ${sha:0:8}  $subject"
+    info "for:        $addon #$id${title:+  $title}"
+    [[ -z "$owner" ]] || warn "it is already a commit of $owner: it will count for both tasks"
+    confirm "Add ${sha:0:8} to the task #$id?"
+    (( DRY_RUN )) && return 0
+    "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" append-once "$file" "type=commit" "addon=$addon" "task=$id" "title=$title" \
+        "link=$(trace_task_field "$file" "$addon" "$id" link)" "sha=$sha" "subject=$subject" "linked=by hand" "at=$when" || die "the trace cannot be written"
+    step "${sha:0:8} is a commit of #$id"
+}
+
 cmd_trace() {
-    local sub=${1:-list} porcelain=0 id="" addon="" file branch="" force=0
+    local sub=${1:-list} porcelain=0 id="" addon="" file branch="" force=0 needs="" commit=""
     shift || true
     while (( $# )); do
         case "$1" in
@@ -152,6 +220,8 @@ cmd_trace() {
             --addon) [[ $# -ge 2 ]] || die "--addon needs a name"; addon=$2; shift 2 ;;
             --branch) [[ $# -ge 2 ]] || die "--branch needs a name"; branch=$2; shift 2 ;;
             --force) force=1; shift ;;
+            --needs) [[ $# -ge 2 ]] || die "--needs needs the number of a task"; needs=$2; shift 2 ;;
+            --commit) [[ $# -ge 2 ]] || die "--commit needs a commit"; commit=$2; shift 2 ;;
             -*) die "trace: unknown option '$1'" ;;
             *) [[ -z "$id" ]] || die "trace: one task at a time"; id=$1; shift ;;
         esac
@@ -205,6 +275,10 @@ for t in data["tasks"]:
     print()
     print("task %s: %s" % (t["id"], t["title"] or "(no title)"))
     print("  " + ", ".join("%d %s" % (c[k], say[k]) for k in ("prod", "release", "staging", "branch", "missing") if c[k]) if t["commits"] else "  no commit traced")
+    if t.get("needs"):
+        print("  needs " + ", ".join("#" + n for n in t["needs"]) + " released first (release them together)")
+    if t.get("needed_by"):
+        print("  needed by " + ", ".join("#" + n for n in t["needed_by"]))
     for r in t["commits"]:
         extra = " (%s, %s)" % (how[r["match"]], r["as"][:8]) if r["match"] in how else (" (%s)" % r["where"] if r["state"] == "release" else "")
         print("  %-13s %s %s%s" % (say[r["state"]], r["sha"][:8], r["subject"], extra))'
@@ -250,8 +324,14 @@ for t in data["tasks"]:
             step "'$target' is no longer linked to a task ($gone step(s) removed from the trace)"
             return 0 ;;
         bind)
-            [[ -n "$id" ]] || die "trace bind needs the task:  git shuttle trace bind 15607 [--addon NAME] [--branch NAME]"
+            [[ -n "$id" ]] || die "trace bind needs the task:  git shuttle trace bind 15607 [--addon NAME] [--branch NAME] | --commit SHA"
+            if [[ -n "$commit" ]]; then trace_bind_commit "$file" "$id" "$addon" "$commit"; return 0; fi
             trace_bind "$id" "$addon" "$branch" "$force"
+            return 0 ;;
+        link|unlink)
+            # a task that needs another one released first (its commits are built on them): status and the Release view show them together
+            [[ -n "$id" && -n "$needs" ]] || die "trace $sub needs two tasks:  git shuttle trace $sub 17553 --needs 15493"
+            trace_link "$file" "$sub" "$id" "$needs" "$addon"
             return 0 ;;
         list)
             [[ -z "$id" ]] || die "trace list takes no task (trace show ID)"
@@ -287,12 +367,12 @@ print("branches: " + ", ".join(task["branches"]))
 print()
 for e in data["events"]:
     when = datetime.fromisoformat(e["time"].replace("Z", "+00:00")).astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
-    what = {"start": "started", "commit": "commit", "push": "pushed", "pr": "pull request", "merge": "merged", "release": "release", "deploy": "deployed", "bind": "linked"}.get(e["type"], e["type"])
-    extra = " ".join("%s=%s" % (k, v) for k, v in e.items() if k in ("sha", "into", "release_branch", "target", "url", "subject", "base") and v)
+    what = {"start": "started", "commit": "commit", "push": "pushed", "pr": "pull request", "merge": "merged", "release": "release", "deploy": "deployed", "bind": "linked", "link": "needs", "unlink": "no longer needs"}.get(e["type"], e["type"])
+    extra = " ".join("%s=%s" % (k, v) for k, v in e.items() if k in ("sha", "into", "release_branch", "target", "url", "subject", "base", "needs") and v)
     print("%s  %-13s %s" % (when, what, extra.strip()))
     for k, v in (e.get("details") or {}).items():
         print("                         %s: %s" % (k, v))'
             ;;
-        *) die "trace: '$sub' is not a command (list, show, status, bind, unbind, sync, report, map)" ;;
+        *) die "trace: '$sub' is not a command (list, show, status, bind, unbind, link, unlink, sync, report, map)" ;;
     esac
 }

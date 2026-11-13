@@ -486,6 +486,59 @@ class TestTaskReleaseStatus(unittest.TestCase):
             with self.assertRaises(ValueError):
                 tr.release_status(trace, tmp, ("nope", "nope"), ("staging", "staging"), [])
 
+    def test_a_task_that_needs_another_comes_with_it_and_its_commits_keep_the_order_of_staging(self):
+        import importlib.util
+        import subprocess
+        import tempfile
+        here = os.path.dirname(os.path.abspath(__file__))
+        spec = importlib.util.spec_from_file_location("shuttle_trace_needs", os.path.join(here, "..", "..", "lib", "addons", "trace.py"))
+        tr = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(tr)
+        with tempfile.TemporaryDirectory() as tmp:
+            env = dict(os.environ, GIT_AUTHOR_NAME="a", GIT_AUTHOR_EMAIL="a@a", GIT_COMMITTER_NAME="a", GIT_COMMITTER_EMAIL="a@a")
+            when = iter("2026-11-13T08:%02d:00Z" % m for m in range(60))
+
+            def run(*args):
+                env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = next(when)
+                return subprocess.run(["git", *args], cwd=tmp, env=env, check=True, capture_output=True, text=True).stdout.strip()
+
+            def commit(text, message):
+                with open(os.path.join(tmp, "export.py"), "a") as handle:
+                    handle.write(text)
+                run("add", "export.py")
+                run("commit", "-q", "-m", message)
+                return run("rev-parse", "HEAD")
+
+            run("init", "-q", "-b", "prod")
+            run("commit", "-q", "--allow-empty", "-m", "base")
+            run("checkout", "-q", "-b", "staging")
+            column = commit("column\n", "column: no task, its branch is gone")
+            layout = commit("layout\n", "layout: the first task")
+            accent = commit("accent\n", "accent: the feedback task, built on the layout")
+            other = commit("other\n", "other: a task that needs nothing")
+            trace = os.path.join(tmp, "events.jsonl")
+            first, feedback = ["addon=odoo-task", "task=15493", "title=Export"], ["addon=odoo-task", "task=17553", "title=Feedback"]
+            tr.append(trace, ["type=commit", "sha=" + layout, "branch=layout"] + first)
+            tr.append(trace, ["type=commit", "sha=" + accent, "branch=accent"] + feedback)
+            tr.append(trace, ["type=commit", "sha=" + other, "branch=other", "addon=odoo-task", "task=1", "title=Other"])
+            tr.append(trace, ["type=commit", "sha=" + column, "linked=by hand"] + first)     # bind --commit: no branch
+            tr.append(trace, ["type=link", "needs=15493"] + feedback)
+            tr.append(trace, ["type=link", "needs=17553"] + first)                           # a loop is followed once
+            tr.append(trace, ["type=unlink", "needs=17553"] + first)
+            self.assertEqual(tr.needs(trace), {("odoo-task", "17553"): ["15493"]}, "the last step of a pair wins")
+            data = tr.release_status(trace, tmp, ("prod", "prod"), ("staging", "staging"), [], None, "17553")
+            self.assertEqual([t["id"] for t in data["tasks"]], ["17553", "15493"], "the task asked for, then the one it needs; not the others")
+            asked, needed = data["tasks"]
+            self.assertEqual((asked["needs"], asked["needed_by"]), (["15493"], []))
+            self.assertEqual((needed["needs"], needed["needed_by"]), ([], ["17553"]))
+            self.assertEqual(needed["counts"]["staging"], 2, "the commit added without a branch counts for its task")
+            pos = {c["subject"].split(":")[0]: c["pos"] for t in data["tasks"] for c in t["commits"]}
+            self.assertEqual(sorted(pos, key=pos.get), ["column", "layout", "accent"], "pos is the order on staging, the order to pick them in")
+            self.assertEqual(len(tr.release_status(trace, tmp, ("prod", "prod"), ("staging", "staging"), [])["tasks"]), 3, "a link is not a task")
+            tr.append(trace, ["type=link", "needs=15493", "addon=odoo-task", "task=1", "title=Other"])
+            loop = tr.release_status(trace, tmp, ("prod", "prod"), ("staging", "staging"), [], None, "1")
+            self.assertEqual([t["id"] for t in loop["tasks"]], ["1", "15493"])
+
 
 if __name__ == "__main__":
     unittest.main()
