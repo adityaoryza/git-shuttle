@@ -65,6 +65,12 @@ export function chainOf(tasks, task) {
 // integration branch (a pick in another order may not apply).
 export const chainToPick = (tasks, task) => leftToPick(chainOf(tasks, task)).sort((a, b) => (a.pos ?? Infinity) - (b.pos ?? Infinity));
 
+// The commits the Release button of a task takes from the tasks it needs (merged, not in prod), in the order of the integration branch:
+// [{ task, commit }], to show them under the task's own commits.
+export const neededCommits = (tasks, task) => chainOf(tasks, task).slice(1)
+  .flatMap(t => (t.commits || []).filter(c => c.state === "staging").map(commit => ({ task: t.id, commit })))
+  .sort((a, b) => (a.commit.pos ?? Infinity) - (b.commit.pos ?? Infinity));
+
 // The totals of the tasks shown, for the line above the list.
 export function totals(tasks) {
   const out = Object.fromEntries(STATES.map(s => [s, 0]));

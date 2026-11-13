@@ -6,7 +6,7 @@ import { linkify, stageTone } from "../logic.js";
 import { ExternalLink } from "./links.js";
 import { Alert, Badge, Button, Facts, Field, Input, ItemList, ItemRow, Modal, Segmented, Skeleton, Status } from "./ui.js";
 import { Combobox } from "./combobox.js";
-import { STATE_LABEL, STATE_TONE, chainOf, chainToPick, commitNote, countsText, segments, taskRows, totals } from "../task-release.js";
+import { STATE_LABEL, STATE_TONE, chainOf, chainToPick, commitNote, countsText, neededCommits, segments, taskRows, totals } from "../task-release.js";
 
 const webAddress = link => (typeof link === "string" && /^https?:\/\//.test(link) ? link : "");
 
@@ -236,7 +236,7 @@ function TaskRelease({ repoId, onRun, notify }) {
     ${rows.length === 0 ? html`<div class="empty-note"><strong>${show === "todo" && all.length ? "Everything is in prod" : "No task here"}</strong><span class="hint">${show === "todo" && all.length ? "Every traced commit of every task is released. All shows them." : "Start a branch from a task, or link a branch that already has work."}</span></div>` : html`<ul class="task-accordion task-release">${rows.map(task => {
       const key = task.addon + ":" + task.id, isOpen = open === key, parts = segments(task.counts);
       const chain = chainOf(data.tasks, task), left = chainToPick(data.tasks, task).map(c => c.sha);
-      const others = chain.slice(1).map(t => "#" + t.id).join(", ");
+      const others = chain.slice(1).map(t => "#" + t.id).join(", "), needed = isOpen ? neededCommits(data.tasks, task) : [];
       return html`<li class=${isOpen ? "open" : ""}>
         <div class="task-line">
           <button type="button" class="task-head" aria-expanded=${isOpen} onClick=${() => setOpen(isOpen ? null : key)}>
@@ -255,7 +255,15 @@ function TaskRelease({ repoId, onRun, notify }) {
             <td><${Badge} tone=${STATE_TONE[c.state]}>${STATE_LABEL[c.state]}<//></td>
             <td class="mono" title=${c.sha}>${c.sha.slice(0, 8)}</td>
             <td><span class="msg">${c.subject || "(unknown)"}</span>${commitNote(c) ? html`<span class="hint"> ${commitNote(c)}</span>` : null}</td>
-          </tr>`)}</tbody></table></div>` : null}
+          </tr>`)}</tbody></table>
+          ${needed.length ? html`<h4 class="sub">Released with it, from ${others} (${needed.length})</h4>
+          <p class="hint">The commits of the tasks it needs that are merged and not in prod: the Release button picks them too, in this order (their order on ${data.integration}).</p>
+          <table class="history release-commits"><thead><tr><th scope="col">Task</th><th scope="col">Commit</th><th scope="col">Subject</th></tr></thead><tbody>
+          ${needed.map(({ task: id, commit: c }) => html`<tr>
+            <td class="mono">#${id}</td>
+            <td class="mono" title=${c.sha}>${(c.as || c.sha).slice(0, 8)}</td>
+            <td><span class="msg">${c.subject || "(unknown)"}</span></td>
+          </tr>`)}</tbody></table>` : null}</div>` : null}
       </li>`;
     })}</ul>`}`;
 }
