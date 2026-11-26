@@ -4,6 +4,12 @@ All notable changes are listed here. The format follows Keep a Changelog, and th
 
 ## [Unreleased]
 
+## [0.14.10] - 2026-11-26
+
+### Fixed
+
+- The trace follows commits that git-shuttle rewrites: `ship`, `merge` and `sync` rebase the branch on the integration branch, and `rebase-on`, `pull --rebase`, `continue` after a conflict, `rewrite` and `amend` rewrite commits too. The commit events now name the new commit (matched by patch-id, or by author and author date when a conflict changed the patch), the old one is kept in `was`, and a reworded commit gets its new subject. Before, a second commit shipped from the same branch kept the hash it had before the rebase, and the task report left it out.
+
 ## [0.14.9] - 2026-11-13
 
 ### Added
