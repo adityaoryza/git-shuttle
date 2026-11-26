@@ -24,9 +24,11 @@ sync_branch() {
     if [[ -n "$(upstream_of "$branch")" ]]; then
         warn "'$branch' is already pushed: the rebase rewrites it, and the next push needs  git shuttle push --force-with-lease"
     fi
+    local old; old=$(trace_sha "$branch")
     run git rebase "$target" || stop "the rebase on $target hit a conflict.
   Resolve the files, then  git shuttle continue
   or give up with         git shuttle abort"
+    trace_rewritten "$branch" "$old" "$target"
 }
 
 cmd_sync() {

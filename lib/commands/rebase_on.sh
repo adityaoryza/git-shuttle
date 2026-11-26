@@ -27,8 +27,10 @@ cmd_rebase_on() {
     info "replays:    $replay commit(s) ($(git rev-list --count "HEAD..$COMMIT") new under them)"
     [[ -z "$(upstream_of "$branch")" ]] || warn "'$branch' has an upstream: if its commits were pushed, the rebase rewrites them and the next push needs  git shuttle push --force-with-lease"
     confirm "Rebase '$branch' on '$other'?"
+    local old; old=$(trace_sha "$branch")
     run git rebase "$other" || stop "the rebase on $other hit a conflict.
   Resolve the files, then  git shuttle continue
   or give up with         git shuttle abort"
+    trace_rewritten "$branch" "$old" "$COMMIT"
     step "'$branch' is on top of $other"
 }

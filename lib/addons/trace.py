@@ -8,6 +8,7 @@ looked at, the deploys that carried its merge (the merge commit is an ancestor o
     trace.py append FILE key=value ...        add an event (the time is added; d.LABEL=value goes to "details")
     trace.py tasks FILE                       one JSON object: the tasks that have events, with the first and the last
     trace.py show FILE ADDON ID [--repo DIR]  one JSON object: the task and its events in order, deploys included
+    trace.py rewrite FILE REPO BASE OLD NEW   the commit events follow commits that a rebase, an amend or a reword rewrote
 
 The file is private (0600) and is cut to its newest 20000 lines. Standard library only; run with -I.
 """
@@ -627,6 +628,74 @@ def forget(path, branch):
     return gone
 
 
+def range_patch_ids(repo, revisions):
+    """(patch-id, sha) of each commit of a range, merges left out: the same change keeps its patch-id when it is rebased or reworded."""
+    try:
+        listed = subprocess.run(["git", "rev-list", "--no-merges", revisions], cwd=repo, capture_output=True, timeout=30, stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    shas = listed.stdout.decode("utf-8", "replace").split() if listed.returncode == 0 else []
+    return [(pid, sha) for sha, pid in patch_ids(repo, shas).items()]
+
+
+def by_author(repo, shas):
+    """{author email + author date: sha} of the commits whose key is unique among them."""
+    keys = {}
+    for sha in shas:
+        key = subprocess.run(["git", "-C", repo, "log", "-1", "--format=%ae %at", sha], capture_output=True, check=False).stdout.strip()
+        keys.setdefault(key, []).append(sha)
+    return {key: found[0] for key, found in keys.items() if key and len(found) == 1}
+
+
+def rewrite(path, repo, base, old, new):
+    """Commits rewritten by a rebase, an amend or a reword (old..new on top of base): the commit events of the trace follow them, matched by
+    patch-id, so the trace and the report name commits that exist. The old sha stays in "was". Returns how many events changed."""
+    before = dict(range_patch_ids(repo, "%s..%s" % (base, old)))
+    after = range_patch_ids(repo, "%s..%s" % (base, new))
+    moved = {}
+    for pid, sha in after:
+        if pid in before and before[pid] != sha:
+            moved[before[pid]] = sha
+    # a conflict resolved during the rebase changes the patch: then the author and the author date, which git keeps, pair the commits left
+    matched_new = set(moved.values()) | {sha for pid, sha in after if pid in before}
+    left_old = [sha for sha in before.values() if sha not in moved and sha not in matched_new]
+    left_new = [sha for pid, sha in after if sha not in matched_new]
+    if left_old and left_new:
+        olds, news = by_author(repo, left_old), by_author(repo, left_new)
+        for key, sha in olds.items():
+            if key in news and news[key] != sha:
+                moved[sha] = news[key]
+    if not moved:
+        return 0
+    try:
+        with open(path, encoding="utf-8") as handle:
+            lines = handle.readlines()
+    except OSError:
+        return 0
+    out, changed = [], 0
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            out.append(line)
+            continue
+        if isinstance(event, dict) and event.get("type") == "commit" and event.get("sha") in moved:
+            event["was"], event["sha"] = event["sha"], moved[event["sha"]]
+            subject = subprocess.run(["git", "-C", repo, "log", "-1", "--format=%s", event["sha"]], capture_output=True, check=False).stdout
+            if subject.strip():
+                event["subject"] = clean(subject.decode("utf-8", "replace").strip())
+            line = json.dumps(event, ensure_ascii=False) + "\n"
+            changed += 1
+        out.append(line)
+    if changed:
+        tmp = path + ".tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.writelines(out)
+        os.replace(tmp, path)
+    return changed
+
+
 def main(argv):
     try:
         if len(argv) >= 4 and argv[1] in ("append", "append-once"):
@@ -639,6 +708,9 @@ def main(argv):
                 print(branch)
         elif len(argv) == 4 and argv[1] == "forget":
             print(forget(argv[2], argv[3]))
+        elif len(argv) == 7 and argv[1] == "rewrite":
+            # rewrite FILE REPO BASE OLD NEW: the commits of BASE..OLD became BASE..NEW (rebase, amend, reword)
+            print(rewrite(argv[2], argv[3], argv[4], argv[5], argv[6]))
         elif len(argv) == 4 and argv[1] == "map":
             print(json.dumps(mapping(argv[2], argv[3], os.environ.get("TRACE_BASE", "HEAD")), ensure_ascii=False))
         elif len(argv) == 3 and argv[1] == "tasks":
@@ -654,7 +726,7 @@ def main(argv):
             repo = argv[argv.index("--repo") + 1] if "--repo" in argv else None
             print(json.dumps(show(argv[2], argv[3], argv[4], repo), ensure_ascii=False))
         else:
-            sys.stderr.write("usage: trace.py append FILE key=value... | tasks FILE | show FILE ADDON ID [--repo DIR] | status FILE REPO NAME<TAB>REF NAME<TAB>REF [ADDON ID] | branches-of FILE SHA...\n")
+            sys.stderr.write("usage: trace.py append FILE key=value... | tasks FILE | show FILE ADDON ID [--repo DIR] | status FILE REPO NAME<TAB>REF NAME<TAB>REF [ADDON ID] | branches-of FILE SHA... | rewrite FILE REPO BASE OLD NEW\n")
             return 2
     except (ValueError, IndexError) as error:
         sys.stderr.write("%s\n" % error)

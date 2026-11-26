@@ -46,9 +46,11 @@ cmd_pull() {
     else
         refuse_protected "$branch" "pull --rebase"
         info "replays:    $ahead commit(s) of '$branch' on top of $upstream"
+        local old; old=$(trace_sha "$branch")
         run git rebase "$upstream" || stop "the rebase on $upstream hit a conflict.
   Resolve the files, then  git shuttle continue
   or give up with         git shuttle abort"
+        trace_rewritten "$branch" "$old" "$upstream"
         step "'$branch' rebased on $upstream ($behind new commit(s) under yours)"
     fi
 }
