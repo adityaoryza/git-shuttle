@@ -41,7 +41,14 @@ cmd_continue() {
         while IFS= read -r file; do [[ -n "$file" ]] && { run git add -- "$file" || die "cannot add $file"; }; done <<<"$files"
     fi
     case "$op" in
-        rebase)      run env GIT_EDITOR=true git rebase --continue || stop "the rebase stopped again: resolve the next conflict, then  git shuttle continue" ;;
+        rebase)
+            local rebase_state; rebase_state=$(trace_rebase_state)
+            run env GIT_EDITOR=true git rebase --continue || stop "the rebase stopped again: resolve the next conflict, then  git shuttle continue"
+            if [[ -n "$rebase_state" ]]; then
+                local rebase_old rebase_onto rebase_branch
+                read -r rebase_old rebase_onto rebase_branch <<<"$rebase_state"
+                trace_rewritten "$rebase_branch" "$rebase_old" "$rebase_onto"
+            fi ;;
         merge)       run git commit --no-edit || die "cannot finish the merge" ;;
         cherry-pick)
             if (( planned )); then

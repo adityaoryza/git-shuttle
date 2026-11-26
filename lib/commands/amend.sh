@@ -26,6 +26,8 @@ cmd_amend() {
     info "amend:      $(git log -1 --format='%h %s' HEAD)"
     info "new message: ${message%%$'\n'*}"
     confirm "Change the message?"
+    local old; old=$(trace_sha HEAD)
     run git commit --amend --only -m "$message" || die "cannot amend"
+    git rev-parse -q --verify "$old^" >/dev/null && trace_rewritten "$branch" "$old" "$old^"
     step "the last commit now says: ${message%%$'\n'*}"
 }

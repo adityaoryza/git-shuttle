@@ -57,6 +57,31 @@ trace_global() {
 # trace_sha REF — the commit of a reference, or nothing.
 trace_sha() { git rev-parse --verify -q "$1^{commit}" 2>/dev/null || true; }
 
+# trace_rewritten BRANCH OLD BASE — the commits of BASE..OLD were rewritten into BASE..BRANCH (a rebase, an amend, a reword): the commit events
+# of the trace follow them (same change, same patch-id), so the report never names a commit that only existed before the rewrite.
+trace_rewritten() {
+    local branch=$1 old=$2 base=$3 new file
+    (( DRY_RUN )) && return 0
+    new=$(trace_sha "$branch")
+    [[ -n "$old" && -n "$base" && -n "$new" && "$old" != "$new" ]] || return 0
+    trace_python || return 0
+    file=$(trace_file) || return 0
+    [[ -f "$file" ]] || return 0
+    "$TRACE_PY" -I "$ROOT/lib/addons/trace.py" rewrite "$file" "$(git rev-parse --show-toplevel)" "$base" "$old" "$new" >/dev/null 2>&1 || true
+}
+
+# trace_rebase_state — "OLD ONTO BRANCH" of the rebase that is stopped on a conflict (git keeps them), or nothing.
+trace_rebase_state() {
+    local dir name
+    for name in rebase-merge rebase-apply; do
+        dir=$(git rev-parse --git-path "$name" 2>/dev/null) || continue
+        if [[ -f "$dir/orig-head" && -f "$dir/onto" && -f "$dir/head-name" ]]; then
+            printf '%s %s %s\n' "$(<"$dir/orig-head")" "$(<"$dir/onto")" "$(sed 's#^refs/heads/##' "$dir/head-name")"
+            return 0
+        fi
+    done
+}
+
 # trace_bind TASK ADDON BRANCH FORCE — a branch that already has commits is linked to a task: the branch remembers it, and what the branch already did
 # (its start, its commits, the pull request and its merge) is written to the trace with the dates it really had. Nothing is written in a dry run.
 trace_bind() {

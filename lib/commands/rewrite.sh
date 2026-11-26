@@ -67,6 +67,7 @@ rewrite_run() {
         die "cannot rewrite"
     }
     rm -rf "$dir"
+    trace_rewritten "$branch" "$before" "$base"
     step "'$branch' rewritten ($(git rev-list --count "$base..HEAD") commit(s) after the base, was $(git rev-list --count "$base..$before"))"
 }
 
